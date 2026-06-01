@@ -526,6 +526,7 @@ class AuditLogEvent(enum.Enum):
     BOOKING_CANCELLED = "booking_cancelled"
     BOOKING_REFUNDED = "booking_refunded"
     BOOKING_UPDATED = "booking_updated"
+    ROSTER_SHIFT_DELETED = "roster_shift_deleted"
     # Roster Planner Phase 3 — additive commit + undo
     PLANNER_RUN_COMMITTED = "planner_run_committed"  # Admin committed N proposals from a run
     PLANNER_RUN_UNDONE = "planner_run_undone"  # Admin undid (deleted) committed shifts from a run

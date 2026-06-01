@@ -247,6 +247,16 @@ const formatTimeInput24h = (input, previousValue = '') => {
 // 'auto' / 'all' → pass through.
 export const sourceParamFor = (filter) => (filter === 'auto' || filter === 'all') ? filter : null
 
+export const calculateHoursTotal = (employees = []) => employees.reduce((total, employee) => {
+  const hours = Number(employee?.total_hours)
+  return total + (Number.isFinite(hours) ? hours : 0)
+}, 0)
+
+export const calculateShiftTotal = (employees = []) => employees.reduce((total, employee) => {
+  const shifts = Number(employee?.shift_count)
+  return total + (Number.isFinite(shifts) ? shifts : 0)
+}, 0)
+
 function RosterCalendar({
   token,
   isAdmin = false,
@@ -2718,15 +2728,28 @@ function RosterCalendar({
                         // Admin view: show all employees for this week
                         <div className="weekly-hours-grid">
                           {week.employees && week.employees.length > 0 ? (
-                            week.employees.map((emp) => (
-                              <div key={emp.employee_id} className="weekly-hours-card">
-                                <div className="employee-name">{emp.employee_name}</div>
+                            <>
+                              <div className="weekly-hours-card total-hours-card">
+                                <div className="employee-name">Weekly Total</div>
                                 <div className="hours-summary">
-                                  <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
-                                  <span className="shift-count">({emp.shift_count} shifts)</span>
+                                  <span className="total-hours">
+                                    {(week.total_hours ?? calculateHoursTotal(week.employees)).toFixed(1)}h
+                                  </span>
+                                  <span className="shift-count">
+                                    ({week.shift_count ?? calculateShiftTotal(week.employees)} shifts)
+                                  </span>
                                 </div>
                               </div>
-                            ))
+                              {week.employees.map((emp) => (
+                                <div key={emp.employee_id} className="weekly-hours-card">
+                                  <div className="employee-name">{emp.employee_name}</div>
+                                  <div className="hours-summary">
+                                    <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
+                                    <span className="shift-count">({emp.shift_count} shifts)</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </>
                           ) : (
                             <div className="no-hours">No shifts this week</div>
                           )}
@@ -2763,15 +2786,28 @@ function RosterCalendar({
                       // Admin view: show all employees' monthly totals
                       <div className="weekly-hours-grid">
                         {monthlyHours.employees && monthlyHours.employees.length > 0 ? (
-                          monthlyHours.employees.map((emp) => (
-                            <div key={emp.employee_id} className="weekly-hours-card">
-                              <div className="employee-name">{emp.employee_name}</div>
+                          <>
+                            <div className="weekly-hours-card total-hours-card">
+                              <div className="employee-name">Monthly Total</div>
                               <div className="hours-summary">
-                                <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
-                                <span className="shift-count">({emp.shift_count} shifts)</span>
+                                <span className="total-hours">
+                                  {(monthlyHours.total_hours ?? calculateHoursTotal(monthlyHours.employees)).toFixed(1)}h
+                                </span>
+                                <span className="shift-count">
+                                  ({monthlyHours.shift_count ?? calculateShiftTotal(monthlyHours.employees)} shifts)
+                                </span>
                               </div>
                             </div>
-                          ))
+                            {monthlyHours.employees.map((emp) => (
+                              <div key={emp.employee_id} className="weekly-hours-card">
+                                <div className="employee-name">{emp.employee_name}</div>
+                                <div className="hours-summary">
+                                  <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
+                                  <span className="shift-count">({emp.shift_count} shifts)</span>
+                                </div>
+                              </div>
+                            ))}
+                          </>
                         ) : (
                           <div className="no-hours">No shifts scheduled this month</div>
                         )}

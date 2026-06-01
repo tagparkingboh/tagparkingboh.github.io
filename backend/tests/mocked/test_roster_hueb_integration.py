@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 from main import app
 from database import get_db
 from routers.roster import get_current_user as roster_get_current_user, require_admin as roster_require_admin
-from db_models import ShiftStatus, ShiftType, HolidayType
+from db_models import AuditLogEvent, ShiftStatus, ShiftType, HolidayType
 
 
 # ============================================================================
@@ -287,9 +287,17 @@ class TestDeleteShift:
 
     def test_H_delete_existing_shift(self):
         s = _mock_shift()
-        _override_db(self._wire(s))
+        db = self._wire(s)
+        _override_db(db)
         resp = TestClient(app).delete(f"/api/roster/{s.id}")
         assert resp.status_code == 200
+        db.add.assert_called_once()
+        audit = db.add.call_args.args[0]
+        assert audit.event == AuditLogEvent.ROSTER_SHIFT_DELETED
+        assert audit.session_id == f"roster-shift-{s.id}"
+        assert f'"shift_id": {s.id}' in audit.event_data
+        assert '"deleted_by_email": "admin@tag.test"' in audit.event_data
+        db.delete.assert_called_once_with(s)
 
     def test_U_delete_nonexistent_returns_404(self):
         _override_db(self._wire(None))

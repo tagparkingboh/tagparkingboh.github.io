@@ -1963,6 +1963,17 @@
   background: linear-gradient(135deg, #1e1e1e 0%, #2a2a1e 100%);
 }
 
+.weekly-hours-card.total-hours-card {
+  border-color: #D9FF00;
+  background: #252518;
+  min-width: 170px;
+}
+
+.weekly-hours-card.total-hours-card .employee-name,
+.weekly-hours-card.total-hours-card .total-hours {
+  color: #D9FF00;
+}
+
 .weekly-hours-card .employee-name {
   color: #fff;
   font-weight: 600;

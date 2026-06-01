@@ -10,7 +10,7 @@ This module provides endpoints for:
 
 from datetime import date as date_type, time, datetime, timedelta, timezone
 from typing import Optional, List
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
@@ -920,9 +920,17 @@ async def get_weekly_hours(
             if date_key in employee_hours[shift.staff_id]["daily_hours"]:
                 employee_hours[shift.staff_id]["daily_hours"][date_key] += hours
 
+    total_hours = round(
+        sum(employee["total_hours"] for employee in employee_hours.values()),
+        2,
+    )
+    shift_count = sum(employee["shift_count"] for employee in employee_hours.values())
+
     return {
         "week_start": str(week_start),
         "week_end": str(week_end),
+        "total_hours": total_hours,
+        "shift_count": shift_count,
         "employees": list(employee_hours.values())
     }
 
@@ -1084,12 +1092,20 @@ async def get_monthly_hours(
             "week_start": str(week["week_start"]),
             "week_end": str(week["week_end"]),
             "week_label": week_label,
+            "total_hours": round(sum(emp["total_hours"] for emp in week_employee_hours.values()), 2),
+            "shift_count": sum(emp["shift_count"] for emp in week_employee_hours.values()),
             "employees": list(week_employee_hours.values())
         })
 
     # Round total hours for each employee
     for emp_id in employee_totals:
         employee_totals[emp_id]["total_hours"] = round(employee_totals[emp_id]["total_hours"], 2)
+
+    total_hours = round(
+        sum(employee["total_hours"] for employee in employee_totals.values()),
+        2,
+    )
+    shift_count = sum(employee["shift_count"] for employee in employee_totals.values())
 
     return {
         "year": year,
@@ -1098,6 +1114,8 @@ async def get_monthly_hours(
         "month_start": str(month_start),
         "month_end": str(month_end),
         "weeks": weeks_data,
+        "total_hours": total_hours,
+        "shift_count": shift_count,
         "employees": list(employee_totals.values())
     }
 
@@ -1520,6 +1538,7 @@ async def update_shift(
 @router.delete("/roster/{shift_id}")
 async def delete_shift(
     shift_id: int,
+    request: Request,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -1529,6 +1548,53 @@ async def delete_shift(
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
 
+    linked_bookings = []
+    for booking in getattr(shift, "bookings", []) or []:
+        linked_bookings.append({
+            "id": getattr(booking, "id", None),
+            "reference": getattr(booking, "reference", None),
+        })
+
+    staff = getattr(shift, "staff", None)
+    staff_name = None
+    if staff:
+        staff_parts = [
+            part for part in (
+                getattr(staff, "first_name", None),
+                getattr(staff, "last_name", None),
+            )
+            if isinstance(part, str) and part
+        ]
+        staff_name = " ".join(staff_parts) or None
+
+    delete_audit = AuditLog(
+        event=AuditLogEvent.ROSTER_SHIFT_DELETED,
+        session_id=f"roster-shift-{shift.id}",
+        booking_reference=next(
+            (b["reference"] for b in linked_bookings if b.get("reference")),
+            None,
+        ),
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+        event_data=json.dumps({
+            "shift_id": shift.id,
+            "date": str(shift.date) if shift.date else None,
+            "end_date": str(shift.end_date) if shift.end_date else None,
+            "start_time": format_time(shift.start_time) if shift.start_time else None,
+            "end_time": format_time(shift.end_time) if shift.end_time else None,
+            "shift_type": shift.shift_type.value if shift.shift_type else None,
+            "status": shift.status.value if shift.status else None,
+            "created_source": shift.created_source,
+            "planner_run_id": shift.planner_run_id,
+            "admin_shaped_at": shift.admin_shaped_at.isoformat() if shift.admin_shaped_at else None,
+            "staff_id": shift.staff_id,
+            "staff_name": staff_name,
+            "linked_bookings": linked_bookings,
+            "deleted_by_user_id": current_user.id,
+            "deleted_by_email": current_user.email,
+        }, default=str),
+    )
+    db.add(delete_audit)
     db.delete(shift)
     db.commit()
 

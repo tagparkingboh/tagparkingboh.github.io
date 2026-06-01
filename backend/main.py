@@ -338,6 +338,7 @@ def run_migrations():
                 'booking_cancelled',
                 'booking_refunded',
                 'booking_updated',
+                'roster_shift_deleted',
             ]
 
             for value in new_values:
@@ -484,6 +485,25 @@ def run_migrations():
             print("Migration completed: new audit log events added")
         else:
             print("Migration check: new audit log events already exist")
+
+        # Migration 7b: Add roster delete audit event.
+        result = db.execute(text("""
+            SELECT enumlabel FROM pg_enum
+            WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogevent')
+            AND enumlabel = 'roster_shift_deleted'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Adding roster shift delete audit event...")
+            try:
+                db.execute(text("ALTER TYPE auditlogevent ADD VALUE IF NOT EXISTS 'roster_shift_deleted'"))
+                db.commit()
+                print("Migration completed: roster shift delete audit event added")
+            except Exception:
+                db.rollback()
+                raise
+        else:
+            print("Migration check: roster shift delete audit event already exists")
 
     except Exception as e:
         print(f"Migration error (non-fatal): {e}")

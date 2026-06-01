@@ -262,6 +262,58 @@ class TestAdminWeeklyHoursIntegration:
         finally:
             app.dependency_overrides.clear()
 
+    def test_H_admin_weekly_hours_returns_all_driver_total(self, mock_admin_user):
+        """HUEB: weekly total sums every driver's hours."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+        from db_models import RosterShift, User
+
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 3, 17), time(9, 0), time(13, 0)),
+            self.create_mock_shift(2, 3, date(2026, 3, 18), time(14, 0), time(16, 30)),
+        ]
+        mock_employees = {
+            2: self.create_mock_employee(2, "Jez", "Taylor", "jez@tagparking.co.uk"),
+            3: self.create_mock_employee(3, "Mark", "Custard", "mark@tagparking.co.uk"),
+        }
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            query = MagicMock()
+            if model is RosterShift:
+                query.filter.return_value = query
+                query.all.return_value = mock_shifts
+            elif model is User:
+                query.filter.return_value.first.side_effect = [
+                    mock_employees[2],
+                    mock_employees[3],
+                ]
+            return query
+
+        mock_db.query.side_effect = query_side_effect
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            return mock_admin_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/roster/weekly-hours?week_start=2026-03-16")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_hours"] == 6.5
+            assert data["shift_count"] == 2
+        finally:
+            app.dependency_overrides.clear()
+
     def test_admin_weekly_hours_no_shifts(self, mock_admin_user):
         """Admin should get empty employees list when no shifts exist."""
         from main import app
@@ -707,6 +759,61 @@ class TestAdminMonthlyHoursIntegration:
             assert data["month_start"] == "2026-04-01"
             assert data["month_end"] == "2026-04-30"
             assert "employees" in data
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_H_admin_monthly_hours_returns_all_driver_totals(self, mock_admin_user):
+        """HUEB: monthly and weekly totals sum every driver's hours."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+        from db_models import RosterShift, User
+
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 7), time(9, 0), time(13, 0)),
+            self.create_mock_shift(2, 3, date(2026, 4, 8), time(10, 0), time(12, 30)),
+            self.create_mock_shift(3, 2, date(2026, 4, 18), time(23, 30), time(0, 30), end_date=date(2026, 4, 19)),
+        ]
+        mock_employees = {
+            2: self.create_mock_employee(2, "Jez", "Taylor", "jez@tagparking.co.uk"),
+            3: self.create_mock_employee(3, "Mark", "Custard", "mark@tagparking.co.uk"),
+        }
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            query = MagicMock()
+            if model is RosterShift:
+                query.filter.return_value = query
+                query.all.return_value = mock_shifts
+            elif model is User:
+                query.filter.return_value.first.side_effect = [
+                    mock_employees[2],
+                    mock_employees[3],
+                ]
+            return query
+
+        mock_db.query.side_effect = query_side_effect
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            return mock_admin_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/roster/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_hours"] == 7.5
+            assert data["shift_count"] == 3
+            assert data["weeks"][1]["total_hours"] == 6.5
+            assert data["weeks"][1]["shift_count"] == 2
         finally:
             app.dependency_overrides.clear()
 

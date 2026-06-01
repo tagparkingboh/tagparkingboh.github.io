@@ -15,6 +15,8 @@ import {
   ARRIVAL_OVERNIGHT_CUTOFF,
   shiftSortMinutes,
   sourceParamFor,
+  calculateHoursTotal,
+  calculateShiftTotal,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -55,6 +57,31 @@ describe('prevIsoDate', () => {
 describe('ARRIVAL_OVERNIGHT_CUTOFF', () => {
   it('is 02:00 UK time', () => {
     expect(ARRIVAL_OVERNIGHT_CUTOFF).toBe('02:00')
+  })
+})
+
+describe('hours totals', () => {
+  it('H: sums driver hours for aggregate weekly/monthly cards', () => {
+    const employees = [
+      { employee_name: 'Simon Bartlett', total_hours: 30.1, shift_count: 7 },
+      { employee_name: 'Paul Vacher', total_hours: 6.1, shift_count: 1 },
+      { employee_name: 'Marek Smolarek', total_hours: 33.9, shift_count: 7 },
+    ]
+
+    expect(calculateHoursTotal(employees)).toBeCloseTo(70.1)
+    expect(calculateShiftTotal(employees)).toBe(15)
+  })
+
+  it('U: ignores missing or non-numeric values when summing totals', () => {
+    const employees = [
+      { total_hours: 4, shift_count: 1 },
+      { total_hours: undefined, shift_count: undefined },
+      { total_hours: '2.5', shift_count: '2' },
+      null,
+    ]
+
+    expect(calculateHoursTotal(employees)).toBe(6.5)
+    expect(calculateShiftTotal(employees)).toBe(3)
   })
 })
 
