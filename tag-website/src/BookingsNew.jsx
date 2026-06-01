@@ -177,11 +177,13 @@ function Bookings({ isModal = false, onClose }) {
   const ensureDraftToken = () => {
     if (draftTokenRef.current) return Promise.resolve(draftTokenRef.current)
     if (draftTokenPromiseRef.current) return draftTokenPromiseRef.current
-    draftTokenPromiseRef.current = fetch(
-      `${API_BASE_URL}/api/booking-drafts`,
-      { method: 'POST' },
+    draftTokenPromiseRef.current = Promise.resolve(
+      fetch(
+        `${API_BASE_URL}/api/booking-drafts`,
+        { method: 'POST' },
+      ),
     )
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r?.ok ? r.json() : null))
       .then((data) => {
         if (data?.token) {
           draftTokenRef.current = data.token
@@ -218,6 +220,35 @@ function Bookings({ isModal = false, onClose }) {
     draftTokenRef.current = null
     draftTokenPromiseRef.current = null
     sessionStorage.removeItem('booking_draftToken')
+  }
+
+  const isDraftTokenError = async (response) => {
+    if (response.status !== 401) return false
+    try {
+      const data = await response.clone().json()
+      return typeof data?.detail === 'string' && data.detail.includes('X-Draft-Token')
+    } catch {
+      return false
+    }
+  }
+
+  const fetchWithDraftToken = async (url, options = {}) => {
+    await ensureDraftToken()
+    const buildOptions = () => ({
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...draftHeaders(),
+      },
+    })
+
+    let response = await fetch(url, buildOptions())
+    if (await isDraftTokenError(response)) {
+      resetDraftToken()
+      await ensureDraftToken()
+      response = await fetch(url, buildOptions())
+    }
+    return response
   }
   // DVLA lookup state
   const [dvlaLoading, setDvlaLoading] = useState(false)
@@ -512,10 +543,8 @@ function Bookings({ isModal = false, onClose }) {
 
       setHeardAboutUsLoading(true)
       try {
-        await ensureDraftToken()
-        const response = await fetch(
+        const response = await fetchWithDraftToken(
           `${API_BASE_URL}/api/customers/heard-about-us-status?email=${encodeURIComponent(formData.email)}`,
-          { headers: { ...draftHeaders() } },
         )
         if (response.ok) {
           const data = await response.json()
@@ -545,10 +574,9 @@ function Bookings({ isModal = false, onClose }) {
 
     setHeardAboutUsSubmitting(true)
     try {
-      await ensureDraftToken()
-      const response = await fetch(`${API_BASE_URL}/api/customers/heard-about-us`, {
+      const response = await fetchWithDraftToken(`${API_BASE_URL}/api/customers/heard-about-us`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: formData.email,
           source: heardAboutUsSource,
@@ -1606,10 +1634,9 @@ function Bookings({ isModal = false, onClose }) {
     // If customer already exists and email hasn't changed, update instead of create
     if (customerId && !emailChanged) {
       try {
-        await ensureDraftToken()
-        const response = await fetch(`${API_BASE_URL}/api/customers/${customerId}`, {
+        const response = await fetchWithDraftToken(`${API_BASE_URL}/api/customers/${customerId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             first_name: formData.firstName,
             last_name: formData.lastName,
@@ -1641,10 +1668,9 @@ function Bookings({ isModal = false, onClose }) {
 
     // Create new customer
     try {
-      await ensureDraftToken()
-      const response = await fetch(`${API_BASE_URL}/api/customers`, {
+      const response = await fetchWithDraftToken(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           first_name: formData.firstName,
           last_name: formData.lastName,
@@ -1674,10 +1700,9 @@ function Bookings({ isModal = false, onClose }) {
     // If vehicle already exists and not forcing create, update instead of create
     if (vehicleId && !forceCreate) {
       try {
-        await ensureDraftToken()
-        const response = await fetch(`${API_BASE_URL}/api/vehicles/${vehicleId}`, {
+        const response = await fetchWithDraftToken(`${API_BASE_URL}/api/vehicles/${vehicleId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             customer_id: customerIdToUse,
             registration: formData.registration.toUpperCase(),
@@ -1701,10 +1726,9 @@ function Bookings({ isModal = false, onClose }) {
 
     // Create new vehicle
     try {
-      await ensureDraftToken()
-      const response = await fetch(`${API_BASE_URL}/api/vehicles`, {
+      const response = await fetchWithDraftToken(`${API_BASE_URL}/api/vehicles`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_id: customerIdToUse,
           registration: formData.registration.toUpperCase(),
@@ -1733,10 +1757,9 @@ function Bookings({ isModal = false, onClose }) {
     const customerIdToUse = custId || customerId
     if (!customerIdToUse) return false
     try {
-      await ensureDraftToken()
-      const response = await fetch(`${API_BASE_URL}/api/customers/${customerIdToUse}/billing`, {
+      const response = await fetchWithDraftToken(`${API_BASE_URL}/api/customers/${customerIdToUse}/billing`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           billing_address1: formData.billingAddress1,
           billing_address2: formData.billingAddress2,
@@ -1768,10 +1791,9 @@ function Bookings({ isModal = false, onClose }) {
     setDvlaVerified(false)
 
     try {
-      await ensureDraftToken()
-      const response = await fetch(`${API_BASE_URL}/api/vehicles/dvla-lookup`, {
+      const response = await fetchWithDraftToken(`${API_BASE_URL}/api/vehicles/dvla-lookup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ registration: formData.registration }),
       })
 
