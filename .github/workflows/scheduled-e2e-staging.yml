@@ -16,6 +16,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
+  E2E_SOURCE_BRANCH: staging
 
 jobs:
   e2e-matrix:
@@ -26,6 +27,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.E2E_SOURCE_BRANCH }}
 
       - name: Set up Python
         uses: actions/setup-python@v5

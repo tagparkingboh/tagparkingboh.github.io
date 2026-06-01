@@ -142,7 +142,7 @@ def post_results_to_api(env_tag, passed, failed, total, duration_seconds, run_ty
         "tests_total": int(total),
         "duration_seconds": int(duration_seconds),
         "commit_sha": os.environ.get("GITHUB_SHA", ""),
-        "branch": os.environ.get("GITHUB_REF_NAME", ""),
+        "branch": os.environ.get("E2E_SOURCE_BRANCH", os.environ.get("GITHUB_REF_NAME", "")),
         "logs_url": (
             f"{os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}"
             f"/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}"
