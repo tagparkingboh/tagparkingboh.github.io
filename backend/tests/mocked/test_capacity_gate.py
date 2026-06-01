@@ -26,8 +26,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from db_service import find_overcapacity_day_in_stay
-from db_models import BookingStatus
+from db_service import (
+    exclude_staging_e2e_capacity_bookings,
+    find_overcapacity_day_in_stay,
+    should_exclude_staging_e2e_capacity_bookings,
+)
+from db_models import Booking, BookingStatus
 
 
 # =============================================================================
@@ -201,6 +205,28 @@ class TestStatusFilterExcludesPending:
         Confirms the kwarg doesn't blow up."""
         db = _mock_db([_make_booking(D, D, id=i) for i in range(63)])
         assert find_overcapacity_day_in_stay(db, D, D, cap=64, exclude_booking_id=999) is None
+
+
+class TestStagingE2ECapacityExclusion:
+    """Scheduled e2e bookings must not fill staging capacity forever."""
+
+    def test_disabled_outside_staging(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        query = MagicMock()
+
+        assert should_exclude_staging_e2e_capacity_bookings() is False
+        assert exclude_staging_e2e_capacity_bookings(query, Booking) is query
+        query.join.assert_not_called()
+
+    def test_enabled_in_staging(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        query = MagicMock()
+        filtered_query = MagicMock()
+        query.join.return_value.filter.return_value = filtered_query
+
+        assert should_exclude_staging_e2e_capacity_bookings() is True
+        assert exclude_staging_e2e_capacity_bookings(query, Booking) is filtered_query
+        query.join.assert_called_once_with(Booking.customer)
 
 
 # =============================================================================

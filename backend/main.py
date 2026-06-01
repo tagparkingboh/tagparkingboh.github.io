@@ -857,8 +857,8 @@ async def get_daily_capacity(
         ]))
         .filter(DbBooking.dropoff_date <= date_to)
         .filter(DbBooking.pickup_date >= date_from)
-        .all()
     )
+    bookings = db_service.exclude_staging_e2e_capacity_bookings(bookings, DbBooking).all()
 
     occupancy: dict[str, int] = {}
     current = date_from
@@ -932,8 +932,8 @@ async def check_capacity_for_slot(
         ]))
         .filter(DbBooking.dropoff_date <= pickup_date)
         .filter(DbBooking.pickup_date >= dropoff_date)
-        .all()
     )
+    bookings = db_service.exclude_staging_e2e_capacity_bookings(bookings, DbBooking).all()
 
     # Build a sweep of (+1 at arrival, -1 at departure) events truncated to
     # the customer's [drop, pick] window. Bookings with missing times use

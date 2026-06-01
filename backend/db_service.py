@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from datetime import date, time, datetime, timezone
 from typing import Optional, List
+import os
 import random
 import string
 
@@ -13,6 +14,21 @@ from db_models import (
     FlightDepartureHistory, FlightArrivalHistory,
     BookingStatus, PaymentStatus, ServiceType
 )
+
+E2E_CAPACITY_EXCLUDED_EMAILS = ("qa.orca.contact@gmail.com",)
+
+
+def should_exclude_staging_e2e_capacity_bookings() -> bool:
+    return os.environ.get("ENVIRONMENT", "").strip().lower() == "staging"
+
+
+def exclude_staging_e2e_capacity_bookings(query, booking_model=Booking):
+    """In staging, keep scheduled e2e bookings from consuming public capacity."""
+    if not should_exclude_staging_e2e_capacity_bookings():
+        return query
+    return query.join(booking_model.customer).filter(
+        func.lower(Customer.email).notin_(E2E_CAPACITY_EXCLUDED_EMAILS)
+    )
 
 
 def generate_booking_reference() -> str:
@@ -884,6 +900,7 @@ def find_overcapacity_day_in_stay(
     )
     if exclude_booking_id is not None:
         q = q.filter(Booking.id != exclude_booking_id)
+    q = exclude_staging_e2e_capacity_bookings(q)
     overlapping = q.all()
 
     cursor = dropoff_date
