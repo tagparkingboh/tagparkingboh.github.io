@@ -5265,7 +5265,15 @@ function Admin() {
   }, [customers, customerSearchTerm, customerDateFrom, customerDateTo])
 
   const toggleBookingExpanded = (bookingId) => {
-    setExpandedBookingId(expandedBookingId === bookingId ? null : bookingId)
+    const isClosing = expandedBookingId === bookingId
+    setExpandedBookingId(isClosing ? null : bookingId)
+
+    if (!isClosing) {
+      window.requestAnimationFrame(() => {
+        const element = document.querySelector(`.booking-card[data-booking-id="${bookingId}"]`)
+        element?.scrollIntoView({ behavior: 'auto', block: 'start' })
+      })
+    }
   }
 
   const handleCancelClick = (booking, e) => {
@@ -6047,7 +6055,7 @@ function Admin() {
                         setTimeout(() => {
                           const element = document.querySelector(`.booking-card[data-booking-id="${booking.id}"]`)
                           if (element) {
-                            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                            element.scrollIntoView({ behavior: 'auto', block: 'start' })
                           }
                         }, 300)
                       }}
@@ -15085,7 +15093,7 @@ function Admin() {
           <button
             type="button"
             className="bookings-scroll-top"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'auto' })}
             aria-label="Scroll to top"
             title="Back to top"
           >
