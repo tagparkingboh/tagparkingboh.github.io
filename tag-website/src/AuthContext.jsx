@@ -35,10 +35,11 @@ export function AuthProvider({ children }) {
   }, [])
 
   const checkSession = async () => {
+    const checkedToken = token
     try {
       const response = await fetch(`${API_URL}/api/auth/me`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${checkedToken}`,
         },
       })
       if (response.ok) {
@@ -46,7 +47,9 @@ export function AuthProvider({ children }) {
         localStorage.setItem('auth_user', JSON.stringify(userData))
         setUser(userData)
       } else if (response.status === 401 || response.status === 403) {
-        clearAuth()
+        if (localStorage.getItem('auth_token') === checkedToken) {
+          clearAuth()
+        }
       } else {
         // Transient backend/deploy errors must not destroy a valid 24-hour session.
         console.warn('Session check returned non-auth error:', response.status)
@@ -123,7 +126,7 @@ export function AuthProvider({ children }) {
       headers.set('Authorization', `Bearer ${token}`)
     }
     const response = await fetch(input, { ...init, headers })
-    if (response.status === 401 && token) {
+    if (response.status === 401 && token && localStorage.getItem('auth_token') === token) {
       // Server says this token is dead (user deleted, session expired,
       // session revoked). Tear down local state synchronously — the
       // consumer's isAuthenticated effect will handle the redirect on

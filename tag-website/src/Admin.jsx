@@ -250,7 +250,7 @@ const formatMarketingSource = (source) => {
 }
 
 function Admin() {
-  const { user, token, loading, isAuthenticated, isAdmin, logout } = useAuth()
+  const { user, token, loading, isAuthenticated, isAdmin, logout, authFetch } = useAuth()
   const navigate = useNavigate()
 
   const [activeTab, setActiveTab] = useState('bookings')
@@ -1352,9 +1352,7 @@ function Admin() {
       params.append('sort', testimonialSort.field)
       params.append('order', testimonialSort.order)
 
-      const response = await fetch(`${API_URL}/api/admin/testimonials?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
+      const response = await authFetch(`${API_URL}/api/admin/testimonials?${params}`)
       if (response.ok) {
         const data = await response.json()
         setTestimonials(data.testimonials || [])
@@ -1375,11 +1373,10 @@ function Admin() {
         : `${API_URL}/api/admin/testimonials`
       const method = editingTestimonial ? 'PUT' : 'POST'
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(testimonialForm),
       })
@@ -1415,9 +1412,8 @@ function Admin() {
     if (!testimonialToDelete) return
     setDeletingTestimonial(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/testimonials/${testimonialToDelete.id}`, {
+      const response = await authFetch(`${API_URL}/api/admin/testimonials/${testimonialToDelete.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       })
       if (response.ok) {
         setShowDeleteTestimonialModal(false)
@@ -1435,9 +1431,8 @@ function Admin() {
 
   const handleToggleTestimonialStatus = async (testimonial) => {
     try {
-      const response = await fetch(`${API_URL}/api/admin/testimonials/${testimonial.id}/status`, {
+      const response = await authFetch(`${API_URL}/api/admin/testimonials/${testimonial.id}/status`, {
         method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}` },
       })
       if (response.ok) {
         fetchTestimonials()
