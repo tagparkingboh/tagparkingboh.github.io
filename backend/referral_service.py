@@ -378,16 +378,69 @@ def ensure_referral_code(db: Session, program: ReferralProgram, now: Optional[da
         db.add(code)
         db.flush()
         program.referral_code_id = code.id
+        program.referral_code = code
         promotion.total_codes = (promotion.total_codes or 0) + 1
 
     if not code.email_sent and _valid_email(customer.email) and send_referral_code_email(customer.first_name, customer.email, code.code):
         code.email_sent = True
         code.email_sent_at = current
-        code.email_subject = "Your TAG referral code"
+        code.email_subject = "Your Tag referral code"
         if promotion is None:
             promotion = db.query(Promotion).filter(Promotion.id == code.promotion_id).first()
         if promotion:
             promotion.codes_sent = (promotion.codes_sent or 0) + 1
+    return code
+
+
+def cancel_referral_code(db: Session, program: ReferralProgram, now: Optional[datetime] = None) -> PromoCode:
+    code = db.query(PromoCode).filter(PromoCode.id == program.referral_code_id).first() if program.referral_code_id else None
+    if not code:
+        raise ValueError("Referral program does not have a referral code")
+
+    current = now or _now()
+    code.expires_at = current
+    code.is_used = True
+    code.used_at = code.used_at or current
+    return code
+
+
+def generate_replacement_referral_code(
+    db: Session,
+    program: ReferralProgram,
+    now: Optional[datetime] = None,
+) -> PromoCode:
+    if program.referral_code_id:
+        cancel_referral_code(db, program, now=now)
+        program.referral_code_id = None
+    program.status = PROGRAM_STATUS_OPTED_IN
+    code = ensure_referral_code(db, program, now=now)
+    if not code.email_sent:
+        raise ValueError("Failed to send replacement referral code email")
+    return code
+
+
+def resend_referral_code(db: Session, program: ReferralProgram, now: Optional[datetime] = None) -> PromoCode:
+    from email_service import send_referral_code_email
+
+    code = db.query(PromoCode).filter(PromoCode.id == program.referral_code_id).first() if program.referral_code_id else None
+    if not code:
+        raise ValueError("Referral program does not have a referral code")
+    if code.expires_at and code.expires_at <= (now or _now()):
+        raise ValueError("Referral code is cancelled or expired")
+
+    customer = program.customer or db.query(Customer).filter(Customer.id == program.customer_id).first()
+    if not customer:
+        raise ValueError("Referral program customer not found")
+    if not _valid_email(customer.email):
+        raise ValueError("Referral program customer does not have a valid email")
+
+    current = now or _now()
+    if not send_referral_code_email(customer.first_name, customer.email, code.code):
+        raise ValueError("Failed to send referral code email")
+
+    code.email_sent = True
+    code.email_sent_at = current
+    code.email_subject = "Your Tag referral code"
     return code
 
 

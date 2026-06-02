@@ -4454,6 +4454,34 @@ async def delete_customer(
     }
 
 
+def _format_referral_program_data(referral):
+    if not referral:
+        return None
+    referral_code = referral.referral_code
+    reward_code = referral.reward_code
+    referral_code_active = False
+    if referral_code:
+        now = datetime.now(timezone.utc)
+        expires_at = referral_code.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        referral_code_active = referral_code.can_be_used and (not expires_at or expires_at > now)
+    return {
+        "status": referral.status,
+        "referral_code": referral_code.code if referral_code else None,
+        "referral_code_active": referral_code_active,
+        "referral_code_email_sent_at": referral_code.email_sent_at.isoformat() if referral_code and referral_code.email_sent_at else None,
+        "referral_code_expires_at": referral_code.expires_at.isoformat() if referral_code and referral_code.expires_at else None,
+        "reward_code": reward_code.code if reward_code else None,
+        "qualified_referral_count": referral.qualified_referral_count,
+        "invite_sent_at": referral.invite_sent_at.isoformat() if referral.invite_sent_at else None,
+        "reminder_sent_at": referral.reminder_sent_at.isoformat() if referral.reminder_sent_at else None,
+        "responded_at": referral.responded_at.isoformat() if referral.responded_at else None,
+        "reward_earned_at": referral.reward_earned_at.isoformat() if referral.reward_earned_at else None,
+        "reward_email_sent_at": referral.reward_email_sent_at.isoformat() if referral.reward_email_sent_at else None,
+    }
+
+
 @app.get("/api/admin/customers/{customer_id}")
 async def get_customer_detail(
     customer_id: int,
@@ -4487,19 +4515,7 @@ async def get_customer_detail(
     booking_count = db.query(Booking).filter(Booking.customer_id == customer_id).count()
 
     referral = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer_id).first()
-    referral_data = None
-    if referral:
-        referral_data = {
-            "status": referral.status,
-            "referral_code": referral.referral_code.code if referral.referral_code else None,
-            "reward_code": referral.reward_code.code if referral.reward_code else None,
-            "qualified_referral_count": referral.qualified_referral_count,
-            "invite_sent_at": referral.invite_sent_at.isoformat() if referral.invite_sent_at else None,
-            "reminder_sent_at": referral.reminder_sent_at.isoformat() if referral.reminder_sent_at else None,
-            "responded_at": referral.responded_at.isoformat() if referral.responded_at else None,
-            "reward_earned_at": referral.reward_earned_at.isoformat() if referral.reward_earned_at else None,
-            "reward_email_sent_at": referral.reward_email_sent_at.isoformat() if referral.reward_email_sent_at else None,
-        }
+    referral_data = _format_referral_program_data(referral)
 
     # Get marketing source
     marketing_source = None
@@ -4523,6 +4539,87 @@ async def get_customer_detail(
         "vehicles": vehicles_data,
         "booking_count": booking_count,
         "referral_program": referral_data,
+    }
+
+
+@app.post("/api/admin/customers/{customer_id}/referral/cancel-code")
+async def admin_cancel_customer_referral_code(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    from db_models import ReferralProgram
+    from referral_service import cancel_referral_code
+
+    referral = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer_id).first()
+    if not referral:
+        raise HTTPException(status_code=404, detail="Referral program not found")
+
+    try:
+        code = cancel_referral_code(db, referral)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "success": True,
+        "message": f"Referral code {code.code} cancelled",
+        "referral_program": _format_referral_program_data(referral),
+    }
+
+
+@app.post("/api/admin/customers/{customer_id}/referral/generate-new-code")
+async def admin_generate_customer_referral_code(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    from db_models import ReferralProgram
+    from referral_service import generate_replacement_referral_code
+
+    referral = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer_id).first()
+    if not referral:
+        raise HTTPException(status_code=404, detail="Referral program not found")
+
+    try:
+        code = generate_replacement_referral_code(db, referral)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "success": True,
+        "message": f"Referral code {code.code} generated",
+        "referral_program": _format_referral_program_data(referral),
+    }
+
+
+@app.post("/api/admin/customers/{customer_id}/referral/resend-code")
+async def admin_resend_customer_referral_code(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    from db_models import ReferralProgram
+    from referral_service import resend_referral_code
+
+    referral = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer_id).first()
+    if not referral:
+        raise HTTPException(status_code=404, detail="Referral program not found")
+
+    try:
+        code = resend_referral_code(db, referral)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "success": True,
+        "message": f"Referral code {code.code} resent",
+        "referral_program": _format_referral_program_data(referral),
     }
 
 

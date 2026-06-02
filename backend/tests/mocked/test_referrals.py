@@ -652,3 +652,97 @@ class TestPromoUsageHook:
         assert promotion.codes_used == 1
         assert any(obj.__class__.__name__ == "PromoCodeUsage" for obj in db.added)
         record.assert_called_once_with(db, booking, promo_code)
+
+
+class TestReferralAdminActions:
+    def test_cancel_referral_code_expires_unlimited_code(self):
+        now = datetime(2026, 6, 2, 12, 0, tzinfo=timezone.utc)
+        code = SimpleNamespace(
+            id=5,
+            code="REF-ABCD-EFGH",
+            expires_at=None,
+            is_used=False,
+            used_at=None,
+        )
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.referral_code_id = code.id
+
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=code)]})
+        result = referral_service.cancel_referral_code(db, program, now=now)
+
+        assert result is code
+        assert code.expires_at == now
+        assert code.is_used is True
+        assert code.used_at == now
+
+    def test_generate_replacement_referral_code_cancels_old_and_unlinks_it(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.referral_code_id = 5
+        new_code = SimpleNamespace(id=6, code="REF-NEWC-ODE2", email_sent=True)
+
+        with patch("referral_service.cancel_referral_code") as cancel, \
+             patch("referral_service.ensure_referral_code", return_value=new_code) as ensure:
+            result = referral_service.generate_replacement_referral_code("db", program)
+
+        assert result is new_code
+        assert program.referral_code_id is None
+        assert program.status == referral_service.PROGRAM_STATUS_OPTED_IN
+        cancel.assert_called_once_with("db", program, now=None)
+        ensure.assert_called_once_with("db", program, now=None)
+
+    def test_generate_replacement_referral_code_fails_when_email_not_sent(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.referral_code_id = 5
+        new_code = SimpleNamespace(id=6, code="REF-NEWC-ODE2", email_sent=False)
+
+        with patch("referral_service.cancel_referral_code"), \
+             patch("referral_service.ensure_referral_code", return_value=new_code):
+            with pytest.raises(ValueError, match="replacement referral code email"):
+                referral_service.generate_replacement_referral_code("db", program)
+
+    def test_resend_referral_code_sends_current_active_code(self):
+        now = datetime(2026, 6, 2, 12, 0, tzinfo=timezone.utc)
+        customer = make_customer(email="referrer@example.com")
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN, customer=customer)
+        program.referral_code_id = 5
+        code = SimpleNamespace(
+            id=5,
+            code="REF-ABCD-EFGH",
+            expires_at=None,
+            email_sent=False,
+            email_sent_at=None,
+            email_subject=None,
+        )
+
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=code)]})
+        with patch("email_service.send_referral_code_email", return_value=True) as send:
+            result = referral_service.resend_referral_code(db, program, now=now)
+
+        assert result is code
+        assert code.email_sent is True
+        assert code.email_sent_at == now
+        assert code.email_subject == "Your Tag referral code"
+        send.assert_called_once_with(customer.first_name, customer.email, code.code)
+
+    def test_resend_referral_code_blocks_expired_code(self):
+        now = datetime(2026, 6, 2, 12, 0, tzinfo=timezone.utc)
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.referral_code_id = 5
+        code = SimpleNamespace(
+            id=5,
+            code="REF-ABCD-EFGH",
+            expires_at=now - timedelta(minutes=1),
+        )
+
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=code)]})
+        with pytest.raises(ValueError, match="cancelled or expired"):
+            referral_service.resend_referral_code(db, program, now=now)
+
+
+class TestReferralAdminEndpointProtection:
+    def test_referral_code_actions_require_authentication(self):
+        from main import app
+
+        response = TestClient(app).post("/api/admin/customers/1/referral/generate-new-code")
+
+        assert response.status_code == 401

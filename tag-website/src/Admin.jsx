@@ -426,6 +426,7 @@ function Admin() {
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [loadingCustomerDetail, setLoadingCustomerDetail] = useState(false)
+  const [referralAction, setReferralAction] = useState(null)
   const [addingVehicle, setAddingVehicle] = useState(false)
   const [showAddVehicleForm, setShowAddVehicleForm] = useState(false)
   const [newVehicleForm, setNewVehicleForm] = useState({ registration: '', make: '', model: '', colour: '' })
@@ -3345,8 +3346,62 @@ function Admin() {
   const closeCustomerModal = () => {
     setShowCustomerModal(false)
     setSelectedCustomer(null)
+    setReferralAction(null)
     setShowAddVehicleForm(false)
     setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
+  }
+
+  const handleReferralAction = async (action) => {
+    if (!selectedCustomer) return
+
+    const actionCopy = {
+      'cancel-code': {
+        confirm: 'Cancel this referral promo code? The customer will need a new code before sharing again.',
+        loading: 'Cancelling...',
+        success: 'Referral code cancelled',
+      },
+      'generate-new-code': {
+        confirm: 'Generate a new referral code? This will cancel the current code and email the replacement.',
+        loading: 'Generating...',
+        success: 'New referral code generated and sent',
+      },
+      'resend-code': {
+        confirm: null,
+        loading: 'Resending...',
+        success: 'Referral code resent',
+      },
+    }[action]
+
+    if (!actionCopy) return
+    if (actionCopy.confirm && !window.confirm(actionCopy.confirm)) return
+
+    setReferralAction(action)
+    setCustomerMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}/referral/${action}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setSelectedCustomer(prev => ({
+          ...prev,
+          referral_program: data.referral_program,
+        }))
+        setCustomerMessage(data.message || actionCopy.success)
+        setTimeout(() => setCustomerMessage(''), 3000)
+      } else {
+        setCustomerMessage(`Error: ${data.detail || 'Referral action failed'}`)
+        setTimeout(() => setCustomerMessage(''), 5000)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error updating referral program')
+      setTimeout(() => setCustomerMessage(''), 3000)
+    } finally {
+      setReferralAction(null)
+    }
   }
 
   // DVLA vehicle lookup for customer modal
@@ -10572,7 +10627,43 @@ function Admin() {
 
                         {/* Referral Program */}
                         <div className="customer-detail-section">
-                          <h4>Referral Program</h4>
+                          <div className="section-header">
+                            <h4>Referral Program</h4>
+                            {selectedCustomer.referral_program && (
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                  className="btn-secondary btn-small"
+                                  onClick={() => handleReferralAction('resend-code')}
+                                  disabled={
+                                    !!referralAction ||
+                                    !selectedCustomer.referral_program.referral_code ||
+                                    !selectedCustomer.referral_program.referral_code_active
+                                  }
+                                >
+                                  {referralAction === 'resend-code' ? 'Resending...' : 'Resend Code'}
+                                </button>
+                                <button
+                                  className="btn-secondary btn-small"
+                                  onClick={() => handleReferralAction('generate-new-code')}
+                                  disabled={!!referralAction}
+                                >
+                                  {referralAction === 'generate-new-code' ? 'Generating...' : 'Generate New Code'}
+                                </button>
+                                <button
+                                  className="btn-secondary btn-small"
+                                  onClick={() => handleReferralAction('cancel-code')}
+                                  disabled={
+                                    !!referralAction ||
+                                    !selectedCustomer.referral_program.referral_code ||
+                                    !selectedCustomer.referral_program.referral_code_active
+                                  }
+                                  style={{ color: '#c53030' }}
+                                >
+                                  {referralAction === 'cancel-code' ? 'Cancelling...' : 'Cancel Code'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           {selectedCustomer.referral_program ? (
                             <div className="customer-info-grid">
                               <div className="info-row">
@@ -10582,6 +10673,18 @@ function Admin() {
                               <div className="info-row">
                                 <span className="info-label">Referral Code:</span>
                                 <span className="info-value">{selectedCustomer.referral_program.referral_code || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Code State:</span>
+                                <span className="info-value">
+                                  {selectedCustomer.referral_program.referral_code
+                                    ? (selectedCustomer.referral_program.referral_code_active ? 'active' : 'cancelled / expired')
+                                    : '-'}
+                                </span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Code Email Sent:</span>
+                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.referral_code_email_sent_at)}</span>
                               </div>
                               <div className="info-row">
                                 <span className="info-label">Qualified Referrals:</span>

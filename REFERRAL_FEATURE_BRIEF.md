@@ -165,7 +165,19 @@ Admin visibility:
 - Add referral status and referral code to customer detail or booking/customer admin panels.
 - Show qualified referral count.
 - Show reward code and reward earned/sent timestamps.
-- Optional manual resend buttons for invite/code/reward.
+- Show referral code state: active vs cancelled/expired.
+- Show referral code email sent timestamp.
+- Add admin actions for referral code management:
+  - Resend Code: emails the current active referral code again.
+  - Generate New Code: cancels the current referral code, creates a replacement, and emails the replacement.
+  - Cancel Code: immediately invalidates the current referral code.
+
+Admin action rules:
+- Referral codes are unlimited-use promo codes, so cancellation must expire the code immediately; setting `is_used = true` alone is not enough.
+- Generate New Code must preserve historical usage/attribution on the old code, but the referral program should point to the replacement code going forward.
+- Resend Code must not create a duplicate code.
+- Cancel Code and Resend Code should be disabled when there is no current active referral code.
+- Destructive/replacement actions should ask for confirmation in the UI.
 
 Checkout:
 - Existing promo validation UI should work for referral discount codes if they are created as normal `PromoCode` rows.
@@ -346,16 +358,24 @@ Acceptance:
 
 Scope:
 - Add referral fields to customer/admin views.
-- Show referral status, referral code, qualified count, reward status, and timestamps.
-- Optional admin actions: resend invite, resend referral code, resend reward email, opt customer out.
+- Show referral status, referral code, code state, qualified count, reward status, and timestamps.
+- Add referral code actions in the customer detail modal:
+  - Resend Code
+  - Generate New Code
+  - Cancel Code
+- Defer invite resend, reward resend, and explicit opt-out controls unless needed after staging smoke.
 
 QA:
 - Admin views render customers with and without referral rows.
-- Manual resend actions are permission-protected.
-- Manual actions are idempotent and do not duplicate codes/rewards.
+- Referral code actions are admin-protected.
+- Cancel Code invalidates unlimited-use referral codes by expiry.
+- Generate New Code cancels the old code, points the referral program to the new code, and emails the replacement.
+- Resend Code emails the current active code without creating a duplicate.
+- Buttons disable correctly when no active referral code exists.
 
 Acceptance:
 - Support/admin can answer "is this customer in the referral program?" without direct database access.
+- Support/admin can recover from a leaked, mistyped, or undelivered referral code without direct database access.
 
 ### PR 7: End-to-End Regression and Launch Guardrails
 
