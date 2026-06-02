@@ -12375,6 +12375,20 @@ async def stripe_webhook(
                 status=PaymentStatus.SUCCEEDED,
                 paid_at=datetime.utcnow(),
             )
+            # Canonical booking reference: derived from the Payment row we
+            # just resolved, NOT the Stripe metadata. update_payment_status
+            # confirms via PaymentIntent ID (see top-of-handler comment), so
+            # metadata.booking_reference can be missing/stale/wrong while
+            # the payment still resolves correctly. Without this override,
+            # downstream audit logs and the planner trigger ride on a
+            # possibly-None metadata value, which the funnel filter then
+            # drops as a "ghost" — losing legitimate online confirmations.
+            if payment and payment.booking_id:
+                canonical = db.query(DbBooking).filter(
+                    DbBooking.id == payment.booking_id
+                ).first()
+                if canonical and canonical.reference:
+                    booking_reference = canonical.reference
             if not payment:
                 # Payment not found - likely a manual booking where admin confirms payment separately
                 # Don't log as error, just print info for debugging

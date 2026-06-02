@@ -411,9 +411,12 @@ class TestSessionTrackingWithData:
         data = response.json()
 
         # 2 logs share booking_reference -> collapse to 1.
-        # 2 logs have no session and no booking_reference -> each counts via anon_{id} -> 2.
-        # Total: 1 + 2 = 3 unique "sessions" for booking_confirmed.
-        assert data["cumulative"]["counts"]["booking_confirmed"] == 3
+        # 2 logs have no session and no booking_reference -> dropped by the
+        # ghost-row filter (Stripe webhook used to write these for manual
+        # Payment Links and they double-counted against the Manual column;
+        # see test_session_tracking_ghost_hueb.py for the full pin).
+        # Total: 1 unique "session" for booking_confirmed.
+        assert data["cumulative"]["counts"]["booking_confirmed"] == 1
 
 
 # =============================================================================
