@@ -2969,6 +2969,10 @@ async def create_manual_booking(
                 amount_paid="£0.00 (FREE with promo code)",
             )
 
+            if email_sent:
+                booking.confirmation_email_sent = True
+                booking.confirmation_email_sent_at = datetime.utcnow()
+
             # Commit only after email succeeds
             db.commit()
 
