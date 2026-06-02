@@ -6427,6 +6427,16 @@ async def get_session_tracking_report(
     period_data = defaultdict(lambda: defaultdict(set))
 
     for log in audit_logs:
+        # Drop ghost BOOKING_CONFIRMED rows (booking_reference=None). The
+        # Stripe webhook writes one for every manual-booking-payment-link
+        # event because the payment_intent isn't linked to a Payment row.
+        # Those bookings are already counted by the separate Manual column;
+        # leaving them in the funnel double-counts (e.g. 2026-05-22 showed
+        # 10 booking_confirmed = 8 online + 2 manual ghosts). 23 such rows
+        # exist in the DB at fix time. The new webhook guard prevents new
+        # ones; this filter cleans up historical data on read.
+        if log.event == AuditLogEvent.BOOKING_CONFIRMED and not log.booking_reference:
+            continue
         if log.created_at:
             log_time = log.created_at
             if log_time.tzinfo is None:
@@ -12190,6 +12200,7 @@ async def stripe_webhook(
         # Update payment status in database (this also updates booking to CONFIRMED)
         # Returns (payment, was_already_processed) for idempotency
         was_already_processed = False
+        payment = None
         try:
             payment, was_already_processed = db_service.update_payment_status(
                 db=db,
@@ -12244,35 +12255,43 @@ async def stripe_webhook(
                 stack_trace=traceback.format_exc(),
             )
 
-        # Log payment success
-        try:
-            log_audit_event(
-                db=db,
-                event=AuditLogEvent.PAYMENT_SUCCEEDED,
-                request=request,
-                booking_reference=booking_reference,
-                event_data={
-                    "payment_intent_id": payment_intent_id,
-                    "amount_pence": data["amount"] if "amount" in data else None,
-                },
-            )
-        except Exception as e:
-            print(f"[WEBHOOK] Failed to log audit event PAYMENT_SUCCEEDED: {e}")
+        # Skip audit logging when this webhook can't be tied to a Payment row
+        # in our DB. That's the manual-booking-payment-link path: admin
+        # creates the Stripe Payment Link outside the app, so the resulting
+        # payment_intent_id isn't recorded here and `payment` resolves to
+        # None. Without this guard the webhook writes ghost audit rows
+        # (booking_reference=None) that double-count against the Manual
+        # column in Session Tracking.
+        if payment is not None:
+            # Log payment success
+            try:
+                log_audit_event(
+                    db=db,
+                    event=AuditLogEvent.PAYMENT_SUCCEEDED,
+                    request=request,
+                    booking_reference=booking_reference,
+                    event_data={
+                        "payment_intent_id": payment_intent_id,
+                        "amount_pence": data["amount"] if "amount" in data else None,
+                    },
+                )
+            except Exception as e:
+                print(f"[WEBHOOK] Failed to log audit event PAYMENT_SUCCEEDED: {e}")
 
-        # Log booking confirmed
-        try:
-            log_audit_event(
-                db=db,
-                event=AuditLogEvent.BOOKING_CONFIRMED,
-                request=request,
-                booking_reference=booking_reference,
-                event_data={
-                    "departure_id": departure_id,
-                    "drop_off_slot": drop_off_slot,
-                },
-            )
-        except Exception as e:
-            print(f"[WEBHOOK] Failed to log audit event BOOKING_CONFIRMED: {e}")
+            # Log booking confirmed
+            try:
+                log_audit_event(
+                    db=db,
+                    event=AuditLogEvent.BOOKING_CONFIRMED,
+                    request=request,
+                    booking_reference=booking_reference,
+                    event_data={
+                        "departure_id": departure_id,
+                        "drop_off_slot": drop_off_slot,
+                    },
+                )
+            except Exception as e:
+                print(f"[WEBHOOK] Failed to log audit event BOOKING_CONFIRMED: {e}")
 
         # Book the slot on the departure flight (now that payment succeeded)
         # Skip if this webhook was already processed (idempotency for duplicate webhooks)
