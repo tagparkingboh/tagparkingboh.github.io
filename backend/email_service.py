@@ -140,6 +140,56 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
     return send_email(email, subject, html_content)
 
 
+def _send_template_email(email: str, subject: str, template_name: str, replacements: dict) -> bool:
+    template_path = EMAIL_TEMPLATES_DIR / template_name
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        for key, value in replacements.items():
+            html_content = html_content.replace(f"{{{{{key}}}}}", str(value or ""))
+    except FileNotFoundError:
+        logger.error(f"Email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading email template {template_name}: {e}")
+        return False
+    return send_email(email, subject, html_content)
+
+
+def send_referral_invite_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
+    subject = f"{first_name}, join TAG's referral program?"
+    return _send_template_email(email, subject, "referral_invite_email.html", {
+        "FIRST_NAME": first_name,
+        "YES_URL": yes_url,
+        "NO_URL": no_url,
+    })
+
+
+def send_referral_invite_reminder_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
+    subject = f"{first_name}, still interested in TAG referrals?"
+    return _send_template_email(email, subject, "referral_invite_reminder_email.html", {
+        "FIRST_NAME": first_name,
+        "YES_URL": yes_url,
+        "NO_URL": no_url,
+    })
+
+
+def send_referral_code_email(first_name: str, email: str, referral_code: str) -> bool:
+    subject = f"{first_name}, your TAG referral code is ready"
+    return _send_template_email(email, subject, "referral_code_email.html", {
+        "FIRST_NAME": first_name,
+        "REFERRAL_CODE": referral_code,
+    })
+
+
+def send_referral_reward_email(first_name: str, email: str, reward_code: str) -> bool:
+    subject = f"{first_name}, you earned a TAG referral reward"
+    return _send_template_email(email, subject, "referral_reward_email.html", {
+        "FIRST_NAME": first_name,
+        "REWARD_CODE": reward_code,
+    })
+
+
 def send_login_code_email(email: str, first_name: str, code: str) -> bool:
     """
     Send 6-digit login code to user.

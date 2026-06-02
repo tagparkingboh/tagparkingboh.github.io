@@ -364,6 +364,30 @@ def process_pending_founder_followups(db: Session):
         db.rollback()
 
 
+def process_pending_referral_invites(db: Session):
+    """Send referral invites/reminders for completed bookings."""
+    try:
+        from referral_service import (
+            process_eligible_referral_invites,
+            process_pending_referral_codes,
+            process_referral_invite_reminders,
+        )
+
+        invited = process_eligible_referral_invites(db)
+        reminded = process_referral_invite_reminders(db)
+        coded = process_pending_referral_codes(db)
+        if invited or reminded or coded:
+            logger.info(
+                "Processed referral emails: %s invite(s), %s reminder(s), %s code(s)",
+                invited,
+                reminded,
+                coded,
+            )
+    except Exception as e:
+        logger.error(f"Error processing referral invites: {str(e)}")
+        db.rollback()
+
+
 def process_pending_dvla_rechecks(db: Session):
     """24h-before DVLA refresh + compliance alert for tomorrow's bookings.
 
@@ -565,6 +589,7 @@ def process_all_pending_emails():
         process_pending_2day_reminders(db)
         process_pending_thankyou_emails(db)
         process_pending_founder_followups(db)
+        process_pending_referral_invites(db)
         process_pending_dvla_rechecks(db)
         # PAUSED: Promo code emails - uncomment when ready to send
         # process_pending_promo_emails(db)

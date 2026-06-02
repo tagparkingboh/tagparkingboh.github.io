@@ -518,6 +518,15 @@ def record_refund(
             booking = get_booking_by_id(db, payment.booking_id)
             if booking:
                 booking.status = BookingStatus.REFUNDED
+                try:
+                    from referral_service import disqualify_referral_for_booking
+
+                    disqualify_referral_for_booking(db, booking)
+                except Exception as referral_error:
+                    print(
+                        "[referrals] Failed to disqualify refunded referral "
+                        f"for booking {booking.id}: {referral_error}"
+                    )
         else:
             payment.status = PaymentStatus.PARTIALLY_REFUNDED
 

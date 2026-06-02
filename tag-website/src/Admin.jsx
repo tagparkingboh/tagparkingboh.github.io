@@ -10570,6 +10570,53 @@ function Admin() {
                           )}
                         </div>
 
+                        {/* Referral Program */}
+                        <div className="customer-detail-section">
+                          <h4>Referral Program</h4>
+                          {selectedCustomer.referral_program ? (
+                            <div className="customer-info-grid">
+                              <div className="info-row">
+                                <span className="info-label">Status:</span>
+                                <span className="info-value">{selectedCustomer.referral_program.status || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Referral Code:</span>
+                                <span className="info-value">{selectedCustomer.referral_program.referral_code || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Qualified Referrals:</span>
+                                <span className="info-value">{selectedCustomer.referral_program.qualified_referral_count ?? 0}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Reward Code:</span>
+                                <span className="info-value">{selectedCustomer.referral_program.reward_code || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Invite Sent:</span>
+                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.invite_sent_at)}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Reminder Sent:</span>
+                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.reminder_sent_at)}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Responded:</span>
+                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.responded_at)}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Reward Earned:</span>
+                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.reward_earned_at)}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Reward Email Sent:</span>
+                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.reward_email_sent_at)}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="no-data-text">No referral program record</p>
+                          )}
+                        </div>
+
                         {/* Vehicles Section */}
                         <div className="customer-detail-section">
                           <div className="section-header">

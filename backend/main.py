@@ -73,7 +73,7 @@ def log_promo(message: str, data: dict = None):
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, or_, case, func
@@ -1320,6 +1320,51 @@ async def validate_promo_code(
         message=message,
         discount_percent=discount,
         discount_type=discount_type,
+    )
+
+
+@app.get("/api/referrals/respond", response_class=HTMLResponse)
+async def respond_to_referral_invite(
+    token: str = Query(...),
+    decision: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Public one-click Yes/No response for referral invite emails."""
+    try:
+        from referral_service import (
+            PROGRAM_STATUS_OPTED_IN,
+            ReferralTokenError,
+            respond_to_referral_invite as handle_referral_response,
+        )
+
+        program = handle_referral_response(db, token, decision)
+    except ReferralTokenError:
+        return HTMLResponse(
+            content="""
+            <!doctype html>
+            <html><body style="font-family: Arial, sans-serif; padding: 32px;">
+              <h1>Referral link expired</h1>
+              <p>This referral link is invalid or has expired. Please contact TAG if you need help.</p>
+            </body></html>
+            """,
+            status_code=400,
+        )
+
+    if program.status == PROGRAM_STATUS_OPTED_IN:
+        title = "You are opted in"
+        message = "Your TAG referral code will be emailed to you shortly."
+    else:
+        title = "You are opted out"
+        message = "You will not receive referral program emails."
+
+    return HTMLResponse(
+        content=f"""
+        <!doctype html>
+        <html><body style="font-family: Arial, sans-serif; padding: 32px;">
+          <h1>{title}</h1>
+          <p>{message}</p>
+        </body></html>
+        """
     )
 
 
@@ -3243,6 +3288,15 @@ async def cancel_booking_admin(
 
     # Update booking status
     booking.status = BookingStatus.CANCELLED
+    try:
+        from referral_service import disqualify_referral_for_booking
+
+        disqualify_referral_for_booking(db, booking)
+    except Exception as referral_error:
+        log_promo("BOOKING_CANCELLED referral disqualification skipped", {
+            "booking_id": booking_id,
+            "error": str(referral_error),
+        })
     db.commit()
 
     # Roster planner shadow mode: a cancelled booking can free up shifts
@@ -4409,7 +4463,7 @@ async def get_customer_detail(
     """
     Get customer details including associated vehicles and booking count.
     """
-    from db_models import Customer, Vehicle, Booking
+    from db_models import Customer, Vehicle, Booking, ReferralProgram
 
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
@@ -4432,6 +4486,21 @@ async def get_customer_detail(
     # Get booking count
     booking_count = db.query(Booking).filter(Booking.customer_id == customer_id).count()
 
+    referral = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer_id).first()
+    referral_data = None
+    if referral:
+        referral_data = {
+            "status": referral.status,
+            "referral_code": referral.referral_code.code if referral.referral_code else None,
+            "reward_code": referral.reward_code.code if referral.reward_code else None,
+            "qualified_referral_count": referral.qualified_referral_count,
+            "invite_sent_at": referral.invite_sent_at.isoformat() if referral.invite_sent_at else None,
+            "reminder_sent_at": referral.reminder_sent_at.isoformat() if referral.reminder_sent_at else None,
+            "responded_at": referral.responded_at.isoformat() if referral.responded_at else None,
+            "reward_earned_at": referral.reward_earned_at.isoformat() if referral.reward_earned_at else None,
+            "reward_email_sent_at": referral.reward_email_sent_at.isoformat() if referral.reward_email_sent_at else None,
+        }
+
     # Get marketing source
     marketing_source = None
     if customer.marketing_source:
@@ -4453,6 +4522,7 @@ async def get_customer_detail(
         "marketing_source": marketing_source,
         "vehicles": vehicles_data,
         "booking_count": booking_count,
+        "referral_program": referral_data,
     }
 
 
@@ -13399,6 +13469,15 @@ async def mark_booking_completed(
 
     booking.status = BookingStatus.COMPLETED
     booking.completed_at = datetime.utcnow()  # Set completion time for thank you email scheduling
+    try:
+        from referral_service import qualify_referral_for_booking
+
+        qualify_referral_for_booking(db, booking)
+    except Exception as referral_error:
+        log_promo("BOOKING_COMPLETED referral qualification skipped", {
+            "booking_id": booking_id,
+            "error": str(referral_error),
+        })
     db.commit()
 
     return {"success": True, "message": f"Booking {booking.reference} marked as completed"}
@@ -16391,7 +16470,7 @@ def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discou
 
     Returns True if successful, False if code is already exhausted.
     """
-    from db_models import PromoCodeUsage, Promotion as DbPromotion
+    from db_models import Booking as ReferralBooking, PromoCodeUsage, Promotion as DbPromotion
 
     if not promo_code_record:
         return False
@@ -16432,6 +16511,18 @@ def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discou
             used_at=uk_now
         )
         db.add(usage)
+
+    try:
+        from referral_service import record_referral_attribution_for_booking
+
+        booking = db.query(ReferralBooking).filter(ReferralBooking.id == booking_id).first()
+        record_referral_attribution_for_booking(db, booking, promo_code_record)
+    except Exception as referral_error:
+        log_promo("MARK_USED referral attribution skipped", {
+            "code": promo_code_record.code,
+            "booking_id": booking_id,
+            "error": str(referral_error),
+        })
 
     # Update promotion stats
     promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
