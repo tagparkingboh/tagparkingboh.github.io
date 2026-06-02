@@ -1351,7 +1351,7 @@ async def get_current_user(
         DbSession, DbSession.user_id == User.id
     ).filter(
         DbSession.token == token,
-        DbSession.expires_at > datetime.utcnow(),
+        DbSession.expires_at > func.now(),
         User.is_active == True
     ).first()
 
@@ -13628,12 +13628,18 @@ MAX_VERIFY_ATTEMPTS_PER_IP_PER_WINDOW = 20
 MAX_VERIFY_ATTEMPTS_PER_CODE = 5
 
 
+def _db_now(db: Session) -> datetime:
+    """Return database server time so auth expiry uses the same clock as
+    server_default timestamps."""
+    return db.execute(text("SELECT now()")).scalar()
+
+
 def _prune_old_throttle(db: Session) -> None:
     """Opportunistic cleanup. Volume is low (a few dozen rows/day) so
     pruning every request is cheap and keeps the index lean."""
     from db_models import AuthThrottle as _AT
     db.query(_AT).filter(
-        _AT.created_at < datetime.utcnow() - timedelta(days=1)
+        _AT.created_at < text("now() - INTERVAL '1 day'")
     ).delete(synchronize_session=False)
 
 
@@ -13695,7 +13701,7 @@ async def auth_request_code(
 
     email = payload.email.strip().lower()
     ip = _client_ip(request)
-    now = datetime.utcnow()
+    now = _db_now(db)
 
     # Always insert the throttle row — even rejected attempts count
     # toward the window so attackers can't burst-retry endlessly.
@@ -13810,7 +13816,7 @@ async def auth_verify_code(
     email = payload.email.strip().lower()
     code = payload.code.strip()
     ip = _client_ip(request)
-    now = datetime.utcnow()
+    now = _db_now(db)
 
     # Throttle row first, prune ageing rows, then check per-IP limit.
     # (Verify floods can grow auth_throttle unbounded if we don't prune
