@@ -2776,12 +2776,18 @@ async def create_manual_booking(
         db.flush()
 
         # Create payment record
+        # Free bookings settle immediately, so stamp paid_at now (Europe/London).
+        # Without paid_at, the booking is silently skipped by the Financial
+        # report's monthly breakdown (see main.py: "if not booking.payment.paid_at: continue").
+        import pytz
+        uk_now = datetime.now(pytz.timezone("Europe/London"))
         payment = Payment(
             booking_id=booking.id,
             amount_pence=request.amount_pence,
             currency="gbp",
             status=PaymentStatus.SUCCEEDED if is_free else PaymentStatus.PENDING,
             stripe_payment_link=request.stripe_payment_link or "",
+            paid_at=uk_now if is_free else None,
         )
         db.add(payment)
 
@@ -2926,7 +2932,7 @@ async def create_manual_booking(
 
             if email_sent:
                 booking.confirmation_email_sent = True
-                booking.confirmation_email_sent_at = datetime.utcnow()
+                booking.confirmation_email_sent_at = uk_now
 
             # Commit only after email succeeds
             db.commit()
