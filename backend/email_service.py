@@ -157,7 +157,7 @@ def _send_template_email(email: str, subject: str, template_name: str, replaceme
 
 
 def send_referral_invite_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
-    subject = f"{first_name}, join TAG's referral program?"
+    subject = f"{first_name}, join Tag's referral program?"
     return _send_template_email(email, subject, "referral_invite_email.html", {
         "FIRST_NAME": first_name,
         "YES_URL": yes_url,
@@ -166,7 +166,7 @@ def send_referral_invite_email(first_name: str, email: str, yes_url: str, no_url
 
 
 def send_referral_invite_reminder_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
-    subject = f"{first_name}, still interested in TAG referrals?"
+    subject = f"{first_name}, still interested in Tag referrals?"
     return _send_template_email(email, subject, "referral_invite_reminder_email.html", {
         "FIRST_NAME": first_name,
         "YES_URL": yes_url,
@@ -175,7 +175,7 @@ def send_referral_invite_reminder_email(first_name: str, email: str, yes_url: st
 
 
 def send_referral_code_email(first_name: str, email: str, referral_code: str) -> bool:
-    subject = f"{first_name}, your TAG referral code is ready"
+    subject = f"{first_name}, your Tag referral code is ready"
     return _send_template_email(email, subject, "referral_code_email.html", {
         "FIRST_NAME": first_name,
         "REFERRAL_CODE": referral_code,
@@ -183,7 +183,7 @@ def send_referral_code_email(first_name: str, email: str, referral_code: str) ->
 
 
 def send_referral_reward_email(first_name: str, email: str, reward_code: str) -> bool:
-    subject = f"{first_name}, you earned a TAG referral reward"
+    subject = f"{first_name}, you earned a Tag referral reward"
     return _send_template_email(email, subject, "referral_reward_email.html", {
         "FIRST_NAME": first_name,
         "REWARD_CODE": reward_code,
