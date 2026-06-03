@@ -465,6 +465,54 @@ async def send_reminder_2day_sms(booking, db_session) -> bool:
     return result.get("success", False)
 
 
+async def send_parking_update_sms(booking, db_session) -> bool:
+    """Send parking charges update SMS after the email succeeds."""
+    from db_models import SMSTemplate
+
+    if not is_sms_enabled():
+        logger.info("SMS disabled - skipping parking update SMS")
+        return False
+
+    if not booking.customer or not booking.customer.phone:
+        logger.warning(f"No phone number for booking {booking.reference}")
+        return False
+
+    template = db_session.query(SMSTemplate).filter(
+        SMSTemplate.trigger_event == "parking_update",
+        SMSTemplate.is_active == True,
+        SMSTemplate.is_automated == True,
+    ).first()
+    if not template:
+        template = db_session.query(SMSTemplate).filter(
+            SMSTemplate.name == "Car Parking Charges",
+            SMSTemplate.is_active == True,
+            SMSTemplate.is_automated == True,
+        ).first()
+
+    variables = get_booking_variables(booking)
+    if template:
+        content = render_template(template.content, variables)
+        template_id = template.id
+    else:
+        content = (
+            f"TAG Parking update for {booking.reference}: airport parking charges have changed. "
+            "Please check the service update email we just sent before drop-off. Do not reply."
+        )
+        template_id = None
+
+    result = await send_sms(
+        phone=booking.customer.phone,
+        content=content,
+        tag="parking-update",
+        booking_id=booking.id,
+        customer_id=booking.customer.id,
+        template_id=template_id,
+        db_session=db_session,
+    )
+
+    return result.get("success", False)
+
+
 async def send_thank_you_sms(booking, db_session) -> bool:
     """
     Send thank you SMS using the automated template.

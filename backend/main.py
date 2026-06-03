@@ -237,6 +237,61 @@ def run_migrations():
         else:
             print("Migration check: confirmation_email_sent columns already exist")
 
+        # Migration 1b: Add parking update notification tracking columns to bookings
+        parking_update_columns = {
+            "parking_update_email_status": "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            "parking_update_email_sent_at": "TIMESTAMP WITH TIME ZONE",
+            "parking_update_email_attempt_count": "INTEGER NOT NULL DEFAULT 0",
+            "parking_update_email_last_attempt_at": "TIMESTAMP WITH TIME ZONE",
+            "parking_update_sms_status": "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            "parking_update_sms_sent_at": "TIMESTAMP WITH TIME ZONE",
+            "parking_update_last_error": "TEXT",
+        }
+        for column_name, column_type in parking_update_columns.items():
+            result = db.execute(text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'bookings'
+                AND column_name = :column_name
+            """), {"column_name": column_name})
+            if not result.fetchone():
+                print(f"Running migration: Adding {column_name} column to bookings...")
+                db.execute(text(f"""
+                    ALTER TABLE bookings
+                    ADD COLUMN {column_name} {column_type}
+                """))
+                db.commit()
+                print(f"Migration completed: {column_name} column added")
+
+        sms_templates_table = db.execute(text("SELECT to_regclass('public.sms_templates')")).scalar()
+        if sms_templates_table:
+            db.execute(text("""
+                UPDATE sms_templates
+                SET is_active = TRUE,
+                    is_automated = TRUE,
+                    trigger_event = 'parking_update'
+                WHERE name = 'Car Parking Charges'
+            """))
+            db.execute(text("""
+                INSERT INTO sms_templates (name, content, description, is_active, is_automated, trigger_event)
+                SELECT
+                    'Car Parking Charges',
+                    :content,
+                    'Sent automatically after the parking update email succeeds',
+                    TRUE,
+                    TRUE,
+                    'parking_update'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM sms_templates WHERE name = 'Car Parking Charges'
+                )
+            """), {
+                "content": (
+                    "Hi {{first_name}}, we have sent a service update about Bournemouth Airport "
+                    "parking charges for booking {{booking_reference}}. Please check your email before drop-off."
+                )
+            })
+            db.commit()
+
         # Migration 2: Make inspector_id nullable on vehicle_inspections (allow user deletion)
         try:
             db.execute(text("""
@@ -1787,6 +1842,13 @@ async def get_all_bookings(
             "confirmation_email_sent_at": b.confirmation_email_sent_at.isoformat() if b.confirmation_email_sent_at else None,
             "reminder_2day_sent": b.reminder_2day_sent,
             "reminder_2day_sent_at": b.reminder_2day_sent_at.isoformat() if b.reminder_2day_sent_at else None,
+            "parking_update_email_status": b.parking_update_email_status or "pending",
+            "parking_update_email_sent_at": b.parking_update_email_sent_at.isoformat() if b.parking_update_email_sent_at else None,
+            "parking_update_email_attempt_count": b.parking_update_email_attempt_count or 0,
+            "parking_update_email_last_attempt_at": b.parking_update_email_last_attempt_at.isoformat() if b.parking_update_email_last_attempt_at else None,
+            "parking_update_sms_status": b.parking_update_sms_status or "pending",
+            "parking_update_sms_sent_at": b.parking_update_sms_sent_at.isoformat() if b.parking_update_sms_sent_at else None,
+            "parking_update_last_error": b.parking_update_last_error,
             "thank_you_email_sent": b.thank_you_email_sent,
             "thank_you_email_sent_at": b.thank_you_email_sent_at.isoformat() if b.thank_you_email_sent_at else None,
             "created_at": b.created_at.isoformat() if b.created_at else None,
@@ -3953,6 +4015,83 @@ async def resend_booking_confirmation_email(
             status_code=500,
             detail="Failed to send confirmation email. Check SendGrid configuration."
         )
+
+
+@app.post("/api/admin/bookings/{booking_id}/send-parking-update")
+async def send_parking_update_endpoint(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Manually send the parking update notification for a booking.
+
+    Uses the same idempotent helper as the scheduled job. If the email has
+    already been sent, it will not be sent again; a failed/pending SMS may be
+    retried manually after email success.
+    """
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    from email_scheduler import send_parking_update_for_booking
+    from sqlalchemy.exc import SQLAlchemyError
+
+    try:
+        success = send_parking_update_for_booking(db, booking, manual=True)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while sending parking update for booking %s", booking_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error while sending parking update: {exc.__class__.__name__}",
+        )
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail=booking.parking_update_last_error or "Failed to send parking update notification",
+        )
+
+    try:
+        db.refresh(booking)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error refreshing parking update booking %s", booking_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error while loading parking update status: {exc.__class__.__name__}",
+        )
+    email_status = booking.parking_update_email_status or "pending"
+    sms_status = booking.parking_update_sms_status or "pending"
+    if email_status == "sent" and sms_status == "sent":
+        message = f"Parking update email and SMS sent for {booking.reference}"
+        overall_status = "sent"
+    elif email_status == "sent" and sms_status == "disabled":
+        message = f"Parking update email sent for {booking.reference}; SMS is disabled"
+        overall_status = "partial"
+    elif email_status == "sent" and sms_status == "failed":
+        message = f"Parking update email sent for {booking.reference}; SMS failed"
+        overall_status = "partial"
+    elif email_status == "sent":
+        message = f"Parking update email sent for {booking.reference}; SMS is {sms_status}"
+        overall_status = "partial"
+    else:
+        message = f"Parking update processed for {booking.reference}"
+        overall_status = email_status
+
+    return {
+        "success": True,
+        "message": message,
+        "reference": booking.reference,
+        "parking_update_status": overall_status,
+        "parking_update_email_status": email_status,
+        "parking_update_email_sent_at": booking.parking_update_email_sent_at.isoformat() if booking.parking_update_email_sent_at else None,
+        "parking_update_email_attempt_count": booking.parking_update_email_attempt_count or 0,
+        "parking_update_email_last_attempt_at": booking.parking_update_email_last_attempt_at.isoformat() if booking.parking_update_email_last_attempt_at else None,
+        "parking_update_sms_status": sms_status,
+        "parking_update_sms_sent_at": booking.parking_update_sms_sent_at.isoformat() if booking.parking_update_sms_sent_at else None,
+        "parking_update_last_error": booking.parking_update_last_error,
+    }
 
 
 @app.post("/api/admin/bookings/{booking_id}/send-cancellation-email")
