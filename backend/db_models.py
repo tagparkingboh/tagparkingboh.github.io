@@ -1387,6 +1387,7 @@ class ReferralProgram(Base):
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, unique=True, index=True)
     status = Column(String(20), nullable=False, default="eligible", index=True)
+    invite_source = Column(String(20), nullable=False, default="booking")
 
     invite_sent_at = Column(DateTime(timezone=True), nullable=True)
     reminder_sent_at = Column(DateTime(timezone=True), nullable=True)

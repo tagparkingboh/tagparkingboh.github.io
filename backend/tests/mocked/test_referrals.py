@@ -136,6 +136,7 @@ def make_program(status=referral_service.PROGRAM_STATUS_INVITED, customer=None):
         customer_id=customer.id,
         customer=customer,
         status=status,
+        invite_source=referral_service.INVITE_SOURCE_BOOKING,
         invite_sent_at=datetime.now(timezone.utc) - timedelta(days=30),
         reminder_sent_at=None,
         responded_at=None,
@@ -175,6 +176,7 @@ class TestReferralInviteScheduler:
         program = db.added[0]
         assert program.customer_id == customer.id
         assert program.status == referral_service.PROGRAM_STATUS_INVITED
+        assert program.invite_source == referral_service.INVITE_SOURCE_BOOKING
         assert program.invite_sent_at == datetime(2026, 6, 1, tzinfo=timezone.utc)
         send.assert_called_once()
 
@@ -224,6 +226,7 @@ class TestReferralInviteScheduler:
             assert customer.email == "social@example.com"
             assert program.customer_id == customer.id
             assert program.status == referral_service.PROGRAM_STATUS_INVITED
+            assert program.invite_source == referral_service.INVITE_SOURCE_SOCIAL
             assert program.invite_sent_at.replace(tzinfo=timezone.utc) == datetime(2026, 6, 3, tzinfo=timezone.utc)
             send.assert_called_once()
             assert send.call_args.kwargs["intro_line"] == "Would you like to join our referral program?"
@@ -252,6 +255,7 @@ class TestReferralInviteScheduler:
             assert existing.first_name == "Existing"
             assert existing.last_name == "Customer"
             assert program.status == referral_service.PROGRAM_STATUS_INVITED
+            assert program.invite_source == referral_service.INVITE_SOURCE_SOCIAL
         finally:
             db.close()
 
@@ -1027,6 +1031,45 @@ class TestAdminReferralsDashboard:
             assert dashboard["stats"]["opt_in_rate"] == 0
             assert dashboard["customers"] == []
             assert dashboard["code_usage"] == []
+        finally:
+            db.close()
+
+    def test_H_dashboard_shows_invite_source_and_sorts_by_invite_time(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            old_customer = Customer(first_name="Auto", last_name="Invite", email="auto@example.com", phone="07700900021")
+            new_customer = Customer(first_name="Social", last_name="Invite", email="social@example.com", phone="07700900022")
+            db.add_all([old_customer, new_customer])
+            db.flush()
+
+            db.add_all([
+                ReferralProgram(
+                    customer_id=old_customer.id,
+                    status=referral_service.PROGRAM_STATUS_INVITED,
+                    invite_source=referral_service.INVITE_SOURCE_BOOKING,
+                    invite_sent_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+                ),
+                ReferralProgram(
+                    customer_id=new_customer.id,
+                    status=referral_service.PROGRAM_STATUS_INVITED,
+                    invite_source=referral_service.INVITE_SOURCE_SOCIAL,
+                    invite_sent_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+                ),
+            ])
+            db.commit()
+
+            dashboard = build_referrals_dashboard_data(db)
+
+            assert [row["email"] for row in dashboard["customers"]] == [
+                "social@example.com",
+                "auto@example.com",
+            ]
+            assert dashboard["customers"][0]["invite_source"] == referral_service.INVITE_SOURCE_SOCIAL
+            assert dashboard["customers"][0]["invite_source_label"] == "Social"
+            assert dashboard["customers"][1]["invite_source"] == referral_service.INVITE_SOURCE_BOOKING
+            assert dashboard["customers"][1]["invite_source_label"] == "Booking"
         finally:
             db.close()
 

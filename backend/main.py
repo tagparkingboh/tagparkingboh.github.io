@@ -4620,6 +4620,7 @@ def _format_referral_program_data(referral):
         referral_code_active = referral_code.can_be_used and (not expires_at or expires_at > now)
     return {
         "status": referral.status,
+        "invite_source": referral.invite_source or "booking",
         "referral_code": referral_code.code if referral_code else None,
         "referral_code_active": referral_code_active,
         "referral_code_email_sent_at": referral_code.email_sent_at.isoformat() if referral_code and referral_code.email_sent_at else None,
@@ -4788,6 +4789,7 @@ def build_referrals_dashboard_data(
             DbCustomer.email.ilike(search),
             ProgramCode.code.ilike(search),
             ReferralProgram.status.ilike(search),
+            ReferralProgram.invite_source.ilike(search),
         ))
     if customer_filter == "awaiting_response":
         programs_query = programs_query.filter(ReferralProgram.status.in_([PROGRAM_STATUS_INVITED, PROGRAM_STATUS_REMINDED]))
@@ -4818,7 +4820,7 @@ def build_referrals_dashboard_data(
             joinedload(ReferralProgram.referral_code),
             joinedload(ReferralProgram.reward_code),
         )
-        .order_by(ReferralProgram.created_at.desc())
+        .order_by(func.coalesce(ReferralProgram.invite_sent_at, ReferralProgram.created_at).desc(), ReferralProgram.id.desc())
         .offset(customer_offset)
         .limit(customer_limit)
         .all()
@@ -4979,6 +4981,8 @@ def build_referrals_dashboard_data(
             "email": customer.email if customer else None,
             "status": program.status,
             "status_label": _format_referral_status(program.status),
+            "invite_source": program.invite_source or "booking",
+            "invite_source_label": _format_referral_status(program.invite_source or "booking"),
             "code": code.code if code else None,
             "code_active": _referral_code_is_active(code),
             "uses": uses,

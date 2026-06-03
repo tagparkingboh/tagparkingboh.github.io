@@ -29,6 +29,9 @@ PROGRAM_STATUS_REMINDED = "reminded"
 PROGRAM_STATUS_OPTED_IN = "opted_in"
 PROGRAM_STATUS_OPTED_OUT = "opted_out"
 
+INVITE_SOURCE_BOOKING = "booking"
+INVITE_SOURCE_SOCIAL = "social"
+
 ATTRIBUTION_STATUS_PENDING = "pending"
 ATTRIBUTION_STATUS_QUALIFIED = "qualified"
 ATTRIBUTION_STATUS_DISQUALIFIED = "disqualified"
@@ -175,7 +178,11 @@ def process_eligible_referral_invites(db: Session, limit: int = 25, now: Optiona
         if existing:
             continue
 
-        program = ReferralProgram(customer_id=customer.id, status=PROGRAM_STATUS_ELIGIBLE)
+        program = ReferralProgram(
+            customer_id=customer.id,
+            status=PROGRAM_STATUS_ELIGIBLE,
+            invite_source=INVITE_SOURCE_BOOKING,
+        )
         db.add(program)
         db.flush()
 
@@ -236,9 +243,15 @@ def send_manual_referral_invite(
 
     program = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer.id).first()
     if not program:
-        program = ReferralProgram(customer_id=customer.id, status=PROGRAM_STATUS_ELIGIBLE)
+        program = ReferralProgram(
+            customer_id=customer.id,
+            status=PROGRAM_STATUS_ELIGIBLE,
+            invite_source=INVITE_SOURCE_SOCIAL,
+        )
         db.add(program)
         db.flush()
+    elif not getattr(program, "invite_source", None):
+        program.invite_source = INVITE_SOURCE_SOCIAL
 
     if program.status == PROGRAM_STATUS_OPTED_IN:
         return program, customer, created_customer, False

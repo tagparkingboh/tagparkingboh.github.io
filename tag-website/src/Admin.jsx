@@ -9797,6 +9797,7 @@ function Admin() {
                               <th>Customer</th>
                               <th>Email</th>
                               <th>Status</th>
+                              <th>Source</th>
                               <th>Code</th>
                               <th>Uses</th>
                               <th>Qualified</th>
@@ -9816,6 +9817,7 @@ function Admin() {
                                 <td>{row.customer_name || '-'}</td>
                                 <td>{row.email || '-'}</td>
                                 <td><span className={`status-badge ${row.status}`}>{row.status_label}</span></td>
+                                <td><span className={`referral-source-pill ${row.invite_source || 'booking'}`}>{row.invite_source_label || 'Booking'}</span></td>
                                 <td><span className="promo-code-display">{row.code || '-'}</span></td>
                                 <td>{row.uses || 0}</td>
                                 <td>{row.qualified || 0}</td>
@@ -9872,7 +9874,7 @@ function Admin() {
                               </tr>
                             ))}
                             {filteredReferralCustomers.length === 0 && (
-                              <tr><td colSpan="14" className="no-data">No referral customers match this filter.</td></tr>
+                              <tr><td colSpan="15" className="no-data">No referral customers match this filter.</td></tr>
                             )}
                           </tbody>
                         </table>

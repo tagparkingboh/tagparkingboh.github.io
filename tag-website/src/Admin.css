@@ -911,6 +911,26 @@
   white-space: nowrap;
 }
 
+.referral-source-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.referral-source-pill.booking {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.referral-source-pill.social {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
 .referral-action-row {
   display: flex;
   flex-wrap: wrap;
