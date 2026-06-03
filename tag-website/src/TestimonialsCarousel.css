@@ -40,20 +40,29 @@
 
 /* Stats Bar */
 .testimonials-stats {
-  max-width: 600px;
+  max-width: 720px;
   margin: 0 auto 2.5rem;
   position: relative;
 }
 
 .stats-bar {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1.15rem;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 16px;
-  padding: 1.5rem 2rem;
+  min-height: 260px;
+  padding: 1.5rem 2rem 1.65rem;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stats-primary-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stat-box {
@@ -92,17 +101,21 @@
 
 /* Cycling Buzz Word - Two Line Display */
 .stat-box-buzz {
-  min-width: 260px;
-  align-items: flex-start;
-  gap: 0.55rem;
-  text-align: left;
+  width: min(100%, 560px);
+  min-height: 104px;
+  justify-content: center;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0;
+  text-align: center;
 }
 
 .stat-buzz-item {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto auto;
   align-items: baseline;
   column-gap: 0.45rem;
+  justify-content: center;
   max-width: 100%;
   animation: buzzFade 3s ease-in-out infinite;
 }
@@ -118,6 +131,7 @@
   font-size: 1.08rem;
   font-weight: 700;
   color: var(--lime-green);
+  white-space: nowrap;
   overflow-wrap: anywhere;
 }
 
@@ -688,6 +702,7 @@
   }
 
   .stats-bar {
+    min-height: 250px;
     padding: 1.25rem 1.5rem;
   }
 
@@ -700,7 +715,7 @@
   }
 
   .testimonials-masonry {
-    column-count: 3;
+    column-count: 2;
   }
 
   .testimonial-card {
@@ -719,7 +734,7 @@
 }
 
 /* Mobile */
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .testimonials-section {
     padding: 3rem 1.5rem;
   }
@@ -734,8 +749,8 @@
   }
 
   .stats-bar {
-    flex-wrap: wrap;
     gap: 0.75rem;
+    min-height: 250px;
     padding: 1rem;
   }
 
@@ -756,7 +771,8 @@
   }
 
   .stat-box-buzz {
-    min-width: 100%;
+    width: 100%;
+    min-height: 126px;
     align-items: center;
     text-align: center;
   }
@@ -777,7 +793,7 @@
   }
 
   .testimonials-masonry {
-    column-count: 2;
+    column-count: 1;
     column-gap: 1rem;
   }
 
@@ -879,10 +895,6 @@
 @media (max-width: 375px) {
   .testimonials-section {
     padding: 2.5rem 1rem;
-  }
-
-  .testimonials-masonry {
-    column-count: 1;
   }
 
   .masonry-card {

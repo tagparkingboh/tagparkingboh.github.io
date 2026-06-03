@@ -174,31 +174,30 @@ function TestimonialsCarousel() {
       {stats && (
         <div className="testimonials-stats">
           <div className="stats-bar">
-            <div className="stat-box">
-              <span className="stat-value">{stats.average_rating}<span className="stat-star">★</span></span>
-              <span className="stat-label">Average</span>
-            </div>
-            <div className="stat-divider" />
-            <div className="stat-box">
-              <span className="stat-value">{stats.total_count}</span>
-              <span className="stat-label">Reviews</span>
+            <div className="stats-primary-row">
+              <div className="stat-box">
+                <span className="stat-value">{stats.average_rating}<span className="stat-star">★</span></span>
+                <span className="stat-label">Average</span>
+              </div>
+              <div className="stat-divider" />
+              <div className="stat-box">
+                <span className="stat-value">{stats.total_count}</span>
+                <span className="stat-label">Reviews</span>
+              </div>
             </div>
             {currentBuzzGroup.length > 0 && (
-              <>
-                <div className="stat-divider" />
-                <div className="stat-box stat-box-buzz">
-                  {currentBuzzGroup.map((item) => (
-                    <div className="stat-buzz-item" key={item.buzzWord}>
-                      <span className="stat-buzz-line1">
-                        {item.count}× {item.phrase}
-                      </span>
-                      <span className="stat-buzz-line2">
-                        "{item.buzzWord}"
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
+              <div className="stat-box stat-box-buzz">
+                {currentBuzzGroup.map((item) => (
+                  <div className="stat-buzz-item" key={item.buzzWord}>
+                    <span className="stat-buzz-line1">
+                      {item.count}× {item.phrase}
+                    </span>
+                    <span className="stat-buzz-line2">
+                      "{item.buzzWord}"
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
