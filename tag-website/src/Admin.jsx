@@ -9619,11 +9619,14 @@ function Admin() {
                 <div className="admin-section-header">
                   <h2>Referral Program</h2>
                   <button
-                    className="btn-secondary"
+                    className="referrals-refresh-button"
                     onClick={fetchReferralsDashboard}
                     disabled={loadingReferrals}
+                    type="button"
+                    aria-label="Refresh referrals dashboard"
                   >
-                    {loadingReferrals ? 'Loading...' : '↻ Refresh'}
+                    <span className={loadingReferrals ? 'referrals-refresh-icon spinning' : 'referrals-refresh-icon'} aria-hidden="true">↻</span>
+                    <span>{loadingReferrals ? 'Refreshing' : 'Refresh'}</span>
                   </button>
                 </div>
 
@@ -9633,19 +9636,19 @@ function Admin() {
                   <>
                     <div className="referral-stats-grid">
                       {[
-                        ['Invites sent', referralsDashboard.stats.invites_sent],
-                        ['Awaiting response', referralsDashboard.stats.awaiting_response],
-                        ['Opted in', referralsDashboard.stats.opted_in],
-                        ['Opted out', referralsDashboard.stats.opted_out],
-                        ['Response opt-in rate', `${referralsDashboard.stats.opt_in_rate || 0}%`],
-                        ['Codes generated', referralsDashboard.stats.referral_codes_generated],
-                        ['Code bookings', referralsDashboard.stats.referral_code_bookings_created],
-                        ['Qualified referrals', referralsDashboard.stats.completed_qualified_referrals],
-                        ['Self-use / disqualified', referralsDashboard.stats.self_use_disqualified_referrals],
-                        ['Rewards earned', referralsDashboard.stats.rewards_earned],
-                        ['Rewards sent', referralsDashboard.stats.rewards_sent],
-                      ].map(([label, value]) => (
-                        <div className="stats-card referral-stat-card" key={label}>
+                        ['Invites sent', referralsDashboard.stats.invites_sent, 'blue'],
+                        ['Awaiting response', referralsDashboard.stats.awaiting_response, 'amber'],
+                        ['Opted in', referralsDashboard.stats.opted_in, 'green'],
+                        ['Opted out', referralsDashboard.stats.opted_out, 'rose'],
+                        ['Response opt-in rate', `${referralsDashboard.stats.opt_in_rate || 0}%`, 'teal'],
+                        ['Codes generated', referralsDashboard.stats.referral_codes_generated, 'indigo'],
+                        ['Code bookings', referralsDashboard.stats.referral_code_bookings_created, 'violet'],
+                        ['Qualified referrals', referralsDashboard.stats.completed_qualified_referrals, 'emerald'],
+                        ['Self-use / disqualified', referralsDashboard.stats.self_use_disqualified_referrals, 'orange'],
+                        ['Rewards earned', referralsDashboard.stats.rewards_earned, 'cyan'],
+                        ['Rewards sent', referralsDashboard.stats.rewards_sent, 'slate'],
+                      ].map(([label, value, tone]) => (
+                        <div className={`stats-card referral-stat-card referral-stat-card-${tone}`} key={label}>
                           <div className="stats-card-value">{value ?? 0}</div>
                           <div className="stats-card-label">{label}</div>
                         </div>
@@ -9655,33 +9658,41 @@ function Admin() {
                     <div className="referrals-panel">
                       <div className="referrals-panel-header">
                         <h3>Referral Customers</h3>
-                        <select
-                          value={referralsFilter}
-                          onChange={(e) => {
-                            setReferralsFilter(e.target.value)
-                            setReferralsCustomerOffset(0)
-                          }}
-                        >
-                          <option value="all">All</option>
-                          <option value="awaiting_response">Awaiting response</option>
-                          <option value="opted_in">Opted in</option>
-                          <option value="opted_out">Opted out</option>
-                          <option value="has_code_usage">Has code usage</option>
-                          <option value="has_qualified">Has qualified referrals</option>
-                          <option value="reward_earned">Reward earned</option>
-                          <option value="self_use_only">Self-use only</option>
-                          <option value="disqualified_usage">Disqualified usage</option>
-                        </select>
-                        <input
-                          type="text"
-                          className="referrals-search"
-                          placeholder="Search customer, email, code"
-                          value={referralsCustomerSearch}
-                          onChange={(e) => {
-                            setReferralsCustomerSearch(e.target.value)
-                            setReferralsCustomerOffset(0)
-                          }}
-                        />
+                        <div className="referrals-control-group">
+                          <label className="referrals-control">
+                            <span>Filter</span>
+                            <select
+                              value={referralsFilter}
+                              onChange={(e) => {
+                                setReferralsFilter(e.target.value)
+                                setReferralsCustomerOffset(0)
+                              }}
+                            >
+                              <option value="all">All</option>
+                              <option value="awaiting_response">Awaiting response</option>
+                              <option value="opted_in">Opted in</option>
+                              <option value="opted_out">Opted out</option>
+                              <option value="has_code_usage">Has code usage</option>
+                              <option value="has_qualified">Has qualified referrals</option>
+                              <option value="reward_earned">Reward earned</option>
+                              <option value="self_use_only">Self-use only</option>
+                              <option value="disqualified_usage">Disqualified usage</option>
+                            </select>
+                          </label>
+                          <label className="referrals-control referrals-control-wide">
+                            <span>Search</span>
+                            <input
+                              type="text"
+                              className="referrals-search"
+                              placeholder="Customer, email, code"
+                              value={referralsCustomerSearch}
+                              onChange={(e) => {
+                                setReferralsCustomerSearch(e.target.value)
+                                setReferralsCustomerOffset(0)
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                       <div className="admin-table-container">
                         <table className="admin-table referrals-table">
@@ -9796,31 +9807,39 @@ function Admin() {
                     <div className="referrals-panel" ref={referralUsageTableRef}>
                       <div className="referrals-panel-header">
                         <h3>Code Usage / Bookings</h3>
-                        <input
-                          type="text"
-                          className="referrals-usage-search"
-                          placeholder="Search code, booking, referrer"
-                          value={referralsUsageSearch}
-                          onChange={(e) => {
-                            setReferralsUsageSearch(e.target.value)
-                            setReferralsUsageOffset(0)
-                          }}
-                        />
-                        <select
-                          value={referralsUsageFilter}
-                          onChange={(e) => {
-                            setReferralsUsageFilter(e.target.value)
-                            setReferralsUsageOffset(0)
-                          }}
-                        >
-                          <option value="all">All</option>
-                          <option value="open_bookings">Pending / confirmed bookings</option>
-                          <option value="completed">Completed bookings</option>
-                          <option value="pending">Pending attribution</option>
-                          <option value="qualified">Qualified</option>
-                          <option value="disqualified">Disqualified</option>
-                          <option value="self_use">Self-use</option>
-                        </select>
+                        <div className="referrals-control-group">
+                          <label className="referrals-control referrals-control-wide">
+                            <span>Search</span>
+                            <input
+                              type="text"
+                              className="referrals-usage-search"
+                              placeholder="Code, booking, referrer"
+                              value={referralsUsageSearch}
+                              onChange={(e) => {
+                                setReferralsUsageSearch(e.target.value)
+                                setReferralsUsageOffset(0)
+                              }}
+                            />
+                          </label>
+                          <label className="referrals-control">
+                            <span>Filter</span>
+                            <select
+                              value={referralsUsageFilter}
+                              onChange={(e) => {
+                                setReferralsUsageFilter(e.target.value)
+                                setReferralsUsageOffset(0)
+                              }}
+                            >
+                              <option value="all">All</option>
+                              <option value="open_bookings">Pending / confirmed bookings</option>
+                              <option value="completed">Completed bookings</option>
+                              <option value="pending">Pending attribution</option>
+                              <option value="qualified">Qualified</option>
+                              <option value="disqualified">Disqualified</option>
+                              <option value="self_use">Self-use</option>
+                            </select>
+                          </label>
+                        </div>
                       </div>
                       <div className="admin-table-container">
                         <table className="admin-table referrals-table">
