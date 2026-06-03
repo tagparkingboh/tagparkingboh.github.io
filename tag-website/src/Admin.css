@@ -1259,6 +1259,20 @@
   border: 1px solid #e2e8f0;
 }
 
+.reminder-status-button {
+  cursor: pointer;
+  font: inherit;
+}
+
+.reminder-status-button:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
+.reminder-status-button:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+
 .reminder-label {
   font-size: 10px;
   font-weight: 600;
@@ -1285,6 +1299,18 @@
   background: #fefce8;
   color: #854d0e;
   border: 1px solid #fef08a;
+}
+
+.reminder-badge.failed {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.reminder-badge.partial {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
 }
 
 /* Vehicle registration styling */

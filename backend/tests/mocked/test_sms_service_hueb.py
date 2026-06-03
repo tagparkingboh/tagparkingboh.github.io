@@ -462,6 +462,62 @@ class TestSendReminder2DaySms:
         assert ok is False
 
 
+class TestSendParkingUpdateSms:
+    async def test_H_uses_parking_update_trigger_template(self, monkeypatch):
+        _enable_sms(monkeypatch)
+        sent = {}
+
+        async def fake_send_sms(**kw):
+            sent.update(kw)
+            return {"success": True}
+
+        monkeypatch.setattr(sms_service, "send_sms", fake_send_sms)
+        db = _make_db_with_template("Hi {{first_name}}, parking update for {{booking_reference}}")
+        ok = await sms_service.send_parking_update_sms(_booking(), db)
+
+        assert ok is True
+        assert sent["content"] == "Hi Jo, parking update for TAG-1"
+        assert sent["template_id"] == 7
+        assert sent["tag"] == "parking-update"
+
+    async def test_H_falls_back_to_car_parking_charges_template_name(self, monkeypatch):
+        _enable_sms(monkeypatch)
+        sent = {}
+
+        async def fake_send_sms(**kw):
+            sent.update(kw)
+            return {"success": True}
+
+        template = SimpleNamespace(content="Car charges {{booking_reference}}", id=44)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.side_effect = [None, template]
+        monkeypatch.setattr(sms_service, "send_sms", fake_send_sms)
+
+        ok = await sms_service.send_parking_update_sms(_booking(), db)
+
+        assert ok is True
+        assert sent["content"] == "Car charges TAG-1"
+        assert sent["template_id"] == 44
+
+    async def test_H_uses_default_copy_when_template_missing(self, monkeypatch):
+        _enable_sms(monkeypatch)
+        sent = {}
+
+        async def fake_send_sms(**kw):
+            sent.update(kw)
+            return {"success": True}
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
+        monkeypatch.setattr(sms_service, "send_sms", fake_send_sms)
+
+        ok = await sms_service.send_parking_update_sms(_booking(reference="TAG-XYZ"), db)
+
+        assert ok is True
+        assert "TAG-XYZ" in sent["content"]
+        assert sent["template_id"] is None
+
+
 class TestSendThankYouSms:
     async def test_H_sends(self, monkeypatch):
         _enable_sms(monkeypatch)

@@ -272,6 +272,13 @@ class Booking(Base):
     refund_email_sent_at = Column(DateTime(timezone=True))
     reminder_2day_sent = Column(Boolean, default=False)
     reminder_2day_sent_at = Column(DateTime(timezone=True))
+    parking_update_email_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    parking_update_email_sent_at = Column(DateTime(timezone=True))
+    parking_update_email_attempt_count = Column(Integer, nullable=False, default=0, server_default="0")
+    parking_update_email_last_attempt_at = Column(DateTime(timezone=True))
+    parking_update_sms_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    parking_update_sms_sent_at = Column(DateTime(timezone=True))
+    parking_update_last_error = Column(Text)
     thank_you_email_sent = Column(Boolean, default=False)
     thank_you_email_sent_at = Column(DateTime(timezone=True))
     # Dedup for the DVLA compliance alert: scheduler skips bookings already

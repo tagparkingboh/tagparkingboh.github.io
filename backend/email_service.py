@@ -200,6 +200,16 @@ def _referral_code_section(label: str, code: str) -> str:
     """
 
 
+def _remove_unsubscribe_block(html_content: str) -> str:
+    start_marker = "<!-- Unsubscribe -->"
+    end_marker = "<!-- Copyright -->"
+    start = html_content.find(start_marker)
+    end = html_content.find(end_marker)
+    if start == -1 or end == -1 or end <= start:
+        return html_content
+    return html_content[:start] + html_content[end:]
+
+
 def _send_referral_email(
     email: str,
     first_name: str,
@@ -225,6 +235,7 @@ def _send_referral_email(
     })
     if html_content is None:
         return False
+    html_content = _remove_unsubscribe_block(html_content)
     return send_email(email, subject, html_content)
 
 
@@ -578,6 +589,39 @@ def send_2_day_reminder_email(
         return False
     except Exception as e:
         logger.error(f"Error loading 2-day reminder email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
+def send_parking_update_email(
+    email: str,
+    first_name: str,
+    booking_reference: str,
+    dropoff_date: str,
+    dropoff_time: str,
+) -> bool:
+    """
+    Send the one-off parking charges service update before drop-off.
+
+    This is a transactional/service update for an existing booking, so the
+    template intentionally does not include a marketing unsubscribe link.
+    """
+    subject = f"Parking Update - {booking_reference}"
+    template_path = EMAIL_TEMPLATES_DIR / "parking_update_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name or "there")
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+        html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
+    except FileNotFoundError:
+        logger.error(f"Parking update email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading parking update email template: {e}")
         return False
 
     return send_email(email, subject, html_content)
