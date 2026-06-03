@@ -205,6 +205,137 @@ class TestReferralInviteScheduler:
         assert db.commit_count == 0
         assert db.rollback_count == 1
 
+    def test_H_manual_social_invite_creates_customer_and_sends_invite(self, monkeypatch):
+        db = TestAdminReferralsDashboard()._session()
+        try:
+            monkeypatch.setenv("REFERRAL_INVITES_ENABLED", "true")
+            monkeypatch.setenv("API_BASE_URL", "https://api.test")
+            with patch("email_service.send_referral_invite_email", return_value=True) as send:
+                program, customer, created, sent = referral_service.send_manual_referral_invite(
+                    db,
+                    "Social",
+                    "Lead",
+                    "SOCIAL@example.com",
+                    now=datetime(2026, 6, 3, tzinfo=timezone.utc),
+                )
+
+            assert created is True
+            assert sent is True
+            assert customer.email == "social@example.com"
+            assert program.customer_id == customer.id
+            assert program.status == referral_service.PROGRAM_STATUS_INVITED
+            assert program.invite_sent_at.replace(tzinfo=timezone.utc) == datetime(2026, 6, 3, tzinfo=timezone.utc)
+            send.assert_called_once()
+        finally:
+            db.close()
+
+    def test_U_manual_social_invite_reuses_existing_customer_without_overwriting_name(self, monkeypatch):
+        db = TestAdminReferralsDashboard()._session()
+        try:
+            customer = Customer(first_name="Existing", last_name="Customer", email="exists@example.com", phone="07700900010")
+            db.add(customer)
+            db.commit()
+
+            monkeypatch.setenv("REFERRAL_INVITES_ENABLED", "true")
+            with patch("email_service.send_referral_invite_email", return_value=True):
+                program, existing, created, sent = referral_service.send_manual_referral_invite(
+                    db,
+                    "New",
+                    "Name",
+                    "exists@example.com",
+                )
+
+            assert created is False
+            assert sent is True
+            assert existing.id == customer.id
+            assert existing.first_name == "Existing"
+            assert existing.last_name == "Customer"
+            assert program.status == referral_service.PROGRAM_STATUS_INVITED
+        finally:
+            db.close()
+
+    def test_E_manual_social_invite_rolls_back_when_email_send_fails(self, monkeypatch):
+        db = TestAdminReferralsDashboard()._session()
+        try:
+            monkeypatch.setenv("REFERRAL_INVITES_ENABLED", "true")
+            with patch("email_service.send_referral_invite_email", return_value=False):
+                with pytest.raises(ValueError, match="Failed to send referral invite email"):
+                    referral_service.send_manual_referral_invite(
+                        db,
+                        "Failed",
+                        "Send",
+                        "failed-send@example.com",
+                    )
+
+            assert db.query(Customer).filter(Customer.email == "failed-send@example.com").first() is None
+            assert db.query(ReferralProgram).count() == 0
+        finally:
+            db.close()
+
+    def test_E_manual_social_invite_rejects_invalid_input(self, monkeypatch):
+        db = TestAdminReferralsDashboard()._session()
+        try:
+            monkeypatch.setenv("REFERRAL_INVITES_ENABLED", "true")
+            with pytest.raises(ValueError, match="First name, last name, and a valid email"):
+                referral_service.send_manual_referral_invite(db, "", "Lead", "not-an-email")
+
+            assert db.query(Customer).count() == 0
+            assert db.query(ReferralProgram).count() == 0
+        finally:
+            db.close()
+
+    def test_B_manual_social_invite_does_not_resend_for_already_opted_in_customer(self, monkeypatch):
+        db = TestAdminReferralsDashboard()._session()
+        try:
+            customer = Customer(first_name="Already", last_name="In", email="already-in@example.com", phone="07700900011")
+            db.add(customer)
+            db.flush()
+            program = ReferralProgram(
+                customer_id=customer.id,
+                status=referral_service.PROGRAM_STATUS_OPTED_IN,
+                invite_sent_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+                responded_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+            )
+            db.add(program)
+            db.commit()
+
+            monkeypatch.setenv("REFERRAL_INVITES_ENABLED", "true")
+            with patch("email_service.send_referral_invite_email") as send:
+                result_program, result_customer, created, sent = referral_service.send_manual_referral_invite(
+                    db,
+                    "Already",
+                    "In",
+                    "already-in@example.com",
+                    now=datetime(2026, 6, 3, tzinfo=timezone.utc),
+                )
+
+            assert result_customer.id == customer.id
+            assert result_program.id == program.id
+            assert created is False
+            assert sent is False
+            assert result_program.status == referral_service.PROGRAM_STATUS_OPTED_IN
+            assert result_program.invite_sent_at.replace(tzinfo=timezone.utc) == datetime(2026, 6, 1, tzinfo=timezone.utc)
+            send.assert_not_called()
+        finally:
+            db.close()
+
+    def test_B_manual_social_invite_respects_invites_feature_flag(self, monkeypatch):
+        db = TestAdminReferralsDashboard()._session()
+        try:
+            monkeypatch.setenv("REFERRAL_INVITES_ENABLED", "false")
+            with pytest.raises(ValueError, match="Referral invites are disabled"):
+                referral_service.send_manual_referral_invite(
+                    db,
+                    "Flagged",
+                    "Off",
+                    "flagged-off@example.com",
+                )
+
+            assert db.query(Customer).count() == 0
+            assert db.query(ReferralProgram).count() == 0
+        finally:
+            db.close()
+
     def test_reminder_marks_reminded_once_after_success(self):
         program = make_program()
         db = FakeReferralDb()

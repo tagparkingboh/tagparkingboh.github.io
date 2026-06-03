@@ -5091,6 +5091,56 @@ async def get_admin_referrals_dashboard(
         )
 
 
+class ManualReferralInviteRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+
+
+@app.post("/api/admin/marketing/referrals/manual-invite")
+async def send_admin_manual_referral_invite(
+    request: ManualReferralInviteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    from sqlalchemy.exc import SQLAlchemyError
+    from referral_service import send_manual_referral_invite
+
+    try:
+        program, customer, created_customer, sent_invite = send_manual_referral_invite(
+            db,
+            request.first_name,
+            request.last_name,
+            request.email,
+        )
+        return {
+            "success": True,
+            "sent_invite": sent_invite,
+            "created_customer": created_customer,
+            "customer": {
+                "id": customer.id,
+                "first_name": customer.first_name,
+                "last_name": customer.last_name,
+                "email": customer.email,
+            },
+            "referral_program": _format_referral_program_data(program),
+            "message": (
+                "Referral invite sent"
+                if sent_invite
+                else "Customer is already opted in to the referral program"
+            ),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while sending manual referral invite")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error while sending manual referral invite: {exc.__class__.__name__}",
+        )
+
+
 @app.get("/api/admin/customers/{customer_id}")
 async def get_customer_detail(
     customer_id: int,

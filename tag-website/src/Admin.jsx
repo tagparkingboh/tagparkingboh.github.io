@@ -363,6 +363,9 @@ function Admin() {
   const [referralsUsageSearch, setReferralsUsageSearch] = useState('')
   const [referralsUsageOffset, setReferralsUsageOffset] = useState(0)
   const [referralDashboardAction, setReferralDashboardAction] = useState(null)
+  const [manualReferralInvite, setManualReferralInvite] = useState({ first_name: '', last_name: '', email: '' })
+  const [sendingManualReferralInvite, setSendingManualReferralInvite] = useState(false)
+  const [manualReferralInviteMessage, setManualReferralInviteMessage] = useState('')
   const referralDashboardActionInFlightRef = useRef(false)
   const referralUsageTableRef = useRef(null)
 
@@ -3471,6 +3474,44 @@ function Admin() {
     } finally {
       referralDashboardActionInFlightRef.current = false
       setReferralDashboardAction(null)
+    }
+  }
+
+  const handleManualReferralInvite = async (e) => {
+    e.preventDefault()
+    if (sendingManualReferralInvite) return
+
+    setSendingManualReferralInvite(true)
+    setManualReferralInviteMessage('')
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/referrals/manual-invite`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: manualReferralInvite.first_name.trim(),
+          last_name: manualReferralInvite.last_name.trim(),
+          email: manualReferralInvite.email.trim(),
+        }),
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setManualReferralInviteMessage(data.message || 'Referral invite sent')
+        setManualReferralInvite({ first_name: '', last_name: '', email: '' })
+        setReferralsFilter('all')
+        setReferralsCustomerSearch(data.customer?.email || '')
+        setReferralsCustomerOffset(0)
+        await fetchReferralsDashboard()
+      } else {
+        setError(data.detail || 'Failed to send referral invite')
+      }
+    } catch (err) {
+      setError('Network error sending referral invite')
+    } finally {
+      setSendingManualReferralInvite(false)
     }
   }
 
@@ -9629,6 +9670,56 @@ function Admin() {
                     <span>{loadingReferrals ? 'Refreshing' : 'Refresh'}</span>
                   </button>
                 </div>
+
+                <form className="manual-referral-invite-panel" onSubmit={handleManualReferralInvite}>
+                  <div className="manual-referral-invite-heading">
+                    <h3>Social referral invite</h3>
+                  </div>
+                  <div className="manual-referral-invite-fields">
+                    <label className="referrals-control">
+                      <span>First name</span>
+                      <input
+                        type="text"
+                        value={manualReferralInvite.first_name}
+                        onChange={(e) => setManualReferralInvite(prev => ({ ...prev, first_name: e.target.value }))}
+                        required
+                      />
+                    </label>
+                    <label className="referrals-control">
+                      <span>Last name</span>
+                      <input
+                        type="text"
+                        value={manualReferralInvite.last_name}
+                        onChange={(e) => setManualReferralInvite(prev => ({ ...prev, last_name: e.target.value }))}
+                        required
+                      />
+                    </label>
+                    <label className="referrals-control referrals-control-wide">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        value={manualReferralInvite.email}
+                        onChange={(e) => setManualReferralInvite(prev => ({ ...prev, email: e.target.value }))}
+                        required
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="referrals-send-button"
+                      disabled={
+                        sendingManualReferralInvite ||
+                        !manualReferralInvite.first_name.trim() ||
+                        !manualReferralInvite.last_name.trim() ||
+                        !manualReferralInvite.email.trim()
+                      }
+                    >
+                      {sendingManualReferralInvite ? 'Sending...' : 'Send Invite'}
+                    </button>
+                  </div>
+                  {manualReferralInviteMessage && (
+                    <div className="manual-referral-invite-message">{manualReferralInviteMessage}</div>
+                  )}
+                </form>
 
                 {loadingReferrals ? (
                   <div className="loading-state">Loading referrals...</div>

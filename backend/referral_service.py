@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from db_models import (
     Booking,
@@ -188,6 +189,73 @@ def process_eligible_referral_invites(db: Session, limit: int = 25, now: Optiona
             db.rollback()
 
     return sent
+
+
+def send_manual_referral_invite(
+    db: Session,
+    first_name: str,
+    last_name: str,
+    email: str,
+    now: Optional[datetime] = None,
+) -> tuple[ReferralProgram, Customer, bool, bool]:
+    """Create/reuse a customer and send a one-off referral invite.
+
+    Returns (program, customer, created_customer, sent_invite). Existing opted-in
+    customers are left alone so admins do not send a stale opt-in prompt to
+    someone who already has a referral code.
+    """
+    if not referral_invites_enabled():
+        raise ValueError("Referral invites are disabled")
+
+    from email_service import send_referral_invite_email
+
+    first_name = (first_name or "").strip()
+    last_name = (last_name or "").strip()
+    normalized_email = (email or "").strip().lower()
+    if not first_name or not last_name or not _valid_email(normalized_email):
+        raise ValueError("First name, last name, and a valid email are required")
+
+    current = now or _now()
+    customer = (
+        db.query(Customer)
+        .filter(func.lower(Customer.email) == normalized_email)
+        .first()
+    )
+    created_customer = False
+    if not customer:
+        customer = Customer(
+            first_name=first_name,
+            last_name=last_name,
+            email=normalized_email,
+            phone="",
+            billing_country="United Kingdom",
+        )
+        db.add(customer)
+        db.flush()
+        created_customer = True
+
+    program = db.query(ReferralProgram).filter(ReferralProgram.customer_id == customer.id).first()
+    if not program:
+        program = ReferralProgram(customer_id=customer.id, status=PROGRAM_STATUS_ELIGIBLE)
+        db.add(program)
+        db.flush()
+
+    if program.status == PROGRAM_STATUS_OPTED_IN:
+        return program, customer, created_customer, False
+
+    yes_url, no_url = _response_urls(program)
+    if not send_referral_invite_email(customer.first_name, customer.email, yes_url, no_url):
+        db.rollback()
+        raise ValueError("Failed to send referral invite email")
+
+    program.status = PROGRAM_STATUS_INVITED
+    program.invite_sent_at = current
+    program.reminder_sent_at = None
+    program.responded_at = None
+    db.commit()
+    db.refresh(program)
+    db.refresh(customer)
+    return program, customer, created_customer, True
 
 
 def process_referral_invite_reminders(db: Session, limit: int = 25, now: Optional[datetime] = None) -> int:

@@ -51,10 +51,13 @@ describe('Admin referrals dashboard', () => {
     expect(adminSource).toContain("{ id: 'referrals', label: 'Referrals' }")
     expect(adminSource).toContain("setMarketingSubTab('referrals')")
     expect(adminSource).toContain('/api/admin/marketing/referrals')
+    expect(adminSource).toContain('/api/admin/marketing/referrals/manual-invite')
   })
 
   it('renders overview, customer, and code usage sections', () => {
     expect(adminSource).toContain('Referral Program')
+    expect(adminSource).toContain('Social referral invite')
+    expect(adminSource).toContain('Send Invite')
     expect(adminSource).toContain('Referral Customers')
     expect(adminSource).toContain('Code Usage / Bookings')
     expect(adminSource).toContain('Self-use / disqualified')
