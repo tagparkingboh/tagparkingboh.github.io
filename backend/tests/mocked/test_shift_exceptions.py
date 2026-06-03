@@ -81,6 +81,21 @@ def test_linked_booking_inside_shift_window_clears_exception():
     assert result == []
 
 
+def test_linked_booking_inside_implicit_midnight_shift_clears_exception():
+    shift = mk_shift(start_time=time(19, 30), end_time=time(0, 0))
+    booking = mk_booking(shifts=[shift])
+    booking.dropoff_time = time(22, 50)
+
+    result = _build_shift_exceptions(
+        [booking],
+        [shift],
+        date(2026, 6, 14),
+        date(2026, 6, 14),
+    )
+
+    assert result == []
+
+
 def test_booking_without_covering_shift_surfaces_no_shift_issue():
     booking = mk_booking()
 
