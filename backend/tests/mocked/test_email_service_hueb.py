@@ -459,6 +459,33 @@ class TestReferralBrandedTemplates:
         assert "Would you like to join our referral program?" in captured["html"]
         assert "Thanks again for parking with Tag" not in captured["html"]
 
+
+class TestParkingUpdateEmailTemplate:
+    def test_parking_update_copy_removes_absorb_cost_paragraph_and_adds_call_line(self, monkeypatch):
+        captured = {}
+
+        def fake_send_email(to_email, subject, html_content):
+            captured["to_email"] = to_email
+            captured["subject"] = subject
+            captured["html"] = html_content
+            return True
+
+        monkeypatch.setattr(email_service, "send_email", fake_send_email)
+
+        assert email_service.send_parking_update_email(
+            email="customer@example.com",
+            first_name="Jo",
+            booking_reference="TAG-123",
+            dropoff_date="03/06/2026",
+            dropoff_time="12:00",
+        ) is True
+
+        assert captured["to_email"] == "customer@example.com"
+        assert captured["subject"] == "Parking Update - TAG-123"
+        assert "Although these are significant increases" not in captured["html"]
+        assert "If you're running late or early please call us!" in captured["html"]
+        assert "To help us keep our prices as low as possible" in captured["html"]
+
     def test_code_email_uses_marketing_campaign_wrapper_and_code_block(self, monkeypatch):
         captured = {}
 
