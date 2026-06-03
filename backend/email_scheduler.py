@@ -15,7 +15,16 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from db_models import MarketingSubscriber, Booking, BookingStatus, Customer
-from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, send_thank_you_email, send_founder_followup_email, is_email_enabled, generate_promo_code
+from email_service import (
+    send_welcome_email,
+    send_promo_code_email,
+    send_2_day_reminder_email,
+    send_parking_update_email,
+    send_thank_you_email,
+    send_founder_followup_email,
+    is_email_enabled,
+    generate_promo_code,
+)
 import sms_service
 from datetime import date as date_type
 import pytz
@@ -32,6 +41,13 @@ THANK_YOU_EMAIL_DELAY_HOURS = 2  # Send thank you email 2 hours after booking co
 FOUNDER_FOLLOWUP_DELAY_HOURS = 1 # Send founder followup email 1 hour after pending booking
 FOUNDER_FOLLOWUP_START_DATE = date_type(2026, 3, 1)  # Only process bookings from March 1st 2026
 CHECK_INTERVAL_MINUTES = 1       # Check for pending emails every 1 minute
+PARKING_UPDATE_LEAD_HOURS = 72
+PARKING_UPDATE_MAX_EMAIL_ATTEMPTS = 3
+PARKING_UPDATE_RETRY_DELAY_MINUTES = 15
+NOTIFICATION_STATUS_PENDING = "pending"
+NOTIFICATION_STATUS_SENT = "sent"
+NOTIFICATION_STATUS_FAILED = "failed"
+NOTIFICATION_STATUS_DISABLED = "disabled"
 
 
 def get_db() -> Session:
@@ -219,6 +235,159 @@ def process_pending_2day_reminders(db: Session):
 
     except Exception as e:
         logger.error(f"Error processing 2-day reminders: {str(e)}")
+        db.rollback()
+
+
+def expected_dropoff_datetime_uk(booking: Booking, uk_tz=None):
+    """Return the booking's expected drop-off datetime in Europe/London."""
+    uk_tz = uk_tz or pytz.timezone('Europe/London')
+    dropoff_time = booking.dropoff_time or time(0, 0)
+    return uk_tz.localize(datetime.combine(booking.dropoff_date, dropoff_time))
+
+
+def can_attempt_parking_update_email(booking: Booking, now_utc=None) -> bool:
+    """Return True when the automatic sender may attempt/retry the email."""
+    if booking.parking_update_email_status != NOTIFICATION_STATUS_PENDING:
+        return False
+    attempts = booking.parking_update_email_attempt_count or 0
+    if attempts >= PARKING_UPDATE_MAX_EMAIL_ATTEMPTS:
+        return False
+    last_attempt_at = booking.parking_update_email_last_attempt_at
+    if not last_attempt_at:
+        return True
+    now_utc = now_utc or datetime.utcnow()
+    if getattr(last_attempt_at, "tzinfo", None):
+        last_attempt_at = last_attempt_at.astimezone(pytz.UTC).replace(tzinfo=None)
+    return last_attempt_at <= now_utc - timedelta(minutes=PARKING_UPDATE_RETRY_DELAY_MINUTES)
+
+
+def send_parking_update_for_booking(db: Session, booking: Booking, manual: bool = False) -> bool:
+    """Send parking update email, then SMS only after email success.
+
+    Idempotent: an already-sent email is not sent again. If the email is
+    already sent and SMS is pending/failed, manual sends may retry the SMS.
+    """
+    if booking.parking_update_email_status == NOTIFICATION_STATUS_SENT:
+        email_success = True
+    else:
+        if booking.parking_update_email_status == NOTIFICATION_STATUS_FAILED and not manual:
+            return False
+
+        customer = booking.customer or db.query(Customer).filter(Customer.id == booking.customer_id).first()
+        if not customer:
+            booking.parking_update_email_status = NOTIFICATION_STATUS_FAILED
+            booking.parking_update_last_error = "Customer not found"
+            db.commit()
+            return False
+
+        uk_tz = pytz.timezone('Europe/London')
+        dropoff_at = expected_dropoff_datetime_uk(booking, uk_tz)
+        dropoff_date_formatted = dropoff_at.strftime("%A, %d %B %Y")
+        dropoff_time_formatted = dropoff_at.strftime("%H:%M")
+
+        logger.info(f"Sending parking update email to {customer.email} for booking {booking.reference}")
+        booking.parking_update_email_attempt_count = (booking.parking_update_email_attempt_count or 0) + 1
+        booking.parking_update_email_last_attempt_at = datetime.utcnow()
+        email_success = send_parking_update_email(
+            email=customer.email,
+            first_name=booking.customer_first_name or customer.first_name,
+            booking_reference=booking.reference,
+            dropoff_date=dropoff_date_formatted,
+            dropoff_time=dropoff_time_formatted,
+        )
+
+        if email_success:
+            booking.parking_update_email_status = NOTIFICATION_STATUS_SENT
+            booking.parking_update_email_sent_at = datetime.utcnow()
+            booking.parking_update_last_error = None
+            db.commit()
+            logger.info(f"Parking update email sent for booking {booking.reference}")
+        else:
+            final_failure = manual or (booking.parking_update_email_attempt_count or 0) >= PARKING_UPDATE_MAX_EMAIL_ATTEMPTS
+            booking.parking_update_email_status = NOTIFICATION_STATUS_FAILED if final_failure else NOTIFICATION_STATUS_PENDING
+            booking.parking_update_last_error = (
+                "Parking update email failed"
+                if final_failure
+                else (
+                    "Parking update email failed; retry "
+                    f"{booking.parking_update_email_attempt_count}/{PARKING_UPDATE_MAX_EMAIL_ATTEMPTS}"
+                )
+            )
+            db.commit()
+            logger.error(f"Failed to send parking update email for booking {booking.reference}")
+            return False
+
+    if not email_success:
+        return False
+
+    if booking.parking_update_sms_status == NOTIFICATION_STATUS_SENT:
+        return True
+    if booking.parking_update_sms_status == NOTIFICATION_STATUS_FAILED and not manual:
+        return True
+    if booking.parking_update_sms_status == NOTIFICATION_STATUS_DISABLED and not manual:
+        return True
+
+    if sms_service.is_sms_enabled():
+        try:
+            sms_success = asyncio.run(sms_service.send_parking_update_sms(booking, db))
+        except Exception as sms_error:
+            sms_success = False
+            booking.parking_update_last_error = f"Parking update SMS failed: {sms_error}"
+            logger.error(f"Failed to send parking update SMS for booking {booking.reference}: {sms_error}")
+    else:
+        booking.parking_update_sms_status = NOTIFICATION_STATUS_DISABLED
+        db.commit()
+        logger.info(f"SMS disabled - parking update email sent without SMS for booking {booking.reference}")
+        return True
+
+    if sms_success:
+        booking.parking_update_sms_status = NOTIFICATION_STATUS_SENT
+        booking.parking_update_sms_sent_at = datetime.utcnow()
+        if booking.parking_update_last_error and booking.parking_update_last_error.startswith("Parking update SMS failed"):
+            booking.parking_update_last_error = None
+        logger.info(f"Parking update SMS sent for booking {booking.reference}")
+    else:
+        booking.parking_update_sms_status = NOTIFICATION_STATUS_FAILED
+        if not booking.parking_update_last_error:
+            booking.parking_update_last_error = "Parking update SMS failed"
+    db.commit()
+    return True
+
+
+def process_pending_parking_updates(db: Session):
+    """
+    Send the parking update exactly by expected drop-off datetime threshold.
+
+    Eligibility is based on dropoff_date + dropoff_time in Europe/London:
+    send when expected_dropoff_at <= now + 72 hours and >= now. This avoids
+    the old midnight "three days before" behavior.
+    """
+    try:
+        uk_tz = pytz.timezone('Europe/London')
+        now_uk = datetime.now(uk_tz)
+        cutoff_datetime = now_uk + timedelta(hours=PARKING_UPDATE_LEAD_HOURS)
+        cutoff_date = cutoff_datetime.date()
+
+        candidate_bookings = db.query(Booking).filter(
+            Booking.parking_update_email_status == NOTIFICATION_STATUS_PENDING,
+            Booking.status == BookingStatus.CONFIRMED,
+            Booking.dropoff_date <= cutoff_date + timedelta(days=1),
+            Booking.dropoff_date >= now_uk.date(),
+        ).limit(50).all()
+
+        pending = []
+        for booking in candidate_bookings:
+            dropoff_datetime = expected_dropoff_datetime_uk(booking, uk_tz)
+            # Launch policy: existing confirmed bookings already inside this
+            # 72-hour window are intentionally eligible as a catch-up batch.
+            if now_uk <= dropoff_datetime <= cutoff_datetime and can_attempt_parking_update_email(booking):
+                pending.append(booking)
+
+        for booking in pending[:10]:
+            send_parking_update_for_booking(db, booking)
+
+    except Exception as e:
+        logger.error(f"Error processing parking updates: {str(e)}")
         db.rollback()
 
 
@@ -586,6 +755,7 @@ def process_all_pending_emails():
     db = get_db()
     try:
         process_pending_welcome_emails(db)
+        process_pending_parking_updates(db)
         process_pending_2day_reminders(db)
         process_pending_thankyou_emails(db)
         process_pending_founder_followups(db)
@@ -694,6 +864,16 @@ def _process_2day_reminders_standalone():
     db = get_db()
     try:
         process_pending_2day_reminders(db)
+    finally:
+        db.close()
+
+
+def _process_parking_updates_standalone():
+    if not is_email_enabled():
+        return
+    db = get_db()
+    try:
+        process_pending_parking_updates(db)
     finally:
         db.close()
 

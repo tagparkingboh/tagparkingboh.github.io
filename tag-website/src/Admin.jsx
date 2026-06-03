@@ -306,6 +306,7 @@ function Admin() {
     pickup_origin: '',
   })
   const [resendingEmailId, setResendingEmailId] = useState(null)
+  const [sendingParkingUpdateId, setSendingParkingUpdateId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
   const [sendingCancellationEmailId, setSendingCancellationEmailId] = useState(null)
@@ -4382,6 +4383,22 @@ function Admin() {
                 </span>
               </div>
 
+              {/* Parking Update Status Indicator */}
+              <button
+                type="button"
+                className="reminder-status-indicator reminder-status-button"
+                onClick={(e) => handleSendParkingUpdate(booking, e)}
+                disabled={sendingParkingUpdateId === booking.id}
+                title={getParkingUpdateTitle(booking)}
+              >
+                <span className="reminder-label">Parking Update</span>
+                <span className={`reminder-badge ${getParkingUpdateStatus(booking)}`}>
+                  {sendingParkingUpdateId === booking.id
+                    ? 'Sending...'
+                    : getParkingUpdateLabel(booking)}
+                </span>
+              </button>
+
               {/* 2-Day Reminder Status Indicator */}
               <div className="reminder-status-indicator">
                 <span className="reminder-label">2-Day Reminder</span>
@@ -5553,6 +5570,109 @@ function Admin() {
       setError('Network error while sending email')
     } finally {
       setResendingEmailId(null)
+    }
+  }
+
+  const getParkingUpdateStatus = (booking) => {
+    const emailStatus = booking.parking_update_email_status || 'pending'
+    const smsStatus = booking.parking_update_sms_status || 'pending'
+    if (emailStatus === 'failed') {
+      return 'failed'
+    }
+    if (emailStatus === 'sent' && smsStatus === 'sent') {
+      return 'sent'
+    }
+    if (emailStatus === 'sent') {
+      return 'partial'
+    }
+    return 'pending'
+  }
+
+  const getParkingUpdateLabel = (booking) => {
+    const emailStatus = booking.parking_update_email_status || 'pending'
+    const smsStatus = booking.parking_update_sms_status || 'pending'
+    if (emailStatus === 'failed') {
+      return 'Failed'
+    }
+    if (emailStatus === 'sent' && smsStatus === 'sent') {
+      return 'Sent ✓'
+    }
+    if (emailStatus === 'sent' && smsStatus === 'failed') {
+      return 'Email Sent / SMS Failed'
+    }
+    if (emailStatus === 'sent' && smsStatus === 'disabled') {
+      return 'Email Sent / SMS Off'
+    }
+    if (emailStatus === 'sent') {
+      return `Email Sent / SMS ${smsStatus}`
+    }
+    return 'Pending'
+  }
+
+  const getParkingUpdateTitle = (booking) => {
+    const details = []
+    details.push(`Email status: ${booking.parking_update_email_status || 'pending'}`)
+    details.push(`SMS status: ${booking.parking_update_sms_status || 'pending'}`)
+    if (booking.parking_update_email_sent_at) {
+      details.push(`Email: ${formatDateTimeUK(booking.parking_update_email_sent_at)}`)
+    }
+    if (booking.parking_update_email_attempt_count) {
+      details.push(`Email attempts: ${booking.parking_update_email_attempt_count}`)
+    }
+    if (booking.parking_update_email_last_attempt_at) {
+      details.push(`Last email attempt: ${formatDateTimeUK(booking.parking_update_email_last_attempt_at)}`)
+    }
+    if (booking.parking_update_sms_sent_at) {
+      details.push(`SMS: ${formatDateTimeUK(booking.parking_update_sms_sent_at)}`)
+    }
+    if (booking.parking_update_last_error) {
+      details.push(`Error: ${booking.parking_update_last_error}`)
+    }
+    return details.length ? details.join(' | ') : 'Click to send parking update'
+  }
+
+  const handleSendParkingUpdate = async (booking, e) => {
+    e.stopPropagation()
+    if (sendingParkingUpdateId === booking.id) return
+
+    setSendingParkingUpdateId(booking.id)
+    setError('')
+    setSuccessMessage('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${booking.id}/send-parking-update`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      const data = await response.json()
+
+      if (response.ok) {
+        setBookings(prev => prev.map(item => (
+          item.id === booking.id
+            ? {
+                ...item,
+                parking_update_email_status: data.parking_update_email_status,
+                parking_update_email_sent_at: data.parking_update_email_sent_at,
+                parking_update_email_attempt_count: data.parking_update_email_attempt_count,
+                parking_update_email_last_attempt_at: data.parking_update_email_last_attempt_at,
+                parking_update_sms_status: data.parking_update_sms_status,
+                parking_update_sms_sent_at: data.parking_update_sms_sent_at,
+                parking_update_last_error: data.parking_update_last_error,
+              }
+            : item
+        )))
+        setSuccessMessage(data.message || 'Parking update sent')
+        setTimeout(() => setSuccessMessage(''), 3000)
+      } else {
+        setError(data.detail || 'Failed to send parking update')
+      }
+    } catch (err) {
+      setError('Network error while sending parking update')
+    } finally {
+      setSendingParkingUpdateId(null)
     }
   }
 
@@ -7682,6 +7802,7 @@ function Admin() {
                       >
                         <option value="">None (Manual Only)</option>
                         <option value="booking_confirmed">Booking Confirmed</option>
+                        <option value="parking_update">Parking Update</option>
                         <option value="reminder_2day">2-Day Reminder</option>
                         <option value="thank_you">Thank You (After Completion)</option>
                       </select>
@@ -7779,6 +7900,7 @@ function Admin() {
                       >
                         <option value="">None (Manual Only)</option>
                         <option value="booking_confirmed">Booking Confirmed</option>
+                        <option value="parking_update">Parking Update</option>
                         <option value="reminder_2day">2-Day Reminder</option>
                         <option value="thank_you">Thank You (After Completion)</option>
                       </select>

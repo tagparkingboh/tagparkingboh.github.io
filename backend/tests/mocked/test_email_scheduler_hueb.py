@@ -73,6 +73,13 @@ def _booking(**kw):
         flight_departure_time=time(12, 30),
         reminder_2day_sent=False,
         reminder_2day_sent_at=None,
+        parking_update_email_status="pending",
+        parking_update_email_sent_at=None,
+        parking_update_email_attempt_count=0,
+        parking_update_email_last_attempt_at=None,
+        parking_update_sms_status="pending",
+        parking_update_sms_sent_at=None,
+        parking_update_last_error=None,
         thank_you_email_sent=False,
         thank_you_email_sent_at=None,
         completed_at=datetime.utcnow() - timedelta(hours=3),
@@ -375,6 +382,237 @@ class TestProcess2DayReminders:
         db.rollback = MagicMock()
         email_scheduler.process_pending_2day_reminders(db)
         assert db.rollback.called
+
+
+# ============================================================================
+# process_pending_parking_updates / send_parking_update_for_booking
+# ============================================================================
+
+class TestParkingUpdateNotification:
+    def _wire_bookings(self, bookings):
+        db = MagicMock()
+        chain = MagicMock()
+        chain.filter.return_value = chain
+        chain.limit.return_value.all.return_value = bookings
+        db.query.return_value = chain
+        db.commit = MagicMock()
+        db.rollback = MagicMock()
+        return db
+
+    def _freeze_now(self, monkeypatch, frozen_naive):
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return tz.localize(frozen_naive) if tz else frozen_naive
+
+            @classmethod
+            def utcnow(cls):
+                return frozen_naive
+
+        monkeypatch.setattr(email_scheduler, "datetime", FrozenDateTime)
+
+    def test_H_sends_email_then_sms_and_marks_statuses(self, monkeypatch):
+        customer = _customer(email="jo@example.test", first_name="Jo")
+        b = _booking(customer=customer)
+        db = self._wire_bookings([])
+        events = []
+
+        def fake_email(**kw):
+            events.append(("email", kw["email"], kw["first_name"]))
+            return True
+
+        async def fake_sms(booking, session):
+            events.append(("sms", booking.reference))
+            return True
+
+        monkeypatch.setattr(email_scheduler, "send_parking_update_email", fake_email)
+        monkeypatch.setattr(email_scheduler.sms_service, "is_sms_enabled", lambda: True)
+        monkeypatch.setattr(email_scheduler.sms_service, "send_parking_update_sms", fake_sms)
+
+        assert email_scheduler.send_parking_update_for_booking(db, b) is True
+        assert events == [("email", "jo@example.test", "Jo"), ("sms", "TAG-1")]
+        assert b.parking_update_email_status == "sent"
+        assert b.parking_update_email_sent_at is not None
+        assert b.parking_update_sms_status == "sent"
+        assert b.parking_update_sms_sent_at is not None
+
+    def test_U_email_failure_blocks_sms(self, monkeypatch):
+        customer = _customer(email="jo@example.test")
+        b = _booking(customer=customer)
+        db = self._wire_bookings([])
+        sms_called = {"n": 0}
+
+        async def fake_sms(*a, **kw):
+            sms_called["n"] += 1
+            return True
+
+        monkeypatch.setattr(email_scheduler, "send_parking_update_email", lambda **kw: False)
+        monkeypatch.setattr(email_scheduler.sms_service, "is_sms_enabled", lambda: True)
+        monkeypatch.setattr(email_scheduler.sms_service, "send_parking_update_sms", fake_sms)
+
+        assert email_scheduler.send_parking_update_for_booking(db, b) is False
+        assert b.parking_update_email_status == "pending"
+        assert b.parking_update_email_attempt_count == 1
+        assert b.parking_update_email_last_attempt_at is not None
+        assert b.parking_update_sms_status == "pending"
+        assert sms_called["n"] == 0
+
+    def test_U_email_failure_marks_failed_after_retry_cap(self, monkeypatch):
+        customer = _customer(email="jo@example.test")
+        b = _booking(
+            customer=customer,
+            parking_update_email_attempt_count=email_scheduler.PARKING_UPDATE_MAX_EMAIL_ATTEMPTS - 1,
+        )
+        db = self._wire_bookings([])
+
+        monkeypatch.setattr(email_scheduler, "send_parking_update_email", lambda **kw: False)
+        monkeypatch.setattr(email_scheduler.sms_service, "is_sms_enabled", lambda: True)
+
+        assert email_scheduler.send_parking_update_for_booking(db, b) is False
+        assert b.parking_update_email_status == "failed"
+        assert b.parking_update_email_attempt_count == email_scheduler.PARKING_UPDATE_MAX_EMAIL_ATTEMPTS
+
+    def test_H_sms_disabled_is_not_failed(self, monkeypatch):
+        customer = _customer(email="jo@example.test")
+        b = _booking(customer=customer)
+        db = self._wire_bookings([])
+
+        monkeypatch.setattr(email_scheduler, "send_parking_update_email", lambda **kw: True)
+        monkeypatch.setattr(email_scheduler.sms_service, "is_sms_enabled", lambda: False)
+
+        assert email_scheduler.send_parking_update_for_booking(db, b) is True
+        assert b.parking_update_email_status == "sent"
+        assert b.parking_update_sms_status == "disabled"
+        assert b.parking_update_last_error is None
+
+    def test_E_does_not_send_email_or_sms_twice(self, monkeypatch):
+        customer = _customer(email="jo@example.test")
+        b = _booking(
+            customer=customer,
+            parking_update_email_status="sent",
+            parking_update_sms_status="sent",
+        )
+        db = self._wire_bookings([])
+        calls = {"email": 0, "sms": 0}
+
+        async def fake_sms(*a, **kw):
+            calls["sms"] += 1
+            return True
+
+        monkeypatch.setattr(email_scheduler, "send_parking_update_email", lambda **kw: calls.__setitem__("email", calls["email"] + 1) or True)
+        monkeypatch.setattr(email_scheduler.sms_service, "is_sms_enabled", lambda: True)
+        monkeypatch.setattr(email_scheduler.sms_service, "send_parking_update_sms", fake_sms)
+
+        assert email_scheduler.send_parking_update_for_booking(db, b) is True
+        assert calls == {"email": 0, "sms": 0}
+
+    def test_B_process_sends_inside_72_hour_window(self, monkeypatch):
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 0))
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 5),
+            dropoff_time=time(8, 59),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == ["TAG-1"]
+
+    def test_B_does_not_send_at_midnight_three_days_before_late_dropoff(self, monkeypatch):
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 0, 0))
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 5),
+            dropoff_time=time(18, 0),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == []
+
+    def test_B_just_outside_72_hours_then_becomes_eligible(self, monkeypatch):
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 5),
+            dropoff_time=time(9, 1),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 0))
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == []
+
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 1))
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == ["TAG-1"]
+
+    def test_B_past_same_day_dropoff_is_excluded(self, monkeypatch):
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 0))
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 2),
+            dropoff_time=time(8, 59),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == []
+
+    def test_E_changed_dropoff_time_is_recomputed_each_run(self, monkeypatch):
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 0))
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 5),
+            dropoff_time=time(18, 0),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        email_scheduler.process_pending_parking_updates(db)
+        b.dropoff_time = time(8, 30)
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == ["TAG-1"]
+
+    def test_E_retry_delay_skips_recent_failed_attempt(self, monkeypatch):
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 0))
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 5),
+            dropoff_time=time(8, 30),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+            parking_update_email_attempt_count=1,
+            parking_update_email_last_attempt_at=datetime(2026, 6, 2, 8, 55),
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == []
+
+    def test_E_retry_delay_allows_later_attempt(self, monkeypatch):
+        self._freeze_now(monkeypatch, datetime(2026, 6, 2, 9, 10))
+        b = _booking(
+            dropoff_date=date_type(2026, 6, 5),
+            dropoff_time=time(8, 30),
+            status=email_scheduler.BookingStatus.CONFIRMED,
+            parking_update_email_attempt_count=1,
+            parking_update_email_last_attempt_at=datetime(2026, 6, 2, 8, 55),
+        )
+        db = self._wire_bookings([b])
+        sent = []
+        monkeypatch.setattr(email_scheduler, "send_parking_update_for_booking", lambda session, booking: sent.append(booking.reference) or True)
+
+        email_scheduler.process_pending_parking_updates(db)
+        assert sent == ["TAG-1"]
 
 
 # ============================================================================
@@ -708,18 +946,20 @@ class TestProcessAllPendingEmails:
         monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
         calls = []
         monkeypatch.setattr(email_scheduler, "process_pending_welcome_emails", lambda d: calls.append("welcome"))
+        monkeypatch.setattr(email_scheduler, "process_pending_parking_updates", lambda d: calls.append("parking"))
         monkeypatch.setattr(email_scheduler, "process_pending_2day_reminders", lambda d: calls.append("2day"))
         monkeypatch.setattr(email_scheduler, "process_pending_thankyou_emails", lambda d: calls.append("ty"))
         monkeypatch.setattr(email_scheduler, "process_pending_founder_followups", lambda d: calls.append("founder"))
         monkeypatch.setattr(email_scheduler, "process_pending_dvla_rechecks", lambda d: calls.append("dvla"))
         email_scheduler.process_all_pending_emails()
-        assert calls == ["welcome", "2day", "ty", "founder", "dvla"]
+        assert calls == ["welcome", "parking", "2day", "ty", "founder", "dvla"]
         assert db.close.called
 
 
 class TestStandaloneWrappers:
     @pytest.mark.parametrize("fn,inner_attr", [
         ("_process_welcome_emails_standalone", "process_pending_welcome_emails"),
+        ("_process_parking_updates_standalone", "process_pending_parking_updates"),
         ("_process_2day_reminders_standalone", "process_pending_2day_reminders"),
         ("_process_thankyou_emails_standalone", "process_pending_thankyou_emails"),
         ("_process_founder_followups_standalone", "process_pending_founder_followups"),
@@ -736,6 +976,7 @@ class TestStandaloneWrappers:
 
     @pytest.mark.parametrize("fn", [
         "_process_welcome_emails_standalone",
+        "_process_parking_updates_standalone",
         "_process_2day_reminders_standalone",
         "_process_thankyou_emails_standalone",
         "_process_founder_followups_standalone",
