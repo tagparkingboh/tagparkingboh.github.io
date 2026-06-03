@@ -26,6 +26,7 @@ Usage:
 
 from playwright.sync_api import sync_playwright, Page
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import time
 import random
 import os
@@ -36,6 +37,7 @@ import psycopg2
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 SINGLE_TEST = os.environ.get("SINGLE_TEST", "false").lower() == "true"  # Run only first test
 PROMO_ONLY = os.environ.get("PROMO_ONLY", "false").lower() == "true"  # Run only promo code tests
+REFERRAL_ONLY = os.environ.get("REFERRAL_ONLY", "false").lower() == "true"  # Run only referral code tests
 TEST_FILTER = os.environ.get("TEST_FILTER", "")  # Filter tests by name (case-insensitive partial match)
 TEST_INDEX = os.environ.get("TEST_INDEX", "")    # 1-based index of a single test to run (used by batch runner)
 BROWSER = os.environ.get("BROWSER", "chromium").lower()  # chromium | firefox | webkit
@@ -95,6 +97,8 @@ else:
 # Test promo codes
 TEST_PROMO_10 = "TEST10OFF"      # 10% off promo
 TEST_PROMO_FREE = "TESTFREE"     # 100% off (FREE) promo
+TEST_REFERRAL_CODE = "REF-JH2C-4WCH"  # qa.orca.contact@gmail.com referral code
+MARKETING_PROMO_TYPES = {"10", "free"}
 
 
 def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
@@ -104,6 +108,10 @@ def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
         promo_code: The promo code to reset
         promo_type: "10" for 10% promo, "free" for FREE promo
     """
+    if promo_type == "referral":
+        print(f"    Referral code {promo_code} is unlimited-use; no reset needed")
+        return True
+
     try:
         conn = psycopg2.connect(**STAGING_DB)
         cur = conn.cursor()
@@ -450,7 +458,89 @@ TEST_CASES = [
         "promo_code": "TEST10OFF",
         "promo_type": "10",
     },
+    # Referral Code Tests
+    {
+        "name": "Referral code referree 1 (UK now + 60 days)",
+        "days_from_now": 60,
+        "date_timezone": "Europe/London",
+        "duration": 7,
+        "dropoff_time": "09:30",
+        "return_time": "15:30",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "6060",
+        "return_flight_number": "6061",
+        "promo_code": TEST_REFERRAL_CODE,
+        "promo_type": "referral",
+        "customer": {
+            "first_name": "Referral",
+            "last_name": "FriendOne",
+            "email": "qa.orca.contact+referral-friend1@gmail.com",
+        },
+    },
+    {
+        "name": "Referral code referree 2 (UK now + 60 days)",
+        "days_from_now": 60,
+        "date_timezone": "Europe/London",
+        "duration": 14,
+        "dropoff_time": "10:45",
+        "return_time": "16:45",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Malaga",
+        "destination_code": "AGP",
+        "flight_number": "7070",
+        "return_flight_number": "7071",
+        "promo_code": TEST_REFERRAL_CODE,
+        "promo_type": "referral",
+        "customer": {
+            "first_name": "Referral",
+            "last_name": "FriendTwo",
+            "email": "qa.orca.contact+referral-friend2@gmail.com",
+        },
+    },
+    {
+        "name": "Referral code self-use referrer",
+        "days_from_now": 64,
+        "duration": 7,
+        "dropoff_time": "12:00",
+        "return_time": "14:00",
+        "airline": "Jet2",
+        "airline_code": "LS",
+        "destination": "Palma de Mallorca",
+        "destination_code": "PMI",
+        "flight_number": "8080",
+        "return_flight_number": "8081",
+        "promo_code": TEST_REFERRAL_CODE,
+        "promo_type": "referral",
+    },
 ]
+
+
+def get_today_for_test_case(test_case):
+    """Return the test's date anchor; referral referrees use UK date boundaries."""
+    timezone_name = test_case.get("date_timezone")
+    if timezone_name:
+        return datetime.now(ZoneInfo(timezone_name)).date()
+    return datetime.now().date()
+
+
+def is_marketing_promo_test(test_case):
+    return test_case.get("promo_type", "10") in MARKETING_PROMO_TYPES
+
+
+def is_referral_promo_test(test_case):
+    return test_case.get("promo_type") == "referral"
+
+
+def get_promo_only_test_cases():
+    return [tc for tc in TEST_CASES if tc.get("promo_code") and is_marketing_promo_test(tc)]
+
+
+def get_referral_only_test_cases():
+    return [tc for tc in TEST_CASES if is_referral_promo_test(tc)]
 
 
 def format_date_for_picker(date_obj):
@@ -529,10 +619,70 @@ def dismiss_busy_warning(page: Page):
         pass
 
 
+def answer_heard_about_us_if_present(page: Page) -> bool:
+    """Complete the attribution gate shown before terms for unique emails."""
+    section = page.locator(".heard-about-us-section")
+    try:
+        if not section.is_visible(timeout=3000):
+            return True
+    except Exception:
+        return True
+
+    print("    Completing 'Where did you hear about us?' step...")
+    try:
+        section.locator("select").select_option("google")
+        time.sleep(0.5)
+
+        continue_btn = section.locator(".heard-about-us-submit, button:has-text('Continue')")
+        continue_btn.click()
+        page.locator("input[name='terms']").wait_for(state="attached", timeout=10000)
+        print("    Attribution step completed")
+        return True
+    except Exception as e:
+        print(f"    Error: Could not complete attribution step: {e}")
+        page.screenshot(path="heard_about_us_failed.png")
+        return False
+
+
+def accept_terms(page: Page, test_num: int) -> bool:
+    """Accept checkout terms; payment controls render only after this is checked."""
+    print("    Accepting terms...")
+    time.sleep(1)
+
+    terms_input = page.locator("input[name='terms']")
+
+    try:
+        terms_input.wait_for(state="attached", timeout=10000)
+
+        if terms_input.is_checked(timeout=1000):
+            print("    Terms already accepted")
+            return True
+
+        page.evaluate("document.querySelector('input[name=\"terms\"]').click()")
+        print("    Clicked terms checkbox via JavaScript")
+        time.sleep(0.5)
+
+        if terms_input.is_checked(timeout=1000):
+            print("    Terms checkbox confirmed checked")
+            return True
+
+        page.evaluate("document.querySelector('input[name=\"terms\"]').checked = true")
+        page.evaluate("document.querySelector('input[name=\"terms\"]').dispatchEvent(new Event('change', { bubbles: true }))")
+        print("    Set terms via JavaScript fallback")
+        return terms_input.is_checked(timeout=1000)
+    except Exception as e:
+        print(f"    Error: Could not click terms checkbox: {e}")
+        page.screenshot(path=f"terms_failed_{test_num}.png")
+        return False
+
+
 def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
     """Create a single test booking using the booking form."""
 
-    today = datetime.now().date()
+    customer = {**CUSTOMER, **test_case.get("customer", {})}
+    vehicle = {**VEHICLE, **test_case.get("vehicle", {})}
+
+    today = get_today_for_test_case(test_case)
     dropoff_date = today + timedelta(days=test_case["days_from_now"])
     pickup_date = dropoff_date + timedelta(days=test_case["duration"])
 
@@ -540,6 +690,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
     print(f"  Drop-off: {dropoff_date} at {test_case['dropoff_time']}")
     print(f"  Pickup: {pickup_date} at {test_case['return_time']}")
     print(f"  Duration: {test_case['duration']} days")
+    print(f"  Customer: {customer['email']}")
 
     try:
         # Navigate to booking page. Use "load" instead of "networkidle" —
@@ -775,22 +926,22 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         print("  Step 3: Filling customer details...")
 
         # Fill contact information
-        page.locator("#firstName").fill(CUSTOMER["first_name"])
+        page.locator("#firstName").fill(customer["first_name"])
         time.sleep(0.2)
-        page.locator("#lastName").fill(CUSTOMER["last_name"])
+        page.locator("#lastName").fill(customer["last_name"])
         time.sleep(0.2)
-        page.locator("#email").fill(CUSTOMER["email"])
+        page.locator("#email").fill(customer["email"])
         time.sleep(0.2)
 
         # Phone - using the PhoneInput component
         phone_input = page.locator(".phone-input input[type='tel']")
         phone_input.click()
         time.sleep(0.2)
-        phone_input.fill("+44" + CUSTOMER["phone"])
+        phone_input.fill("+44" + customer["phone"])
         time.sleep(0.3)
 
         # Fill billing address - enter postcode and use manual entry
-        page.locator("#billingPostcode").fill(CUSTOMER["postcode"])
+        page.locator("#billingPostcode").fill(customer["postcode"])
         time.sleep(0.3)
 
         # Click Find Address button
@@ -814,20 +965,20 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
         # Fill address fields if visible/empty
         if not page.locator("#billingAddress1").input_value():
-            page.locator("#billingAddress1").fill(CUSTOMER["address1"])
+            page.locator("#billingAddress1").fill(customer["address1"])
         time.sleep(0.2)
 
         if not page.locator("#billingCity").input_value():
-            page.locator("#billingCity").fill(CUSTOMER["city"])
+            page.locator("#billingCity").fill(customer["city"])
         time.sleep(0.2)
 
         if not page.locator("#billingCounty").input_value():
-            page.locator("#billingCounty").fill(CUSTOMER["county"])
+            page.locator("#billingCounty").fill(customer["county"])
         time.sleep(0.2)
 
         # Vehicle Information
         print("  Filling vehicle details...")
-        page.locator("#registration").fill(VEHICLE["registration"])
+        page.locator("#registration").fill(vehicle["registration"])
         time.sleep(0.3)
 
         # Click DVLA Lookup button
@@ -842,10 +993,10 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             print("    DVLA verified make:", make_readonly.input_value())
         elif make_select.is_visible(timeout=2000):
             try:
-                make_select.select_option(label=VEHICLE["make"])
+                make_select.select_option(label=vehicle["make"])
                 time.sleep(0.5)
             except:
-                make_select.select_option(value=VEHICLE["make"])
+                make_select.select_option(value=vehicle["make"])
                 time.sleep(0.5)
 
         # Fill colour if needed
@@ -855,7 +1006,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         if colour_readonly.is_visible(timeout=1000):
             print("    DVLA verified colour:", colour_readonly.input_value())
         elif colour_input.is_visible(timeout=1000):
-            colour_input.fill(VEHICLE["colour"])
+            colour_input.fill(vehicle["colour"])
             time.sleep(0.3)
 
         # Select model from dropdown
@@ -864,13 +1015,13 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         model_select = page.locator("select#model")
         if model_select.is_visible(timeout=3000):
             try:
-                model_select.select_option(label=VEHICLE["model"])
-                print(f"    Selected model: {VEHICLE['model']}")
+                model_select.select_option(label=vehicle["model"])
+                print(f"    Selected model: {vehicle['model']}")
             except:
-                print(f"    Model {VEHICLE['model']} not found, selecting Other...")
+                print(f"    Model {vehicle['model']} not found, selecting Other...")
                 model_select.select_option(value="Other")
                 time.sleep(0.3)
-                page.locator("#customModel").fill(VEHICLE["model"])
+                page.locator("#customModel").fill(vehicle["model"])
             time.sleep(0.5)
         else:
             print("    Model dropdown not visible yet")
@@ -889,6 +1040,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         promo_code = test_case.get("promo_code")
         promo_type = test_case.get("promo_type", "10")
         if promo_code:
+            promo_applied = False
             print(f"    Applying promo code: {promo_code}")
             time.sleep(1)
 
@@ -910,37 +1062,23 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
                     if promo_success.is_visible(timeout=3000):
                         print(f"    Promo code {promo_code} applied successfully!")
+                        promo_applied = True
                     else:
-                        print(f"    Warning: Could not confirm promo code applied")
-            else:
-                print("    Warning: Promo code input not found")
-
-        # Accept terms checkbox - click the checkbox input directly, not the label links
-        print("    Accepting terms...")
-        time.sleep(1)
-
-        terms_input = page.locator("input[name='terms']")
-
-        try:
-            # Check if already checked
-            if terms_input.is_checked():
-                print("    Terms already accepted")
-            else:
-                # Use JavaScript to check the checkbox - most reliable method
-                page.evaluate("document.querySelector('input[name=\"terms\"]').click()")
-                print("    Clicked terms checkbox via JavaScript")
-                time.sleep(0.5)
-
-                # Verify it's checked
-                if terms_input.is_checked():
-                    print("    Terms checkbox confirmed checked")
+                        print(f"    Error: Could not confirm promo code applied")
                 else:
-                    # Fallback: force set checked state
-                    page.evaluate("document.querySelector('input[name=\"terms\"]').checked = true")
-                    page.evaluate("document.querySelector('input[name=\"terms\"]').dispatchEvent(new Event('change', { bubbles: true }))")
-                    print("    Set terms via JavaScript fallback")
-        except Exception as e:
-            print(f"    Warning: Could not click terms checkbox: {e}")
+                    print("    Error: Promo code Apply button not found")
+            else:
+                print("    Error: Promo code input not found")
+
+            if not promo_applied:
+                page.screenshot(path=f"promo_apply_failed_{test_num}.png")
+                return False
+
+        if not answer_heard_about_us_if_present(page):
+            return False
+
+        if not accept_terms(page, test_num):
+            return False
         time.sleep(1)
 
         # Free-booking short-circuit: 100% promo bookings render the green
@@ -1135,8 +1273,11 @@ def main():
         elif SINGLE_TEST:
             test_cases_to_run = TEST_CASES[:1]
         elif PROMO_ONLY:
-            test_cases_to_run = [tc for tc in TEST_CASES if tc.get("promo_code")]
+            test_cases_to_run = get_promo_only_test_cases()
             print(f"Running PROMO_ONLY: {len(test_cases_to_run)} promo code tests")
+        elif REFERRAL_ONLY:
+            test_cases_to_run = get_referral_only_test_cases()
+            print(f"Running REFERRAL_ONLY: {len(test_cases_to_run)} referral code tests")
         elif TEST_FILTER:
             test_cases_to_run = [tc for tc in TEST_CASES if TEST_FILTER.lower() in tc["name"].lower()]
             print(f"Running tests matching '{TEST_FILTER}': {len(test_cases_to_run)} tests")

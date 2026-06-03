@@ -5,19 +5,21 @@ These tests do not create a database engine. Service tests use small fake
 Session/Query objects, and API tests override dependencies or patch service
 boundaries in the same style as the existing mocked integration suite.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import referral_service
-from db_models import BookingStatus, Customer, PromoCode, Promotion, ReferralAttribution, ReferralProgram
+from db_models import Booking, BookingStatus, Customer, PromoCode, Promotion, ReferralAttribution, ReferralProgram, Vehicle
 
 
 class FakeQuery:
@@ -434,7 +436,144 @@ class TestAttributionAndRewards:
         assert result is attribution
         assert attribution.status == referral_service.ATTRIBUTION_STATUS_QUALIFIED
         assert program.qualified_referral_count == 6
+        assert db.flush_count >= 1
         ensure_reward.assert_called_once()
+
+    def test_completed_friend_booking_recomputes_program_count_immediately(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        attribution = SimpleNamespace(
+            booking_id=22,
+            is_self_use=False,
+            status=referral_service.ATTRIBUTION_STATUS_PENDING,
+            qualified_at=None,
+            program=program,
+            referral_program_id=program.id,
+        )
+        booking = SimpleNamespace(id=22, status=BookingStatus.COMPLETED)
+        db = FakeReferralDb()
+        db.queries[ReferralAttribution] = FakeQuery(first_row=attribution, count_value=1)
+
+        with patch("referral_service.ensure_reward_code") as ensure_reward:
+            referral_service.qualify_referral_for_booking(db, booking)
+
+        assert attribution.status == referral_service.ATTRIBUTION_STATUS_QUALIFIED
+        assert program.qualified_referral_count == 1
+        assert db.flush_count >= 1
+        ensure_reward.assert_not_called()
+
+    def test_completed_friend_booking_flushes_before_real_orm_count_with_autoflush_off(self):
+        engine = create_engine("sqlite:///:memory:")
+        tables = [
+            Customer.__table__,
+            Vehicle.__table__,
+            Booking.__table__,
+            Promotion.__table__,
+            PromoCode.__table__,
+            ReferralProgram.__table__,
+            ReferralAttribution.__table__,
+        ]
+        Customer.metadata.create_all(engine, tables=tables)
+        Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        db = Session()
+        try:
+            referrer = Customer(
+                first_name="Ref",
+                last_name="Errer",
+                email="referrer@example.com",
+                phone="07700900001",
+            )
+            friend = Customer(
+                first_name="Friend",
+                last_name="User",
+                email="friend@example.com",
+                phone="07700900002",
+            )
+            db.add_all([referrer, friend])
+            db.flush()
+
+            vehicle = Vehicle(
+                customer_id=friend.id,
+                registration="QA26REF",
+                make="Tesla",
+                model="Model 3",
+                colour="Blue",
+            )
+            program = ReferralProgram(
+                customer_id=referrer.id,
+                status=referral_service.PROGRAM_STATUS_OPTED_IN,
+                qualified_referral_count=0,
+            )
+            promotion = Promotion(
+                name="Referral Friends",
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            db.add_all([vehicle, program, promotion])
+            db.flush()
+
+            promo_code = PromoCode(
+                promotion_id=promotion.id,
+                code="REF-QA26-TEST",
+                customer_id=referrer.id,
+                max_uses=0,
+            )
+            booking = Booking(
+                reference="REFQA26",
+                customer_id=friend.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.COMPLETED,
+                dropoff_date=date(2026, 6, 5),
+                dropoff_time=time(8, 0),
+                pickup_date=date(2026, 6, 12),
+                pickup_time=time(14, 0),
+            )
+            db.add_all([promo_code, booking])
+            db.flush()
+
+            attribution = ReferralAttribution(
+                referral_program_id=program.id,
+                referrer_customer_id=referrer.id,
+                referred_customer_id=friend.id,
+                booking_id=booking.id,
+                promo_code_id=promo_code.id,
+                is_self_use=False,
+                status=referral_service.ATTRIBUTION_STATUS_PENDING,
+            )
+            db.add(attribution)
+            db.flush()
+
+            with patch("referral_service.ensure_reward_code") as ensure_reward:
+                referral_service.qualify_referral_for_booking(db, booking)
+
+            assert attribution.status == referral_service.ATTRIBUTION_STATUS_QUALIFIED
+            assert program.qualified_referral_count == 1
+            ensure_reward.assert_not_called()
+        finally:
+            db.close()
+
+    def test_completed_self_use_disqualifies_and_recomputes_program_count(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.qualified_referral_count = 1
+        attribution = SimpleNamespace(
+            booking_id=22,
+            is_self_use=True,
+            status=referral_service.ATTRIBUTION_STATUS_QUALIFIED,
+            qualified_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            program=program,
+            referral_program_id=program.id,
+        )
+        booking = SimpleNamespace(id=22, status=BookingStatus.COMPLETED)
+        db = FakeReferralDb()
+        db.queries[ReferralAttribution] = FakeQuery(first_row=attribution, count_value=0)
+
+        result = referral_service.qualify_referral_for_booking(db, booking)
+
+        assert result is attribution
+        assert attribution.status == referral_service.ATTRIBUTION_STATUS_DISQUALIFIED
+        assert attribution.qualified_at is None
+        assert program.qualified_referral_count == 0
+        assert db.flush_count >= 1
 
     def test_seventh_referral_does_not_duplicate_existing_reward(self):
         program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)

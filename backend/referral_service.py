@@ -286,6 +286,8 @@ def respond_to_referral_invite(
 
 
 def recompute_referral_progress(db: Session, program: ReferralProgram) -> int:
+    # Make in-session attribution status changes visible to the count query.
+    db.flush()
     qualified_count = db.query(ReferralAttribution).filter(
         ReferralAttribution.referral_program_id == program.id,
         ReferralAttribution.is_self_use == False,
@@ -526,6 +528,12 @@ def qualify_referral_for_booking(
 
     if attribution.is_self_use:
         attribution.status = ATTRIBUTION_STATUS_DISQUALIFIED
+        attribution.qualified_at = None
+        program = attribution.program or db.query(ReferralProgram).filter(
+            ReferralProgram.id == attribution.referral_program_id
+        ).first()
+        if program:
+            recompute_referral_progress(db, program)
         return attribution
 
     if booking.status != BookingStatus.COMPLETED:
