@@ -257,6 +257,15 @@ export const calculateShiftTotal = (employees = []) => employees.reduce((total, 
   return total + (Number.isFinite(shifts) ? shifts : 0)
 }, 0)
 
+const DEFAULT_COLLAPSED_SECTIONS = {
+  dropoffs: true,
+  pickups: true,
+  shifts: true,
+  availableShifts: true,
+  holidays: true,
+  unavailability: true,
+}
+
 function RosterCalendar({
   token,
   isAdmin = false,
@@ -432,14 +441,7 @@ function RosterCalendar({
   const [releasingShift, setReleasingShift] = useState(false)
 
   // Collapsible sections state (collapsed by default)
-  const [collapsedSections, setCollapsedSections] = useState({
-    dropoffs: true,
-    pickups: true,
-    shifts: true,
-    availableShifts: true,
-    holidays: true,
-    unavailability: true,
-  })
+  const [collapsedSections, setCollapsedSections] = useState(DEFAULT_COLLAPSED_SECTIONS)
 
   const toggleSection = (section) => {
     setCollapsedSections(prev => ({
@@ -1192,23 +1194,46 @@ function RosterCalendar({
     )
   }
 
-  // Handle date selection - close modal if open, otherwise open modal
+  const resetDetailDisclosure = () => {
+    setCollapsedSections({ ...DEFAULT_COLLAPSED_SECTIONS })
+    setExpandedShiftIds(new Set())
+    setSelectedShiftIds([])
+    setFocusReview(null)
+  }
+
+  const closeAdminActionModals = () => {
+    setShowShiftModal(false)
+    setEditingShift(null)
+    setDateBookings([])
+    setDuplicateMode(false)
+    setAdditionalStaffIds([])
+    setShowDeleteModal(false)
+    setShiftToDelete(null)
+    setShowBulkEditModal(false)
+    setDuplicateModal(null)
+    setMergeModal(null)
+    setSplitModal(null)
+    setUnassignModal(null)
+    setV3DeleteModal(null)
+    setBulkDuplicateModal(null)
+    setBulkUnassignModal(null)
+    setBulkDeleteModal(null)
+    setActionError('')
+  }
+
+  // Handle date selection - always open a fresh collapsed day detail.
   const handleDateClick = (day) => {
     if (!day) return
     const dateKey = getDateKey(day)
-    if (showDetailModal) {
-      // Close modal first
-      setShowDetailModal(false)
-      setSelectedDate(null)
-    } else {
-      // Open modal for this date
-      setSelectedDate(dateKey)
-      setShowDetailModal(true)
-    }
+    closeAdminActionModals()
+    resetDetailDisclosure()
+    setSelectedDate(dateKey)
+    setShowDetailModal(true)
   }
 
   const openShiftExceptionReview = (exception) => {
     if (!exception?.date) return
+    closeAdminActionModals()
     const suggestedShiftId = exception.suggested_shift?.id || null
     if (isAdmin && suggestedShiftId && sourceFilter !== 'all') {
       const visible = shifts.some((shift) => shift.id === suggestedShiftId)
@@ -1236,7 +1261,7 @@ function RosterCalendar({
   const closeDetailModal = () => {
     setShowDetailModal(false)
     setSelectedDate(null)
-    setFocusReview(null)
+    resetDetailDisclosure()
   }
 
   // Modal handlers
