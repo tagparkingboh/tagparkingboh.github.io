@@ -9,6 +9,12 @@
  * - Form validation
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const adminSource = fs.readFileSync(path.resolve(__dirname, '../Admin.jsx'), 'utf8')
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -466,6 +472,16 @@ describe('Admin Testimonials Form Validation', () => {
 
       expect(isValid).toBe(true)
     })
+  })
+})
+
+describe('Admin Testimonials Theme Preview', () => {
+  it('wires detected review themes into the testimonial form preview', () => {
+    expect(adminSource).toContain('detectTestimonialThemes')
+    expect(adminSource).toContain('TESTIMONIAL_THEME_DEFINITIONS')
+    expect(adminSource).toContain('detectedTestimonialThemes')
+    expect(adminSource).toContain('testimonial-theme-preview')
+    expect(adminSource).toContain('testimonial-theme-pill')
   })
 })
 

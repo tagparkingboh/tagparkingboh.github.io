@@ -16873,6 +16873,83 @@ def format_testimonial(t) -> dict:
     }
 
 
+TESTIMONIAL_BUZZ_THEMES = [
+    ("Recommend", [
+        r"\bhighly recommend(?:ed)?\b", r"\brecommend(?:ed|ation)?\b",
+    ]),
+    ("Easy", [
+        r"\beasy\b", r"\bsimple\b", r"\bstraightforward\b", r"\bdoddle\b",
+    ]),
+    ("Friendly Team", [
+        r"\bfriendly\b", r"\bhelpful\b", r"\blovely\b", r"\bpolite\b", r"\bcourteous\b",
+        r"\bteam\b", r"\bstaff\b", r"\bdriver(?:s)?\b",
+    ]),
+    ("Stress Free", [
+        r"\bstress[-\s]?free\b", r"\bhassle[-\s]?free\b", r"\bno hassle\b",
+        r"\bworry[-\s]?free\b", r"\bno fuss\b", r"\bpeace of mind\b",
+    ]),
+    ("On Time", [
+        r"\bon[-\s]?time\b", r"\bpunctual\b", r"\bprompt\b", r"\btimely\b",
+        r"\bwaiting for us\b", r"\bready when we arrived\b",
+    ]),
+    ("Professional", [
+        r"\bprofessional\b", r"\befficient\b", r"\breliable\b", r"\bcommunicative\b",
+        r"\bresponsive\b", r"\battentive\b", r"\bwell[-\s]?organised\b", r"\bwell[-\s]?organized\b",
+    ]),
+    ("Good Value", [
+        r"\bgood value\b", r"\bgreat value\b", r"\bexcellent value\b", r"\bvalue for money\b",
+        r"\bgood price\b", r"\bgreat price\b", r"\baffordable\b", r"\bcheaper\b", r"\bworth it\b",
+    ]),
+    ("Safe & Secure", [
+        r"\bsafe\b", r"\bsecure\b", r"\bsecurity\b", r"\bclean\b",
+        r"\bconfident\b", r"\breassured\b",
+    ]),
+    ("Use Again", [
+        r"\buse again\b", r"\bused again\b", r"\bwill use\b", r"\bwould use\b",
+        r"\bdefinitely use again\b", r"\bwill be back\b", r"\bcoming back\b",
+    ]),
+    ("Smooth Service", [
+        r"\bsmooth\b", r"\bseamless\b", r"\bconvenient\b", r"\bflawless\b",
+        r"\bno issues\b", r"\bno problems\b", r"\bwithout issue\b",
+    ]),
+    ("Fantastic", [
+        r"\bfantastic\b", r"\bamazing\b", r"\bbrilliant\b", r"\bexcellent\b",
+        r"\bgreat\b", r"\bperfect\b", r"\boutstanding\b", r"\bincredible\b",
+        r"\bsuperb\b", r"\btop[-\s]?notch\b", r"\bfirst[-\s]?class\b", r"\bimpressed\b",
+        r"\bbest\b", r"\bspot on\b",
+    ]),
+]
+
+
+def extract_testimonial_buzz_themes(review_text: str, max_themes: int = 10):
+    """Return up to max_themes positive theme labels detected in one review."""
+    if not review_text:
+        return []
+    text_lower = review_text.lower()
+    themes = []
+    for label, patterns in TESTIMONIAL_BUZZ_THEMES:
+        if any(re.search(pattern, text_lower) for pattern in patterns):
+            themes.append(label)
+        if len(themes) >= max_themes:
+            break
+    return themes
+
+
+def build_testimonial_buzz_words(testimonials, min_count: int = 2):
+    """Count each detected theme once per review across active testimonials."""
+    from collections import Counter
+
+    theme_counts = Counter()
+    for t in testimonials:
+        for theme in extract_testimonial_buzz_themes(getattr(t, "review_text", "")):
+            theme_counts[theme] += 1
+    return [
+        {"word": theme, "count": count}
+        for theme, count in theme_counts.most_common()
+        if count >= min_count
+    ]
+
+
 @app.get("/api/admin/testimonials")
 async def get_all_testimonials(
     star_rating: Optional[int] = None,
@@ -17048,8 +17125,6 @@ async def get_active_testimonials(
     Also returns aggregate stats and buzz words.
     """
     from db_models import Testimonial, TestimonialStatus
-    import re
-    from collections import Counter
 
     # Get active testimonials
     testimonials = db.query(Testimonial).filter(
@@ -17069,66 +17144,7 @@ async def get_active_testimonials(
         recommend_count = 0
         recommend_percent = 0
 
-    # Extract buzz words from review text
-    # Curated list of positive service keywords from actual customer reviews
-    BUZZ_WORDS = [
-        # Service quality
-        "friendly", "helpful", "professional", "efficient", "reliable",
-        "polite", "courteous", "communicative", "responsive",
-        "thorough", "attentive", "careful",
-        # Speed
-        "punctual", "quick", "fast", "prompt", "timely",
-        "on time", "on-time",
-        # Ease
-        "easy", "seamless", "smooth", "simple", "convenient",
-        "stress-free", "hassle-free", "worry free", "worry-free",
-        "no fuss", "doddle", "straightforward",
-        # Praise
-        "great", "excellent", "amazing", "fantastic", "brilliant",
-        "perfect", "outstanding", "flawless", "incredible", "superb",
-        "top notch", "top service", "impressed", "first class",
-        "recommend", "recommended",
-        # Satisfaction
-        "happy", "pleased", "satisfied", "delighted",
-        # Trust
-        "safe", "secure", "clean", "confident", "reassured",
-        "no issues", "no problems", "peace of mind",
-        "couldn't fault", "can't fault", "no hidden fees",
-        # Loyalty
-        "definitely use again", "will use again", "use again",
-        "will be back", "coming back",
-        # Value
-        "affordable", "good value", "excellent value", "value for money",
-        "good price", "great price", "cheaper", "worth it",
-        # Organisation
-        "well organised", "well organized",
-    ]
-
-    # Count buzz word occurrences across all reviews
-    word_counts = Counter()
-    for t in testimonials:
-        text_lower = t.review_text.lower()
-        for word in BUZZ_WORDS:
-            # Count each word once per review (not multiple times in same review)
-            if word in text_lower:
-                word_counts[word] += 1
-
-    # Merge "cheaper" count into "value for money" (cheaper lacks context)
-    if "cheaper" in word_counts:
-        word_counts["value for money"] += word_counts.pop("cheaper")
-
-    # Merge all "use again" variants into single "use again" entry
-    use_again_variants = ["definitely use again", "will use again", "will be back", "coming back"]
-    for variant in use_again_variants:
-        if variant in word_counts:
-            word_counts["use again"] += word_counts.pop(variant)
-
-    # Get all buzz words appearing in at least 2 reviews (sorted by count)
-    buzz_words = [
-        {"word": word.title(), "count": count}
-        for word, count in word_counts.most_common()
-        if count >= 2
-    ]
+    buzz_words = build_testimonial_buzz_words(testimonials)
 
     # Build weighted pool
     weighted_pool = []

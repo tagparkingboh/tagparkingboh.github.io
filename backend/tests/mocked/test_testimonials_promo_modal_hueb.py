@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi.testclient import TestClient
-from main import app, require_admin
+from main import app, extract_testimonial_buzz_themes, require_admin
 from database import get_db
 
 
@@ -302,11 +302,11 @@ class TestPublicTestimonials:
             _testimonial(id=1, star_rating=5,
                          review_text="Friendly staff, great service, would use again"),
             _testimonial(id=2, star_rating=4,
-                         review_text="Excellent service, recommend to all"),
+                         review_text="Excellent service, highly recommend to all"),
             _testimonial(id=3, star_rating=3,
                          review_text="Adequate parking, did the job"),
             _testimonial(id=4, star_rating=None,
-                         review_text="Smooth experience from start to finish"),
+                         review_text="Smooth, stress free experience from start to finish"),
             _testimonial(id=5, star_rating=2, is_featured=True,
                          review_text="Had some issues but staff fixed everything quickly"),
         ]
@@ -317,10 +317,33 @@ class TestPublicTestimonials:
         # 5★ x5 + 4★ x3 + 3★ x1 + unrated x3 + featured 2★ x1 = 13
         assert body["total"] == 13
         assert body["stats"]["average_rating"] > 0
-        # buzz words appear in at least 2 reviews
-        # "service" and "staff" appear in 2+ of the example reviews
         buzz_words = body["stats"]["buzz_words"]
-        assert isinstance(buzz_words, list)
+        buzz_by_word = {item["word"]: item["count"] for item in buzz_words}
+        assert buzz_by_word["Friendly Team"] == 2
+        assert buzz_by_word["Fantastic"] == 2
+
+    def test_H_buzz_theme_detection_groups_synonyms_and_caps_per_review(self):
+        text = (
+            "Highly recommend. Easy, straightforward, friendly staff, lovely driver, "
+            "stress-free and on time. Professional, great value, safe, smooth, fantastic, "
+            "will use again, excellent, top notch."
+        )
+
+        themes = extract_testimonial_buzz_themes(text)
+
+        assert themes == [
+            "Recommend",
+            "Easy",
+            "Friendly Team",
+            "Stress Free",
+            "On Time",
+            "Professional",
+            "Good Value",
+            "Safe & Secure",
+            "Use Again",
+            "Smooth Service",
+        ]
+        assert len(themes) == 10
 
     def test_E_no_active_testimonials(self):
         _override_public(self._wire([]))

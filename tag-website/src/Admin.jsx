@@ -16,6 +16,31 @@ import './Admin.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const REFERRALS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 const REFERRALS_DEFAULT_PAGE_SIZE = 10
+const TESTIMONIAL_THEME_DEFINITIONS = [
+  ['Recommend', [/\bhighly recommend(?:ed)?\b/i, /\brecommend(?:ed|ation)?\b/i]],
+  ['Easy', [/\beasy\b/i, /\bsimple\b/i, /\bstraightforward\b/i, /\bdoddle\b/i]],
+  ['Friendly Team', [/\bfriendly\b/i, /\bhelpful\b/i, /\blovely\b/i, /\bpolite\b/i, /\bcourteous\b/i, /\bteam\b/i, /\bstaff\b/i, /\bdriver(?:s)?\b/i]],
+  ['Stress Free', [/\bstress[-\s]?free\b/i, /\bhassle[-\s]?free\b/i, /\bno hassle\b/i, /\bworry[-\s]?free\b/i, /\bno fuss\b/i, /\bpeace of mind\b/i]],
+  ['On Time', [/\bon[-\s]?time\b/i, /\bpunctual\b/i, /\bprompt\b/i, /\btimely\b/i, /\bwaiting for us\b/i, /\bready when we arrived\b/i]],
+  ['Professional', [/\bprofessional\b/i, /\befficient\b/i, /\breliable\b/i, /\bcommunicative\b/i, /\bresponsive\b/i, /\battentive\b/i, /\bwell[-\s]?organised\b/i, /\bwell[-\s]?organized\b/i]],
+  ['Good Value', [/\bgood value\b/i, /\bgreat value\b/i, /\bexcellent value\b/i, /\bvalue for money\b/i, /\bgood price\b/i, /\bgreat price\b/i, /\baffordable\b/i, /\bcheaper\b/i, /\bworth it\b/i]],
+  ['Safe & Secure', [/\bsafe\b/i, /\bsecure\b/i, /\bsecurity\b/i, /\bclean\b/i, /\bconfident\b/i, /\breassured\b/i]],
+  ['Use Again', [/\buse again\b/i, /\bused again\b/i, /\bwill use\b/i, /\bwould use\b/i, /\bdefinitely use again\b/i, /\bwill be back\b/i, /\bcoming back\b/i]],
+  ['Smooth Service', [/\bsmooth\b/i, /\bseamless\b/i, /\bconvenient\b/i, /\bflawless\b/i, /\bno issues\b/i, /\bno problems\b/i, /\bwithout issue\b/i]],
+  ['Fantastic', [/\bfantastic\b/i, /\bamazing\b/i, /\bbrilliant\b/i, /\bexcellent\b/i, /\bgreat\b/i, /\bperfect\b/i, /\boutstanding\b/i, /\bincredible\b/i, /\bsuperb\b/i, /\btop[-\s]?notch\b/i, /\bfirst[-\s]?class\b/i, /\bimpressed\b/i, /\bbest\b/i, /\bspot on\b/i]],
+]
+
+const detectTestimonialThemes = (reviewText, maxThemes = 10) => {
+  if (!reviewText?.trim()) return []
+  const themes = []
+  for (const [theme, patterns] of TESTIMONIAL_THEME_DEFINITIONS) {
+    if (patterns.some(pattern => pattern.test(reviewText))) {
+      themes.push(theme)
+    }
+    if (themes.length >= maxThemes) break
+  }
+  return themes
+}
 
 // Sidebar navigation structure
 const NAV_STRUCTURE = [
@@ -867,6 +892,10 @@ function Admin() {
   const [testimonialToDelete, setTestimonialToDelete] = useState(null)
   const [deletingTestimonial, setDeletingTestimonial] = useState(false)
   const [testimonialSuccessMessage, setTestimonialSuccessMessage] = useState('')
+  const detectedTestimonialThemes = useMemo(
+    () => detectTestimonialThemes(testimonialForm.review_text),
+    [testimonialForm.review_text]
+  )
 
   // Promo Modals state
   const [promoModals, setPromoModals] = useState([])
@@ -16258,6 +16287,16 @@ function Admin() {
                   placeholder="Enter the customer's review..."
                   rows={4}
                 />
+                {detectedTestimonialThemes.length > 0 && (
+                  <div className="testimonial-theme-preview" aria-label="Detected testimonial themes">
+                    <span className="testimonial-theme-preview-label">Themes</span>
+                    <div className="testimonial-theme-pills">
+                      {detectedTestimonialThemes.map(theme => (
+                        <span key={theme} className="testimonial-theme-pill">{theme}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="form-row">

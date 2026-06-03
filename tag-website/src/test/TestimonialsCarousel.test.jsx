@@ -835,30 +835,20 @@ describe('TestimonialsCarousel - Stats Bar', () => {
 })
 
 // =============================================================================
-// Cycling Stats Display Tests - Two Line Format
+// Cycling Stats Display Tests - Three Theme Format
 // =============================================================================
 
-describe('TestimonialsCarousel - Cycling Stats (Two Line Format)', () => {
-  // Mirror the formatBuzzWord function from component
+describe('TestimonialsCarousel - Cycling Stats (Three Theme Format)', () => {
   const formatBuzzWord = (word) => {
     const w = word.toLowerCase()
-    if (w.startsWith('recommend')) return { phrase: "say they'd", buzzWord: 'Recommend' }
-    if (w === 'impressed') return { phrase: 'say they were', buzzWord: 'Impressed' }
-    if (w === 'no issues' || w === 'no problems') return { phrase: 'say there were', buzzWord: word }
-    if (w === 'no hidden fees') return { phrase: 'say there are', buzzWord: word }
-    if (w === 'no fuss') return { phrase: "say there's", buzzWord: 'No Fuss' }
-    if (w === 'peace of mind') return { phrase: 'say it gives', buzzWord: 'Peace Of Mind' }
-    if (w === 'value for money') return { phrase: "say it's good", buzzWord: 'Value For Money' }
-    if (w === 'doddle') return { phrase: "say it's a", buzzWord: 'Doddle' }
-    if (w === "couldn't fault" || w === "can't fault") return { phrase: "say they couldn't", buzzWord: 'Fault It' }
-    // Loyalty phrases
-    if (w.includes('use again') || w.includes('will be back') || w.includes('coming back')) return { phrase: "say they'll", buzzWord: 'Use Again' }
-    // Satisfaction phrases
-    if (w === 'happy' || w === 'pleased' || w === 'satisfied' || w === 'delighted') return { phrase: 'say they were', buzzWord: word }
-    // Confidence phrases
-    if (w === 'confident' || w === 'reassured') return { phrase: 'say they felt', buzzWord: word }
-    // Worth it
-    if (w === 'worth it') return { phrase: "say it's", buzzWord: 'Worth It' }
+    if (w === 'recommend') return { phrase: "say they'd", buzzWord: 'Recommend' }
+    if (w === 'friendly team') return { phrase: 'mention', buzzWord: 'Friendly Team' }
+    if (w === 'stress free') return { phrase: "say it's", buzzWord: 'Stress Free' }
+    if (w === 'on time') return { phrase: 'say we are', buzzWord: 'On Time' }
+    if (w === 'good value') return { phrase: "say it's", buzzWord: 'Good Value' }
+    if (w === 'safe & secure') return { phrase: 'felt', buzzWord: 'Safe & Secure' }
+    if (w === 'use again') return { phrase: "say they'll", buzzWord: 'Use Again' }
+    if (w === 'smooth service') return { phrase: 'mention', buzzWord: 'Smooth Service' }
     return { phrase: "say it's", buzzWord: word }
   }
 
@@ -868,215 +858,49 @@ describe('TestimonialsCarousel - Cycling Stats (Two Line Format)', () => {
       return { count: bw.count, phrase, buzzWord }
     }) || []
 
-  describe('Happy path - Default phrasing (say its)', () => {
-    it('should format friendly correctly', () => {
-      const items = buildCyclingItems([{ word: 'Friendly', count: 12 }])
-      expect(items[0].phrase).toBe("say it's")
-      expect(items[0].buzzWord).toBe('Friendly')
-    })
+  const buildCyclingGroups = (items) => {
+    const groups = []
+    for (let i = 0; i < items.length; i += 3) {
+      groups.push(items.slice(i, i + 3))
+    }
+    return groups
+  }
 
-    it('should format easy correctly', () => {
-      const items = buildCyclingItems([{ word: 'Easy', count: 8 }])
-      expect(items[0].phrase).toBe("say it's")
-      expect(items[0].buzzWord).toBe('Easy')
-    })
+  it('formats grouped testimonial themes with human phrasing', () => {
+    const items = buildCyclingItems([
+      { word: 'Recommend', count: 85 },
+      { word: 'Friendly Team', count: 42 },
+      { word: 'On Time', count: 31 },
+      { word: 'Safe & Secure', count: 9 },
+    ])
 
-    it('should format great correctly', () => {
-      const items = buildCyclingItems([{ word: 'Great', count: 5 }])
-      expect(items[0].phrase).toBe("say it's")
-      expect(items[0].buzzWord).toBe('Great')
-    })
+    expect(items[0]).toEqual({ count: 85, phrase: "say they'd", buzzWord: 'Recommend' })
+    expect(items[1]).toEqual({ count: 42, phrase: 'mention', buzzWord: 'Friendly Team' })
+    expect(items[2]).toEqual({ count: 31, phrase: 'say we are', buzzWord: 'On Time' })
+    expect(items[3]).toEqual({ count: 9, phrase: 'felt', buzzWord: 'Safe & Secure' })
   })
 
-  describe('Happy path - Special phrasings', () => {
-    it('should format recommend as say theyd', () => {
-      const items = buildCyclingItems([{ word: 'Recommend', count: 16 }])
-      expect(items[0].phrase).toBe("say they'd")
-      expect(items[0].buzzWord).toBe('Recommend')
-    })
+  it('groups homepage buzz stats in threes', () => {
+    const items = buildCyclingItems([
+      { word: 'Recommend', count: 85 },
+      { word: 'Easy', count: 64 },
+      { word: 'Friendly Team', count: 41 },
+      { word: 'Stress Free', count: 33 },
+    ])
+    const groups = buildCyclingGroups(items)
 
-    it('should format impressed as say they were', () => {
-      const items = buildCyclingItems([{ word: 'Impressed', count: 4 }])
-      expect(items[0].phrase).toBe('say they were')
-      expect(items[0].buzzWord).toBe('Impressed')
-    })
-
-    it('should format no issues as say there were', () => {
-      const items = buildCyclingItems([{ word: 'No Issues', count: 3 }])
-      expect(items[0].phrase).toBe('say there were')
-      expect(items[0].buzzWord).toBe('No Issues')
-    })
-
-    it('should format no hidden fees as say there are', () => {
-      const items = buildCyclingItems([{ word: 'No Hidden Fees', count: 2 }])
-      expect(items[0].phrase).toBe('say there are')
-      expect(items[0].buzzWord).toBe('No Hidden Fees')
-    })
-
-    it('should format no fuss as say theres', () => {
-      const items = buildCyclingItems([{ word: 'No Fuss', count: 2 }])
-      expect(items[0].phrase).toBe("say there's")
-      expect(items[0].buzzWord).toBe('No Fuss')
-    })
-
-    it('should format peace of mind as say it gives', () => {
-      const items = buildCyclingItems([{ word: 'Peace Of Mind', count: 2 }])
-      expect(items[0].phrase).toBe('say it gives')
-      expect(items[0].buzzWord).toBe('Peace Of Mind')
-    })
-
-    it('should format value for money as say its good', () => {
-      const items = buildCyclingItems([{ word: 'Value For Money', count: 4 }])
-      expect(items[0].phrase).toBe("say it's good")
-      expect(items[0].buzzWord).toBe('Value For Money')
-    })
-
-    it('should format doddle as say its a', () => {
-      const items = buildCyclingItems([{ word: 'Doddle', count: 2 }])
-      expect(items[0].phrase).toBe("say it's a")
-      expect(items[0].buzzWord).toBe('Doddle')
-    })
-
-    it('should format couldnt fault as say they couldnt', () => {
-      const items = buildCyclingItems([{ word: "Couldn't Fault", count: 2 }])
-      expect(items[0].phrase).toBe("say they couldn't")
-      expect(items[0].buzzWord).toBe('Fault It')
-    })
+    expect(groups).toHaveLength(2)
+    expect(groups[0].map(item => item.buzzWord)).toEqual(['Recommend', 'Easy', 'Friendly Team'])
+    expect(groups[1].map(item => item.buzzWord)).toEqual(['Stress Free'])
   })
 
-  describe('Edge cases - Variations', () => {
-    it('should handle recommended variant', () => {
-      const items = buildCyclingItems([{ word: 'Recommended', count: 5 }])
-      expect(items[0].phrase).toBe("say they'd")
-      expect(items[0].buzzWord).toBe('Recommend')
-    })
-
-    it('should handle no problems same as no issues', () => {
-      const items = buildCyclingItems([{ word: 'No Problems', count: 2 }])
-      expect(items[0].phrase).toBe('say there were')
-    })
-
-    it('should handle cant fault variant', () => {
-      const items = buildCyclingItems([{ word: "Can't Fault", count: 2 }])
-      expect(items[0].phrase).toBe("say they couldn't")
-      expect(items[0].buzzWord).toBe('Fault It')
-    })
-
-    it('should handle hyphenated buzz words', () => {
-      const items = buildCyclingItems([{ word: 'Stress-Free', count: 5 }])
-      expect(items[0].phrase).toBe("say it's")
-      expect(items[0].buzzWord).toBe('Stress-Free')
-    })
-  })
-
-  describe('Unhappy path - Missing data', () => {
-    it('should handle empty buzz words array', () => {
-      const items = buildCyclingItems([])
-      expect(items.length).toBe(0)
-    })
-
-    it('should handle undefined buzz words', () => {
-      const items = buildCyclingItems(undefined)
-      expect(items.length).toBe(0)
-    })
-  })
-
-  describe('Boundaries - Cycling behavior', () => {
-    const mockBuzzWords = [
-      { word: 'Friendly', count: 12 },
-      { word: 'Easy', count: 8 },
-      { word: 'Recommend', count: 6 },
-    ]
-
-    it('should cycle through all items', () => {
-      const items = buildCyclingItems(mockBuzzWords)
-      expect(items.length).toBe(3)
-    })
-
-    it('should wrap around after last item', () => {
-      const items = buildCyclingItems(mockBuzzWords)
-      let idx = items.length - 1
-      idx = (idx + 1) % items.length
-      expect(idx).toBe(0)
-    })
-
-    it('should handle cycling through all items', () => {
-      const items = buildCyclingItems(mockBuzzWords)
-      let idx = 0
-      const visited = []
-      for (let i = 0; i < items.length; i++) {
-        visited.push(items[idx].buzzWord)
-        idx = (idx + 1) % items.length
-      }
-      expect(visited).toEqual(['Friendly', 'Easy', 'Recommend'])
-    })
-
-    it('should return to start after full cycle', () => {
-      const cyclingItems = buildCyclingItems(mockBuzzWords)
-      let cyclingIndex = 0
-      for (let i = 0; i < cyclingItems.length; i++) {
-        cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
-      }
-      expect(cyclingIndex).toBe(0)
-    })
-
-    it('should handle many buzz words (no limit)', () => {
-      const buzzWords = Array.from({ length: 20 }, (_, i) => ({
-        word: `Word${i}`,
-        count: 20 - i,
-      }))
-      const cyclingItems = buildCyclingItems(buzzWords)
-      expect(cyclingItems.length).toBe(20)
-    })
-  })
-
-  describe('Happy path - New buzz word phrasings', () => {
-    it('should format use again as say theyll', () => {
-      const items = buildCyclingItems([{ word: 'Definitely Use Again', count: 5 }])
-      expect(items[0].phrase).toBe("say they'll")
-      expect(items[0].buzzWord).toBe('Use Again')
-    })
-
-    it('should format will be back as say theyll', () => {
-      const items = buildCyclingItems([{ word: 'Will Be Back', count: 3 }])
-      expect(items[0].phrase).toBe("say they'll")
-      expect(items[0].buzzWord).toBe('Use Again')
-    })
-
-    it('should format happy as say they were', () => {
-      const items = buildCyclingItems([{ word: 'Happy', count: 2 }])
-      expect(items[0].phrase).toBe('say they were')
-      expect(items[0].buzzWord).toBe('Happy')
-    })
-
-    it('should format pleased as say they were', () => {
-      const items = buildCyclingItems([{ word: 'Pleased', count: 2 }])
-      expect(items[0].phrase).toBe('say they were')
-      expect(items[0].buzzWord).toBe('Pleased')
-    })
-
-    it('should format confident as say they felt', () => {
-      const items = buildCyclingItems([{ word: 'Confident', count: 3 }])
-      expect(items[0].phrase).toBe('say they felt')
-      expect(items[0].buzzWord).toBe('Confident')
-    })
-
-    it('should format reassured as say they felt', () => {
-      const items = buildCyclingItems([{ word: 'Reassured', count: 2 }])
-      expect(items[0].phrase).toBe('say they felt')
-      expect(items[0].buzzWord).toBe('Reassured')
-    })
-
-    it('should format worth it correctly', () => {
-      const items = buildCyclingItems([{ word: 'Worth It', count: 2 }])
-      expect(items[0].phrase).toBe("say it's")
-      expect(items[0].buzzWord).toBe('Worth It')
-    })
-
-    it('should format thorough with default phrasing', () => {
-      const items = buildCyclingItems([{ word: 'Thorough', count: 2 }])
-      expect(items[0].phrase).toBe("say it's")
-      expect(items[0].buzzWord).toBe('Thorough')
+  it('handles empty and legacy buzz words gracefully', () => {
+    expect(buildCyclingItems([])).toEqual([])
+    expect(buildCyclingItems(undefined)).toEqual([])
+    expect(buildCyclingItems([{ word: 'Helpful', count: 5 }])[0]).toEqual({
+      count: 5,
+      phrase: "say it's",
+      buzzWord: 'Helpful',
     })
   })
 })

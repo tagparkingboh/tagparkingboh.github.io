@@ -58,25 +58,14 @@ function TestimonialsCarousel() {
   // Build cycling items from buzz words with proper phrasing
   const formatBuzzWord = (word) => {
     const w = word.toLowerCase()
-    // Special phrasings for specific buzz words
-    if (w.startsWith('recommend')) return { phrase: "say they'd", buzzWord: 'Recommend' }
-    if (w === 'impressed') return { phrase: 'say they were', buzzWord: 'Impressed' }
-    if (w === 'no issues' || w === 'no problems') return { phrase: 'say there were', buzzWord: word }
-    if (w === 'no hidden fees') return { phrase: 'say there are', buzzWord: word }
-    if (w === 'no fuss') return { phrase: "say there's", buzzWord: 'No Fuss' }
-    if (w === 'peace of mind') return { phrase: 'say it gives', buzzWord: 'Peace Of Mind' }
-    if (w === 'value for money') return { phrase: "say it's good", buzzWord: 'Value For Money' }
-    if (w === 'doddle') return { phrase: "say it's a", buzzWord: 'Doddle' }
-    if (w === "couldn't fault" || w === "can't fault") return { phrase: "say they couldn't", buzzWord: 'Fault It' }
-    // Loyalty phrases
-    if (w.includes('use again') || w.includes('will be back') || w.includes('coming back')) return { phrase: "say they'll", buzzWord: 'Use Again' }
-    // Satisfaction phrases
-    if (w === 'happy' || w === 'pleased' || w === 'satisfied' || w === 'delighted') return { phrase: 'say they were', buzzWord: word }
-    // Confidence phrases
-    if (w === 'confident' || w === 'reassured') return { phrase: 'say they felt', buzzWord: word }
-    // Worth it
-    if (w === 'worth it') return { phrase: "say it's", buzzWord: 'Worth It' }
-    // Default: "say it's"
+    if (w === 'recommend') return { phrase: "say they'd", buzzWord: 'Recommend' }
+    if (w === 'friendly team') return { phrase: 'mention', buzzWord: 'Friendly Team' }
+    if (w === 'stress free') return { phrase: "say it's", buzzWord: 'Stress Free' }
+    if (w === 'on time') return { phrase: 'say we are', buzzWord: 'On Time' }
+    if (w === 'good value') return { phrase: "say it's", buzzWord: 'Good Value' }
+    if (w === 'safe & secure') return { phrase: 'felt', buzzWord: 'Safe & Secure' }
+    if (w === 'use again') return { phrase: "say they'll", buzzWord: 'Use Again' }
+    if (w === 'smooth service') return { phrase: 'mention', buzzWord: 'Smooth Service' }
     return { phrase: "say it's", buzzWord: word }
   }
 
@@ -84,15 +73,20 @@ function TestimonialsCarousel() {
     const { phrase, buzzWord } = formatBuzzWord(bw.word)
     return { count: bw.count, phrase, buzzWord }
   }) || []
+  const cyclingGroups = []
+  for (let i = 0; i < cyclingItems.length; i += 3) {
+    cyclingGroups.push(cyclingItems.slice(i, i + 3))
+  }
+  const currentBuzzGroup = cyclingGroups[cyclingIndex] || []
 
-  // Cycle through items every 2 seconds
+  // Cycle through groups every 3 seconds
   useEffect(() => {
-    if (cyclingItems.length <= 1) return
+    if (cyclingGroups.length <= 1) return
     const interval = setInterval(() => {
-      setCyclingIndex((prev) => (prev + 1) % cyclingItems.length)
-    }, 2000)
+      setCyclingIndex((prev) => (prev + 1) % cyclingGroups.length)
+    }, 3000)
     return () => clearInterval(interval)
-  }, [cyclingItems.length])
+  }, [cyclingGroups.length])
 
   // Render star rating (or nothing for unrated)
   const renderRating = (rating) => {
@@ -189,16 +183,20 @@ function TestimonialsCarousel() {
               <span className="stat-value">{stats.total_count}</span>
               <span className="stat-label">Reviews</span>
             </div>
-            {cyclingItems.length > 0 && (
+            {currentBuzzGroup.length > 0 && (
               <>
                 <div className="stat-divider" />
                 <div className="stat-box stat-box-buzz">
-                  <span className="stat-buzz-line1">
-                    {cyclingItems[cyclingIndex]?.count}× {cyclingItems[cyclingIndex]?.phrase}
-                  </span>
-                  <span className="stat-buzz-line2">
-                    "{cyclingItems[cyclingIndex]?.buzzWord}"
-                  </span>
+                  {currentBuzzGroup.map((item) => (
+                    <div className="stat-buzz-item" key={item.buzzWord}>
+                      <span className="stat-buzz-line1">
+                        {item.count}× {item.phrase}
+                      </span>
+                      <span className="stat-buzz-line2">
+                        "{item.buzzWord}"
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </>
             )}

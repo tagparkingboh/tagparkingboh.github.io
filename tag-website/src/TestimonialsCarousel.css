@@ -92,25 +92,33 @@
 
 /* Cycling Buzz Word - Two Line Display */
 .stat-box-buzz {
-  min-width: 180px;
-  text-align: center;
+  min-width: 260px;
+  align-items: flex-start;
+  gap: 0.55rem;
+  text-align: left;
+}
+
+.stat-buzz-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 0.45rem;
+  max-width: 100%;
+  animation: buzzFade 3s ease-in-out infinite;
 }
 
 .stat-buzz-line1 {
-  font-size: 1.1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: #fff;
-  display: block;
-  animation: buzzFade 2s ease-in-out infinite;
+  white-space: nowrap;
 }
 
 .stat-buzz-line2 {
-  font-size: 1.4rem;
+  font-size: 1.08rem;
   font-weight: 700;
   color: var(--lime-green);
-  display: block;
-  margin-top: 0.2rem;
-  animation: buzzFade 2s ease-in-out infinite;
+  overflow-wrap: anywhere;
 }
 
 @keyframes buzzFade {
@@ -726,6 +734,8 @@
   }
 
   .stats-bar {
+    flex-wrap: wrap;
+    gap: 0.75rem;
     padding: 1rem;
   }
 
@@ -746,11 +756,20 @@
   }
 
   .stat-box-buzz {
-    min-width: 120px;
+    min-width: 100%;
+    align-items: center;
+    text-align: center;
+  }
+
+  .stat-box-buzz .stat-buzz-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    row-gap: 0.1rem;
   }
 
   .stat-buzz-line1 {
     font-size: 0.85rem;
+    white-space: normal;
   }
 
   .stat-buzz-line2 {
