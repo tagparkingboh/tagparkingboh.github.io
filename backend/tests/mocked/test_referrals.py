@@ -1034,7 +1034,7 @@ class TestAdminReferralsDashboard:
         finally:
             db.close()
 
-    def test_H_dashboard_shows_invite_source_and_sorts_by_invite_time(self):
+    def test_H_dashboard_shows_invite_source_and_sorts_by_latest_referral_activity(self):
         from main import build_referrals_dashboard_data
 
         db = self._session()
@@ -1044,18 +1044,48 @@ class TestAdminReferralsDashboard:
             db.add_all([old_customer, new_customer])
             db.flush()
 
+            promotion = Promotion(
+                name=referral_service.FRIEND_PROMOTION_NAME,
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            db.add(promotion)
+            db.flush()
+
+            old_code = PromoCode(
+                promotion_id=promotion.id,
+                customer_id=old_customer.id,
+                code="REF-AUTO-NEW",
+                max_uses=0,
+                email_sent_at=datetime(2026, 6, 3, 16, 44, tzinfo=timezone.utc),
+            )
+            new_code = PromoCode(
+                promotion_id=promotion.id,
+                customer_id=new_customer.id,
+                code="REF-SOCIAL-OLD",
+                max_uses=0,
+                email_sent_at=datetime(2026, 6, 3, 16, 15, tzinfo=timezone.utc),
+            )
+            db.add_all([old_code, new_code])
+            db.flush()
+
             db.add_all([
                 ReferralProgram(
                     customer_id=old_customer.id,
-                    status=referral_service.PROGRAM_STATUS_INVITED,
+                    status=referral_service.PROGRAM_STATUS_OPTED_IN,
                     invite_source=referral_service.INVITE_SOURCE_BOOKING,
-                    invite_sent_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+                    invite_sent_at=datetime(2026, 6, 3, 15, 40, tzinfo=timezone.utc),
+                    responded_at=datetime(2026, 6, 3, 16, 43, tzinfo=timezone.utc),
+                    referral_code_id=old_code.id,
                 ),
                 ReferralProgram(
                     customer_id=new_customer.id,
-                    status=referral_service.PROGRAM_STATUS_INVITED,
+                    status=referral_service.PROGRAM_STATUS_OPTED_IN,
                     invite_source=referral_service.INVITE_SOURCE_SOCIAL,
-                    invite_sent_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+                    invite_sent_at=datetime(2026, 6, 3, 16, 9, tzinfo=timezone.utc),
+                    responded_at=datetime(2026, 6, 3, 16, 14, tzinfo=timezone.utc),
+                    referral_code_id=new_code.id,
                 ),
             ])
             db.commit()
@@ -1063,13 +1093,14 @@ class TestAdminReferralsDashboard:
             dashboard = build_referrals_dashboard_data(db)
 
             assert [row["email"] for row in dashboard["customers"]] == [
-                "social@example.com",
                 "auto@example.com",
+                "social@example.com",
             ]
-            assert dashboard["customers"][0]["invite_source"] == referral_service.INVITE_SOURCE_SOCIAL
-            assert dashboard["customers"][0]["invite_source_label"] == "Social"
-            assert dashboard["customers"][1]["invite_source"] == referral_service.INVITE_SOURCE_BOOKING
-            assert dashboard["customers"][1]["invite_source_label"] == "Booking"
+            assert dashboard["customers"][0]["invite_source"] == referral_service.INVITE_SOURCE_BOOKING
+            assert dashboard["customers"][0]["invite_source_label"] == "Booking"
+            assert dashboard["customers"][0]["code_email_sent_at"].startswith("2026-06-03T16:44:00")
+            assert dashboard["customers"][1]["invite_source"] == referral_service.INVITE_SOURCE_SOCIAL
+            assert dashboard["customers"][1]["invite_source_label"] == "Social"
         finally:
             db.close()
 

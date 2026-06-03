@@ -4820,7 +4820,15 @@ def build_referrals_dashboard_data(
             joinedload(ReferralProgram.referral_code),
             joinedload(ReferralProgram.reward_code),
         )
-        .order_by(func.coalesce(ReferralProgram.invite_sent_at, ReferralProgram.created_at).desc(), ReferralProgram.id.desc())
+        .order_by(
+            func.coalesce(
+                ProgramCode.email_sent_at,
+                ReferralProgram.responded_at,
+                ReferralProgram.invite_sent_at,
+                ReferralProgram.created_at,
+            ).desc(),
+            ReferralProgram.id.desc(),
+        )
         .offset(customer_offset)
         .limit(customer_limit)
         .all()
