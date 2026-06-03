@@ -200,6 +200,16 @@ def _referral_code_section(label: str, code: str) -> str:
     """
 
 
+def _remove_unsubscribe_block(html_content: str) -> str:
+    start_marker = "<!-- Unsubscribe -->"
+    end_marker = "<!-- Copyright -->"
+    start = html_content.find(start_marker)
+    end = html_content.find(end_marker)
+    if start == -1 or end == -1 or end <= start:
+        return html_content
+    return html_content[:start] + html_content[end:]
+
+
 def _send_referral_email(
     email: str,
     first_name: str,
@@ -225,6 +235,7 @@ def _send_referral_email(
     })
     if html_content is None:
         return False
+    html_content = _remove_unsubscribe_block(html_content)
     return send_email(email, subject, html_content)
 
 

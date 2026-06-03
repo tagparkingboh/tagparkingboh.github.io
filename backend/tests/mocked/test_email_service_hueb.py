@@ -435,6 +435,8 @@ class TestReferralBrandedTemplates:
         assert "https://api.test/yes" in captured["html"]
         assert "https://api.test/no" in captured["html"]
         assert "Yes, send my code" in captured["html"]
+        assert "Unsubscribe" not in captured["html"]
+        assert "/api/marketing/unsubscribe" not in captured["html"]
 
     def test_code_email_uses_marketing_campaign_wrapper_and_code_block(self, monkeypatch):
         captured = {}
@@ -455,6 +457,8 @@ class TestReferralBrandedTemplates:
         assert "Tag logo strapline MASTER BLACK" in captured["html"]
         assert "REF-ABCD-EFGH" in captured["html"]
         assert "Your referral code:" in captured["html"]
+        assert "Unsubscribe" not in captured["html"]
+        assert "/api/marketing/unsubscribe" not in captured["html"]
 
 
 # ============================================================================
