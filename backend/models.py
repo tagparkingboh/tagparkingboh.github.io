@@ -661,6 +661,34 @@ class RosterShiftResponse(BaseModel):
         from_attributes = True
 
 
+class ShiftExceptionSuggestedShift(BaseModel):
+    id: int
+    date: date_type
+    end_date: Optional[date_type] = None
+    start_time: str
+    end_time: str
+    status: str
+    intended_driver_type: str = "jockey"
+    created_source: Optional[str] = None
+    staff_id: Optional[int] = None
+    staff_first_name: Optional[str] = None
+    staff_last_name: Optional[str] = None
+
+
+class ShiftExceptionResponse(BaseModel):
+    date: date_type
+    issue: str  # "unlinked_shift" | "no_shift"
+    booking_id: int
+    booking_reference: str
+    booking_customer_name: str
+    event_type: str  # "dropoff" | "pickup"
+    event_time: str
+    flight_number: Optional[str] = None
+    destination: Optional[str] = None
+    linked_shift_ids: List[int] = Field(default_factory=list)
+    suggested_shift: Optional[ShiftExceptionSuggestedShift] = None
+
+
 class AutoAssignRequest(BaseModel):
     """Request to auto-generate shifts from bookings."""
     date_from: date_type
