@@ -202,6 +202,8 @@ def _shift_covers_event(shift: RosterShift, event_dt: datetime) -> bool:
     ev_date = event_dt.date()
     ev_time = event_dt.time()
     end_date = getattr(shift, "end_date", None) or shift.date
+    if end_date == shift.date and shift.end_time < shift.start_time:
+        end_date = shift.date + timedelta(days=1)
     if shift.date == end_date:
         if ev_date != shift.date:
             return False
@@ -227,6 +229,8 @@ def _shift_covers_event_window(
     if start_dt is None or end_dt is None:
         return False
     end_date = getattr(shift, "end_date", None) or shift.date
+    if end_date == shift.date and shift.end_time < shift.start_time:
+        end_date = shift.date + timedelta(days=1)
     span_start = datetime.combine(shift.date, shift.start_time)
     span_end = datetime.combine(end_date, shift.end_time)
     return span_start <= start_dt and end_dt <= span_end
