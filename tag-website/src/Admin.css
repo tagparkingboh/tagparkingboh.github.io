@@ -932,10 +932,72 @@
 }
 
 .referral-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 340px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 8px;
+  min-width: 286px;
+  max-width: 360px;
+}
+
+.referral-action-button {
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.referral-action-button:hover:not(:disabled) {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.referral-action-button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 2px;
+}
+
+.referral-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.referral-action-button-neutral {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #111827;
+}
+
+.referral-action-button-neutral:hover:not(:disabled) {
+  background: #eef2f7;
+  border-color: #64748b;
+}
+
+.referral-action-button-success {
+  background: #ecfdf3;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.referral-action-button-success:hover:not(:disabled) {
+  background: #dcfce7;
+  border-color: #22c55e;
+}
+
+.referral-action-button-danger {
+  background: #fff1f2;
+  border-color: #fca5a5;
+  color: #c53030;
+}
+
+.referral-action-button-danger:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #ef4444;
 }
 
 .referral-summary-line {

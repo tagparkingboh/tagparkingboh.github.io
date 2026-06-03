@@ -15,7 +15,7 @@ import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const REFERRALS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
-const REFERRALS_DEFAULT_PAGE_SIZE = 50
+const REFERRALS_DEFAULT_PAGE_SIZE = 10
 
 // Sidebar navigation structure
 const NAV_STRUCTURE = [
@@ -9830,12 +9830,15 @@ function Admin() {
                                 <td>{formatDateTimeUK(row.reward_email_sent_at)}</td>
                                 <td>
                                   <div className="referral-action-row">
-                                    <button className="btn-secondary btn-small" onClick={() => openCustomerModal({ id: row.customer_id })}>
+                                    <button
+                                      className="referral-action-button referral-action-button-neutral"
+                                      onClick={() => openCustomerModal({ id: row.customer_id })}
+                                    >
                                       View Customer
                                     </button>
                                     {row.code && (
                                       <button
-                                        className="btn-secondary btn-small"
+                                        className="referral-action-button referral-action-button-neutral"
                                         onClick={() => {
                                           setReferralsUsageFilter('all')
                                           setReferralsUsageSearch(row.code)
@@ -9849,21 +9852,21 @@ function Admin() {
                                       </button>
                                     )}
                                     <button
-                                      className="btn-secondary btn-small"
+                                      className="referral-action-button referral-action-button-success"
                                       onClick={() => handleReferralDashboardAction(row, 'resend-code')}
                                       disabled={!!referralDashboardAction || !row.code || !row.code_active}
                                     >
                                       {referralDashboardAction === `${row.customer_id}:resend-code` ? 'Resending...' : 'Resend Code'}
                                     </button>
                                     <button
-                                      className="btn-secondary btn-small"
+                                      className="referral-action-button referral-action-button-success"
                                       onClick={() => handleReferralDashboardAction(row, 'generate-new-code')}
                                       disabled={!!referralDashboardAction}
                                     >
                                       {referralDashboardAction === `${row.customer_id}:generate-new-code` ? 'Generating...' : 'Generate Code'}
                                     </button>
                                     <button
-                                      className="btn-secondary btn-small danger-text"
+                                      className="referral-action-button referral-action-button-danger"
                                       onClick={() => handleReferralDashboardAction(row, 'cancel-code')}
                                       disabled={!!referralDashboardAction || !row.code || !row.code_active}
                                     >

@@ -4659,11 +4659,11 @@ def _booking_status_value(booking):
 
 def build_referrals_dashboard_data(
     db: Session,
-    customer_limit: int = 250,
+    customer_limit: int = 10,
     customer_offset: int = 0,
     customer_filter: str = "all",
     customer_search: str = "",
-    usage_limit: int = 250,
+    usage_limit: int = 10,
     usage_offset: int = 0,
     usage_filter: str = "all",
     usage_search: str = "",
@@ -5061,11 +5061,11 @@ def build_referrals_dashboard_data(
 
 @app.get("/api/admin/marketing/referrals")
 async def get_admin_referrals_dashboard(
-    customer_limit: int = Query(250, ge=1, le=1000),
+    customer_limit: int = Query(10, ge=1, le=1000),
     customer_offset: int = Query(0, ge=0),
     customer_filter: str = Query("all"),
     customer_search: str = Query(""),
-    usage_limit: int = Query(250, ge=1, le=1000),
+    usage_limit: int = Query(10, ge=1, le=1000),
     usage_offset: int = Query(0, ge=0),
     usage_filter: str = Query("all"),
     usage_search: str = Query(""),

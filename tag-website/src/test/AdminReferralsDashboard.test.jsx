@@ -72,7 +72,7 @@ describe('Admin referrals dashboard', () => {
     expect(adminSource).toContain('Showing {referralCustomerStart}-{referralCustomerEnd}')
     expect(adminSource).toContain('Showing {referralUsageStart}-{referralUsageEnd}')
     expect(adminSource).toContain('REFERRALS_PAGE_SIZE_OPTIONS')
-    expect(adminSource).toContain('REFERRALS_DEFAULT_PAGE_SIZE = 50')
+    expect(adminSource).toContain('REFERRALS_DEFAULT_PAGE_SIZE = 10')
     expect(adminSource).toContain('referrals-page-button')
     expect(adminSource).toContain('referrals-page-size')
     expect(adminSource).toContain('Code Email Sent')
@@ -87,6 +87,9 @@ describe('Admin referrals dashboard', () => {
     expect(adminSource).toContain('referralUsageTableRef.current?.scrollIntoView')
     expect(adminSource).toContain('setReferralsUsageOffset(0)')
     expect(adminSource).toContain('referralDashboardActionInFlightRef.current')
+    expect(adminSource).toContain('referral-action-button-neutral')
+    expect(adminSource).toContain('referral-action-button-success')
+    expect(adminSource).toContain('referral-action-button-danger')
   })
 
   it('keeps customer detail compact with a referral details link', () => {
