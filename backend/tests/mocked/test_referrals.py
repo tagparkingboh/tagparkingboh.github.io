@@ -178,7 +178,7 @@ class TestReferralInviteScheduler:
         assert program.invite_sent_at == datetime(2026, 6, 1, tzinfo=timezone.utc)
         send.assert_called_once()
 
-    def test_invite_boundary_query_uses_completed_at_less_than_or_equal_7_day_cutoff(self):
+    def test_invite_boundary_query_uses_completed_at_less_than_or_equal_2_day_cutoff(self):
         customer = make_customer()
         db = FakeReferralDb()
         customer_query = FakeQuery(all_rows=[customer])
@@ -189,7 +189,7 @@ class TestReferralInviteScheduler:
         with patch("email_service.send_referral_invite_email", return_value=True):
             referral_service.process_eligible_referral_invites(db, now=now)
 
-        cutoff = now - timedelta(days=7)
+        cutoff = now - timedelta(days=2)
         assert any(_sql_right_value(arg) == cutoff for arg in customer_query.filter_args)
 
     def test_invite_send_failure_rolls_back_and_does_not_mark_invited(self):

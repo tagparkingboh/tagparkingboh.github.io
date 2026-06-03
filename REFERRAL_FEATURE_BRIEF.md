@@ -2,12 +2,12 @@
 
 ## Goal
 
-Invite customers into a referral program one week after they complete a booking. Customers who opt in receive a unique referral code within one hour. Friends and family can use that code for 10% off their booking. Once enough referred bookings are completed, the referrer receives one free week of parking as a reward.
+Invite customers into a referral program 2 days after they complete a booking. Customers who opt in receive a unique referral code within one hour. Friends and family can use that code for 10% off their booking. Once enough referred bookings are completed, the referrer receives one free week of parking as a reward.
 
 ## Product Rules
 
 1. Eligibility starts when a customer has a booking with `status = completed`.
-2. Eligible customers receive a referral invite email 7 days after the booking is completed, with a clear Yes / No choice.
+2. Eligible customers receive a referral invite email 2 days after the booking is completed, with a clear Yes / No choice.
 3. If the customer clicks No, they are opted out and receive no further referral emails.
 4. If the customer does nothing, they receive one reminder email 4 weeks after the original invite.
 5. If the customer clicks Yes, they are opted in and receive their unique referral code within one hour.
@@ -22,7 +22,7 @@ Invite customers into a referral program one week after they complete a booking.
 
 - Use 6 completed non-self referred bookings as the reward threshold. The user wrote "6/7"; treat that as "after 6, certainly by 7" unless the business confirms a different exact threshold.
 - Invite each customer once, based on customer identity, not once per booking.
-- If a customer has multiple completed bookings, trigger from their first completed booking that is at least 7 days old and has not already produced a referral invite.
+- If a customer has multiple completed bookings, trigger from their first completed booking that is at least 2 days old and has not already produced a referral invite.
 - Generate one reusable referral discount code per opted-in customer.
 - Count reward progress only when the referred booking reaches `completed`, not when it is created or paid.
 - Exclude cancelled, refunded, pending, and confirmed-but-not-completed bookings from reward progress.
@@ -74,14 +74,14 @@ Add a referral program table rather than overloading marketing subscribers.
 
 ### Eligibility Scan
 
-Create a scheduler function that finds customers with at least one booking that has `status = completed` and `completed_at <= now - 7 days`, and no referral program row. Create a row with `eligible`, then send the invite and mark `invited` on success.
+Create a scheduler function that finds customers with at least one booking that has `status = completed` and `completed_at <= now - 2 days`, and no referral program row. Create a row with `eligible`, then send the invite and mark `invited` on success.
 
 Suggested behavior:
 - limit batches to 10-50 customers per run
 - skip customers with no valid email
 - idempotent via unique `customer_id`
 - do not create rows for users already opted out
-- do not invite completed bookings until `completed_at` is present and at least 7 days old
+- do not invite completed bookings until `completed_at` is present and at least 2 days old
 
 ### Invite Response API
 
@@ -143,7 +143,7 @@ Admin/Marketing/Email Campaigns note:
 
 Create templates:
 
-- `referral_invite_email.html`: sent one week after completed parking, asks the customer if they want to join, with Yes and No buttons.
+- `referral_invite_email.html`: sent 2 days after completed parking, asks the customer if they want to join, with Yes and No buttons.
 - `referral_invite_reminder_email.html`: sent once 4 weeks later if no response.
 - `referral_code_email.html`: contains the unique 10% code and short share copy.
 - `referral_reward_email.html`: tells the referrer they earned up to 1 week free parking.
@@ -188,8 +188,8 @@ Checkout:
 ### Eligibility and Invite
 
 - Customer with no completed bookings is not invited.
-- Customer with one completed booking completed less than 7 days ago is not invited.
-- Customer with one completed booking completed 7 or more days ago is invited.
+- Customer with one completed booking completed less than 2 days ago is not invited.
+- Customer with one completed booking completed 2 or more days ago is invited.
 - Customer with several completed bookings receives only one referral program row and one invite.
 - Cancelled/refunded/pending/confirmed-only customers are not invited.
 - Missing/invalid email is skipped without crashing the scheduler.
@@ -272,19 +272,19 @@ Acceptance:
 - Existing booking, promo, and marketing tests still pass.
 - No email or checkout behavior changes yet.
 
-### PR 2: One-Week Invite and Response Flow
+### PR 2: Two-Day Invite and Response Flow
 
 Scope:
 - Add `referral_invite_email.html` and `referral_invite_reminder_email.html`.
 - Add email service functions for invite and reminder.
 - Add signed-token generation/validation for Yes/No links.
 - Add public response endpoint for opt-in/opt-out.
-- Add scheduler job that invites customers 7 days after `completed_at`.
+- Add scheduler job that invites customers 2 days after `completed_at`.
 - Add scheduler job that sends one reminder 4 weeks after unanswered invite.
 
 QA:
-- Completed less than 7 days ago does not invite.
-- Completed 7+ days ago invites exactly once.
+- Completed less than 2 days ago does not invite.
+- Completed 2+ days ago invites exactly once.
 - No response gets one reminder after 4 weeks.
 - Opt-in and opt-out are idempotent.
 - Invalid, expired, or tampered token does not mutate state.
