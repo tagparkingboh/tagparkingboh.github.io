@@ -409,6 +409,54 @@ class TestMarketingCampaign:
         ) is False
 
 
+class TestReferralBrandedTemplates:
+    def test_invite_uses_marketing_campaign_wrapper_and_buttons(self, monkeypatch):
+        captured = {}
+
+        def fake_send_email(to_email, subject, html_content):
+            captured["to_email"] = to_email
+            captured["subject"] = subject
+            captured["html"] = html_content
+            return True
+
+        monkeypatch.setattr(email_service, "send_email", fake_send_email)
+
+        assert email_service.send_referral_invite_email(
+            "Jo",
+            "jo@example.com",
+            "https://api.test/yes",
+            "https://api.test/no",
+        ) is True
+
+        assert captured["to_email"] == "jo@example.com"
+        assert captured["subject"] == "Jo, join Tag's referral program?"
+        assert "#CCFF00" in captured["html"] or "#ccff00" in captured["html"]
+        assert "Tag logo strapline MASTER BLACK" in captured["html"]
+        assert "https://api.test/yes" in captured["html"]
+        assert "https://api.test/no" in captured["html"]
+        assert "Yes, send my code" in captured["html"]
+
+    def test_code_email_uses_marketing_campaign_wrapper_and_code_block(self, monkeypatch):
+        captured = {}
+
+        def fake_send_email(to_email, subject, html_content):
+            captured["html"] = html_content
+            return True
+
+        monkeypatch.setattr(email_service, "send_email", fake_send_email)
+
+        assert email_service.send_referral_code_email(
+            "Jo",
+            "jo@example.com",
+            "REF-ABCD-EFGH",
+        ) is True
+
+        assert "#CCFF00" in captured["html"] or "#ccff00" in captured["html"]
+        assert "Tag logo strapline MASTER BLACK" in captured["html"]
+        assert "REF-ABCD-EFGH" in captured["html"]
+        assert "Your referral code:" in captured["html"]
+
+
 # ============================================================================
 # Founder direct-send paths (non-send_email): exception + non-2xx branches
 # ============================================================================

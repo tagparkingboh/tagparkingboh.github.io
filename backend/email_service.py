@@ -156,38 +156,114 @@ def _send_template_email(email: str, subject: str, template_name: str, replaceme
     return send_email(email, subject, html_content)
 
 
+def _render_template(template_name: str, replacements: dict) -> Optional[str]:
+    template_path = EMAIL_TEMPLATES_DIR / template_name
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        for key, value in replacements.items():
+            html_content = html_content.replace(f"{{{{{key}}}}}", str(value or ""))
+        return html_content
+    except FileNotFoundError:
+        logger.error(f"Email template not found at {template_path}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading email template {template_name}: {e}")
+        return None
+
+
+def _referral_action_buttons(yes_url: str, no_url: str) -> str:
+    return f"""
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+      <tr>
+        <td align="left" style="padding: 20px 0 8px;">
+          <a href="{yes_url}" style="display:inline-block; padding:12px 18px; background:#181818; color:#ccff00; text-decoration:none; border-radius:6px; font-weight:bold;">Yes, send my code</a>
+          <a href="{no_url}" style="display:inline-block; padding:12px 18px; margin-left:8px; background:#ffffff; color:#181818; text-decoration:none; border-radius:6px; font-weight:bold;">No thanks</a>
+        </td>
+      </tr>
+    </table>
+    """
+
+
+def _referral_code_section(label: str, code: str) -> str:
+    return f"""
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+      <tr>
+        <td align="center" style="padding: 20px 0;">
+          <div style="background-color:#181818; border-radius:8px; padding:20px; display:inline-block;">
+            <p style="margin:0 0 10px 0; font-size:14px; color:#ccff00;">{label}</p>
+            <p style="margin:0; font-size:28px; font-weight:bold; color:#ffffff; letter-spacing:2px;">{code}</p>
+          </div>
+        </td>
+      </tr>
+    </table>
+    """
+
+
+def _send_referral_email(
+    email: str,
+    first_name: str,
+    subject: str,
+    template_name: str,
+    replacements: dict,
+    promo_code_section: str = "",
+) -> bool:
+    message = _render_template(template_name, replacements)
+    if message is None:
+        return False
+
+    founder_name = os.getenv("FOUNDER_NAME", "Kristian")
+    api_base_url = os.getenv("API_BASE_URL", "https://tagparkingbohgithubio-production.up.railway.app")
+    html_content = _render_template("marketing_campaign_email.html", {
+        "SUBJECT": subject,
+        "FIRST_NAME": first_name or "there",
+        "MESSAGE": message,
+        "PROMO_CODE_SECTION": promo_code_section,
+        "FOUNDER_NAME": founder_name,
+        "UNSUBSCRIBE_URL": f"{api_base_url}/api/marketing/unsubscribe",
+        "PREVIEW_TEXT": subject[:100],
+    })
+    if html_content is None:
+        return False
+    return send_email(email, subject, html_content)
+
+
 def send_referral_invite_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
     subject = f"{first_name}, join Tag's referral program?"
-    return _send_template_email(email, subject, "referral_invite_email.html", {
-        "FIRST_NAME": first_name,
-        "YES_URL": yes_url,
-        "NO_URL": no_url,
+    return _send_referral_email(email, first_name, subject, "referral_invite_email.html", {
+        "ACTION_BUTTONS": _referral_action_buttons(yes_url, no_url),
     })
 
 
 def send_referral_invite_reminder_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
     subject = f"{first_name}, still interested in Tag referrals?"
-    return _send_template_email(email, subject, "referral_invite_reminder_email.html", {
-        "FIRST_NAME": first_name,
-        "YES_URL": yes_url,
-        "NO_URL": no_url,
+    return _send_referral_email(email, first_name, subject, "referral_invite_reminder_email.html", {
+        "ACTION_BUTTONS": _referral_action_buttons(yes_url, no_url),
     })
 
 
 def send_referral_code_email(first_name: str, email: str, referral_code: str) -> bool:
     subject = f"{first_name}, your Tag referral code is ready"
-    return _send_template_email(email, subject, "referral_code_email.html", {
-        "FIRST_NAME": first_name,
-        "REFERRAL_CODE": referral_code,
-    })
+    return _send_referral_email(
+        email,
+        first_name,
+        subject,
+        "referral_code_email.html",
+        {},
+        promo_code_section=_referral_code_section("Your referral code:", referral_code),
+    )
 
 
 def send_referral_reward_email(first_name: str, email: str, reward_code: str) -> bool:
     subject = f"{first_name}, you earned a Tag referral reward"
-    return _send_template_email(email, subject, "referral_reward_email.html", {
-        "FIRST_NAME": first_name,
-        "REWARD_CODE": reward_code,
-    })
+    return _send_referral_email(
+        email,
+        first_name,
+        subject,
+        "referral_reward_email.html",
+        {},
+        promo_code_section=_referral_code_section("Your reward code:", reward_code),
+    )
 
 
 def send_login_code_email(email: str, first_name: str, code: str) -> bool:
