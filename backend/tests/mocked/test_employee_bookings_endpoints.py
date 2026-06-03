@@ -821,10 +821,18 @@ class TestCompleteBookingRefundedTransition:
     def _wire(self, mock_db_session, booking, current_user):
         from main import app, get_db, get_current_user
 
-        mock_query = MagicMock()
-        mock_query.filter.return_value = mock_query
-        mock_query.first.return_value = booking
-        mock_db_session.query.return_value = mock_query
+        def query_for(first_result):
+            mock_query = MagicMock()
+            mock_query.filter.return_value = mock_query
+            mock_query.first.return_value = first_result
+            return mock_query
+
+        def query(model):
+            if getattr(model, "__name__", "") == "Booking":
+                return query_for(booking)
+            return query_for(None)
+
+        mock_db_session.query.side_effect = query
 
         app.dependency_overrides[get_db] = lambda: mock_db_session
         app.dependency_overrides[get_current_user] = lambda: current_user
@@ -855,6 +863,126 @@ class TestCompleteBookingRefundedTransition:
             mock_db.commit.assert_called_once()
         finally:
             app.dependency_overrides.clear()
+
+    def test_happy_completed_booking_updates_referral_count_via_testclient(self):
+        """Completing a referred booking through the endpoint updates referral progress."""
+        from fastapi.testclient import TestClient
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        import referral_service
+        from main import app, get_current_user, get_db
+        from db_models import (
+            Booking,
+            BookingStatus,
+            Customer,
+            PromoCode,
+            Promotion,
+            ReferralAttribution,
+            ReferralProgram,
+            Vehicle,
+        )
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        tables = [
+            Customer.__table__,
+            Vehicle.__table__,
+            Booking.__table__,
+            Promotion.__table__,
+            PromoCode.__table__,
+            ReferralProgram.__table__,
+            ReferralAttribution.__table__,
+        ]
+        Customer.metadata.create_all(engine, tables=tables)
+        Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        db = Session()
+
+        try:
+            referrer = Customer(
+                first_name="Ref",
+                last_name="Errer",
+                email="referrer-client@example.com",
+                phone="07700901001",
+            )
+            friend = Customer(
+                first_name="Friend",
+                last_name="Client",
+                email="friend-client@example.com",
+                phone="07700901002",
+            )
+            db.add_all([referrer, friend])
+            db.flush()
+
+            vehicle = Vehicle(
+                customer_id=friend.id,
+                registration="TC26REF",
+                make="Tesla",
+                model="Model Y",
+                colour="Black",
+            )
+            program = ReferralProgram(
+                customer_id=referrer.id,
+                status=referral_service.PROGRAM_STATUS_OPTED_IN,
+                qualified_referral_count=0,
+            )
+            promotion = Promotion(
+                name="Referral Friends",
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            db.add_all([vehicle, program, promotion])
+            db.flush()
+
+            promo_code = PromoCode(
+                promotion_id=promotion.id,
+                code="REF-TC26-TEST",
+                customer_id=referrer.id,
+                max_uses=0,
+            )
+            booking = Booking(
+                reference="REFTC26",
+                customer_id=friend.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.CONFIRMED,
+                dropoff_date=date(2026, 6, 5),
+                dropoff_time=time(8, 0),
+                pickup_date=date(2026, 6, 12),
+                pickup_time=time(14, 0),
+            )
+            db.add_all([promo_code, booking])
+            db.flush()
+
+            attribution = ReferralAttribution(
+                referral_program_id=program.id,
+                referrer_customer_id=referrer.id,
+                referred_customer_id=friend.id,
+                booking_id=booking.id,
+                promo_code_id=promo_code.id,
+                is_self_use=False,
+                status=referral_service.ATTRIBUTION_STATUS_PENDING,
+            )
+            db.add(attribution)
+            db.commit()
+
+            app.dependency_overrides[get_db] = lambda: db
+            app.dependency_overrides[get_current_user] = lambda: MagicMock(is_active=True)
+
+            response = TestClient(app).post(f"/api/employee/bookings/{booking.id}/complete")
+
+            assert response.status_code == 200, response.text
+            assert response.json()["success"] is True
+            assert booking.status == BookingStatus.COMPLETED
+            assert attribution.status == referral_service.ATTRIBUTION_STATUS_QUALIFIED
+            assert program.qualified_referral_count == 1
+        finally:
+            app.dependency_overrides.clear()
+            db.close()
 
     def test_unhappy_cancelled_booking_still_rejected_with_400(self):
         """Cancelled bookings remain terminal (no completion path)."""

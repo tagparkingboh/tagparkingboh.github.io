@@ -15,7 +15,11 @@ from db_models import (
     BookingStatus, PaymentStatus, ServiceType
 )
 
-E2E_CAPACITY_EXCLUDED_EMAILS = ("qa.orca.contact@gmail.com",)
+E2E_CAPACITY_EXCLUDED_EMAILS = (
+    "qa.orca.contact@gmail.com",
+    "qa.orca.contact+referral-friend1@gmail.com",
+    "qa.orca.contact+referral-friend2@gmail.com",
+)
 
 
 def should_exclude_staging_e2e_capacity_bookings() -> bool:
@@ -518,6 +522,15 @@ def record_refund(
             booking = get_booking_by_id(db, payment.booking_id)
             if booking:
                 booking.status = BookingStatus.REFUNDED
+                try:
+                    from referral_service import disqualify_referral_for_booking
+
+                    disqualify_referral_for_booking(db, booking)
+                except Exception as referral_error:
+                    print(
+                        "[referrals] Failed to disqualify refunded referral "
+                        f"for booking {booking.id}: {referral_error}"
+                    )
         else:
             payment.status = PaymentStatus.PARTIALLY_REFUNDED
 

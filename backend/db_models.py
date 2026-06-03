@@ -126,6 +126,7 @@ class Customer(Base):
     vehicles = relationship("Vehicle", back_populates="customer")
     bookings = relationship("Booking", back_populates="customer")
     marketing_source = relationship("MarketingSource", back_populates="customer", uselist=False)
+    referral_program = relationship("ReferralProgram", back_populates="customer", uselist=False)
 
     def __repr__(self):
         return f"<Customer {self.first_name} {self.last_name} ({self.email})>"
@@ -1370,6 +1371,62 @@ class PromoCodeUsage(Base):
 
     def __repr__(self):
         return f"<PromoCodeUsage code_id={self.promo_code_id} booking_id={self.booking_id}>"
+
+
+class ReferralProgram(Base):
+    """Customer referral program enrollment and reward progress."""
+    __tablename__ = "referral_programs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, unique=True, index=True)
+    status = Column(String(20), nullable=False, default="eligible", index=True)
+
+    invite_sent_at = Column(DateTime(timezone=True), nullable=True)
+    reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+    responded_at = Column(DateTime(timezone=True), nullable=True)
+
+    referral_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=True, index=True)
+    reward_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=True, index=True)
+    qualified_referral_count = Column(Integer, nullable=False, default=0)
+    reward_earned_at = Column(DateTime(timezone=True), nullable=True)
+    reward_email_sent_at = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    customer = relationship("Customer", back_populates="referral_program")
+    referral_code = relationship("PromoCode", foreign_keys=[referral_code_id])
+    reward_code = relationship("PromoCode", foreign_keys=[reward_code_id])
+    attributions = relationship("ReferralAttribution", back_populates="program")
+
+    def __repr__(self):
+        return f"<ReferralProgram customer_id={self.customer_id} status={self.status}>"
+
+
+class ReferralAttribution(Base):
+    """Links a referral promo-code use to a booking and later qualification."""
+    __tablename__ = "referral_attributions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    referral_program_id = Column(Integer, ForeignKey("referral_programs.id"), nullable=False, index=True)
+    referrer_customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    referred_customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, unique=True, index=True)
+    promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False, index=True)
+
+    is_self_use = Column(Boolean, nullable=False, default=False)
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    qualified_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    program = relationship("ReferralProgram", back_populates="attributions")
+    referrer = relationship("Customer", foreign_keys=[referrer_customer_id])
+    referred_customer = relationship("Customer", foreign_keys=[referred_customer_id])
+    booking = relationship("Booking")
+    promo_code = relationship("PromoCode")
+
+    def __repr__(self):
+        return f"<ReferralAttribution booking_id={self.booking_id} status={self.status}>"
 
 
 class ShiftBookingLink(Base):
