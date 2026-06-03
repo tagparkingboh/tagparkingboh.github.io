@@ -213,9 +213,9 @@
 
 .shift-exception-banner {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
   background: rgba(245, 166, 35, 0.14);
   border: 1px solid #f5a623;
   color: #f8d18a;
@@ -224,35 +224,58 @@
   margin-bottom: 15px;
 }
 
-.shift-exception-banner > div {
+.shift-exception-banner-header {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-.shift-exception-banner strong {
+.shift-exception-banner-header strong {
   color: #fff;
   font-size: 0.95rem;
 }
 
-.shift-exception-banner span {
-  font-size: 0.85rem;
+.shift-exception-banner-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.shift-exception-banner button {
-  background: #f5a623;
-  border: 1px solid #f5a623;
-  color: #1a1a2e;
+.shift-exception-banner-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  background: rgba(26, 26, 46, 0.48);
+  border: 1px solid rgba(245, 166, 35, 0.42);
   border-radius: 6px;
-  padding: 8px 14px;
-  font-weight: 700;
-  cursor: pointer;
-  flex: 0 0 auto;
+  padding: 7px 9px;
+  color: #f8d18a;
 }
 
-.shift-exception-banner button:hover {
-  background: #ffbf47;
+.shift-exception-banner-item strong {
+  color: #d9ff00;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.shift-exception-banner-item span {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .shift-exception-banner-list {
+    flex-direction: column;
+  }
+
+  .shift-exception-banner-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 
 /* Calendar Grid */

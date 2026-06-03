@@ -2687,16 +2687,22 @@ function RosterCalendar({
       {successMessage && <div className="roster-success">{successMessage}</div>}
       {isAdmin && shiftExceptions.length > 0 && (
         <div className="shift-exception-banner" role="status">
-          <div>
+          <div className="shift-exception-banner-header">
             <strong>{shiftExceptions.length} booking{shiftExceptions.length === 1 ? '' : 's'} need shift review</strong>
-            <span>
-              {shiftExceptions[0].booking_reference} · {formatDateUK(shiftExceptions[0].date)} @ {formatTime(shiftExceptions[0].event_time)}
-              {shiftExceptions.length > 1 && ` + ${shiftExceptions.length - 1} more`}
-            </span>
           </div>
-          <button type="button" onClick={() => openShiftExceptionReview(shiftExceptions[0])}>
-            Review
-          </button>
+          <div className="shift-exception-banner-list" aria-label="Bookings needing shift review">
+            {shiftExceptions.map((exception) => (
+              <div
+                key={`${exception.booking_id}-${exception.event_type}-${exception.event_time}-${exception.date}`}
+                className="shift-exception-banner-item"
+              >
+                <strong>{exception.booking_reference}</strong>
+                <span>{formatDateUK(exception.date)} @ {formatTime(exception.event_time)}</span>
+                <span>{exception.event_type === 'dropoff' ? 'Drop-off' : 'Pick-up'}</span>
+                <span>{exception.booking_customer_name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
