@@ -1,6 +1,6 @@
 name: Scheduled E2E Staging Tests
 
-# Runs the 22-test booking-flow Playwright suite across 5 browser/device envs
+# Runs the 25-test booking-flow Playwright suite across the staging browser matrix
 # (chromium / firefox / webkit / iOS Safari iPhone / iOS Safari iPad).
 # Per-env results POST to the production API so they show in Admin → Test Results.
 # Targets STAGING ONLY — there is intentionally no production option.

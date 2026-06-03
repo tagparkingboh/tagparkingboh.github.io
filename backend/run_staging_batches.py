@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the full 22-test staging suite in PARALLEL batches of N (default 2).
+"""Run the full 25-test staging suite in PARALLEL batches of N (default 2).
 
 Each test runs as its own subprocess (own Chromium, own Playwright) so we get
 true concurrency. Headed browser at slow_mo=100 to match the existing
@@ -41,8 +41,10 @@ from create_test_bookings import TEST_CASES, STAGING_URL
 LOG_DIR = ROOT / "staging_logs"
 
 # Reordered batches so that no two tests in the same batch share a promo code.
-# TESTFREE is used by tests 17-21; TEST10OFF by 16 and 22; the rest are standard.
-# Sequential batches give the script time to reset each promo between runs.
+# TESTFREE is used by tests 17-21; TEST10OFF by 16 and 22.
+# Referral tests 23-25 use one unlimited code; keep them sequential to avoid
+# concurrent validation/usage writes against the same staging code.
+# Sequential batches also give the script time to reset each reusable promo between runs.
 BATCHES = [
     [17,  1,  2,  3],
     [18,  4,  5,  6],
@@ -50,6 +52,9 @@ BATCHES = [
     [20, 10, 11, 16],
     [21, 12, 13, 14],
     [22, 15],
+    [23],
+    [24],
+    [25],
 ]
 
 
@@ -116,7 +121,7 @@ DEFAULT_MATRIX = [
     ("webkit-desktop",   "webkit",   None, "stg-webkit"),
     # Mobile envs intentionally excluded for now — the script targets desktop
     # selectors (e.g. the time input is .fill()-able on desktop but readonly
-    # on MobileTimePicker), so iPhone/iPad would show 0/22 every run and
+    # on MobileTimePicker), so iPhone/iPad would show 0/25 every run and
     # poison the dashboard. Add back here once mobile selectors are wired up.
     # ("webkit-iphone", "webkit", "iPhone 15 Pro", "stg-iphone"),
     # ("webkit-ipad",   "webkit", "iPad Pro 11",   "stg-ipad"),
@@ -168,7 +173,7 @@ def post_results_to_api(env_tag, passed, failed, total, duration_seconds, run_ty
 
 
 def run_one_env(label, browser, device, batch_size, retries=1, env_tag=None, post_results=False):
-    """Run the full 22-test suite for one (browser, device) env. Returns list of results."""
+    """Run the full 25-test suite for one (browser, device) env. Returns list of results."""
     log_dir = ROOT / "staging_logs" / label
     log_dir.mkdir(parents=True, exist_ok=True)
     for old in log_dir.glob("test_*.log"):

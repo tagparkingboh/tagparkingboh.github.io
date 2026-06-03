@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db_service import (
+    E2E_CAPACITY_EXCLUDED_EMAILS,
     exclude_staging_e2e_capacity_bookings,
     find_overcapacity_day_in_stay,
     should_exclude_staging_e2e_capacity_bookings,
@@ -225,6 +226,11 @@ class TestStagingE2ECapacityExclusion:
         query.join.return_value.filter.return_value = filtered_query
 
         assert should_exclude_staging_e2e_capacity_bookings() is True
+        assert E2E_CAPACITY_EXCLUDED_EMAILS == (
+            "qa.orca.contact@gmail.com",
+            "qa.orca.contact+referral-friend1@gmail.com",
+            "qa.orca.contact+referral-friend2@gmail.com",
+        )
         assert exclude_staging_e2e_capacity_bookings(query, Booking) is filtered_query
         query.join.assert_called_once_with(Booking.customer)
 
