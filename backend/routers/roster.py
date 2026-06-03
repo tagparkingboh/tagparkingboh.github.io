@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType, RosterPlannerSettings as DbRosterPlannerSettings, AuditLog, AuditLogEvent
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType, RosterPlannerSettings as DbRosterPlannerSettings, AuditLog, AuditLogEvent, ServiceType
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
     RosterShiftDuplicateRequest, RosterShiftMergeRequest, RosterShiftSplitRequest,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
+    ShiftExceptionResponse,
     ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo,
     RosterPlannerSettingsResponse, RosterPlannerSettingsUpdate,
     RosterProposalResponse,
@@ -30,13 +31,14 @@ from models import (
     CommittedShiftSnapshot,
     TeamShiftResponse,
 )
-from roster_planner import propose_roster, PlannerSettings, UK_TZ
+from roster_planner import propose_roster, PlannerSettings, UK_TZ, ARRIVAL_OVERNIGHT_CUTOFF
 from roster_planner_runner import (
     fire_engine_async,
     record_run,
     TRIGGER_HOLIDAY_CHANGED,
     TRIGGER_MANUAL,
     TRIGGER_SETTINGS_CHANGED,
+    _shift_covers_event_window,
 )
 import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -750,6 +752,169 @@ async def list_shifts(
     shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
 
     return [shift_to_response(shift, db) for shift in shifts]
+
+
+# ============================================================================
+# Shift Exceptions (Admin Only)
+# ============================================================================
+
+def _event_operational_date(event_type: str, start_dt: datetime) -> date_type:
+    if event_type == "pick_up" and start_dt.time() < ARRIVAL_OVERNIGHT_CUTOFF:
+        return start_dt.date() - timedelta(days=1)
+    return start_dt.date()
+
+
+def _booking_customer_name(booking: Booking) -> str:
+    snapshot = f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip()
+    if snapshot:
+        return snapshot
+    customer = getattr(booking, "customer", None)
+    if customer:
+        return f"{customer.first_name or ''} {customer.last_name or ''}".strip()
+    return ""
+
+
+def _shift_exception_suggested_shift(shift: RosterShift) -> dict:
+    return {
+        "id": shift.id,
+        "date": shift.date,
+        "end_date": shift.end_date or shift.date,
+        "start_time": format_time(shift.start_time),
+        "end_time": format_time(shift.end_time),
+        "status": shift.status.value if hasattr(shift.status, "value") else str(shift.status),
+        "intended_driver_type": (
+            shift.intended_driver_type
+            if isinstance(getattr(shift, "intended_driver_type", None), str)
+            else "jockey"
+        ),
+        "created_source": shift.created_source,
+        "staff_id": shift.staff_id,
+        "staff_first_name": shift.staff.first_name if shift.staff else None,
+        "staff_last_name": shift.staff.last_name if shift.staff else None,
+    }
+
+
+def _build_shift_exceptions(
+    bookings: list[Booking],
+    shifts: list[RosterShift],
+    date_from: date_type,
+    date_to: date_type,
+) -> list[dict]:
+    exceptions: list[dict] = []
+    from auto_roster import _events_for_booking
+
+    for booking in bookings:
+        linked_shift_ids = {
+            shift.id for shift in getattr(booking, "shifts", []) or []
+            if shift.id is not None
+        }
+
+        for raw_type, start_dt, end_dt in _events_for_booking(booking):
+            event_date = _event_operational_date(raw_type, start_dt)
+            if event_date < date_from or event_date > date_to:
+                continue
+
+            covering_shifts = [
+                shift for shift in shifts
+                if _shift_covers_event_window(shift, start_dt, end_dt)
+            ]
+            linked_covering = [
+                shift for shift in covering_shifts
+                if shift.id in linked_shift_ids or shift.booking_id == booking.id
+            ]
+            if linked_covering:
+                continue
+
+            event_type = "dropoff" if raw_type == "drop_off" else "pickup"
+            suggested = covering_shifts[0] if covering_shifts else None
+            exceptions.append({
+                "date": event_date,
+                "issue": "unlinked_shift" if suggested else "no_shift",
+                "booking_id": booking.id,
+                "booking_reference": booking.reference or "",
+                "booking_customer_name": _booking_customer_name(booking),
+                "event_type": event_type,
+                "event_time": format_time(start_dt.time()),
+                "flight_number": (
+                    booking.dropoff_flight_number
+                    if event_type == "dropoff"
+                    else booking.pickup_flight_number
+                ),
+                "destination": (
+                    booking.dropoff_destination
+                    if event_type == "dropoff"
+                    else booking.pickup_origin
+                ),
+                "linked_shift_ids": sorted(linked_shift_ids),
+                "suggested_shift": (
+                    _shift_exception_suggested_shift(suggested)
+                    if suggested else None
+                ),
+            })
+
+    exceptions.sort(key=lambda item: (
+        item["date"].isoformat(),
+        item["event_time"],
+        item["booking_reference"],
+        item["event_type"],
+    ))
+    return exceptions
+
+
+@router.get("/roster/shift-exceptions", response_model=List[ShiftExceptionResponse])
+async def list_shift_exceptions(
+    date_from: date_type = Query(..., description="Start date (YYYY-MM-DD)"),
+    date_to: date_type = Query(..., description="End date (YYYY-MM-DD)"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Return booking events that are not attached to a covering shift.
+
+    This powers the Operations Calendar review banner. It deliberately uses
+    all live roster shifts, regardless of the Calendar source toggle, so an
+    admin can see that an auto/fleet/manual row is the likely place to fix the
+    missing link.
+    """
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be on or after date_from")
+    if (date_to - date_from).days > 93:
+        raise HTTPException(status_code=400, detail="Date range must be 93 days or less")
+
+    expanded_from = date_from - timedelta(days=1)
+    expanded_to = date_to + timedelta(days=1)
+
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.REFUNDED]),
+            or_(
+                and_(Booking.dropoff_date >= expanded_from, Booking.dropoff_date <= expanded_to),
+                and_(Booking.pickup_date >= expanded_from, Booking.pickup_date <= expanded_to),
+                and_(Booking.flight_arrival_date >= expanded_from, Booking.flight_arrival_date <= expanded_to),
+            ),
+        )
+        .all()
+    )
+    bookings = [
+        b for b in bookings
+        if getattr(b, "service_type", None) != ServiceType.PARK_RIDE
+    ]
+
+    shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.status.in_([ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED]),
+            or_(
+                and_(RosterShift.date >= expanded_from, RosterShift.date <= expanded_to),
+                and_(RosterShift.end_date >= expanded_from, RosterShift.end_date <= expanded_to),
+            ),
+        )
+        .order_by(RosterShift.date, RosterShift.start_time, RosterShift.id)
+        .all()
+    )
+
+    return _build_shift_exceptions(bookings, shifts, date_from, date_to)
 
 
 # ============================================================================

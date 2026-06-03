@@ -211,6 +211,50 @@
   margin-bottom: 15px;
 }
 
+.shift-exception-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: rgba(245, 166, 35, 0.14);
+  border: 1px solid #f5a623;
+  color: #f8d18a;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.shift-exception-banner > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shift-exception-banner strong {
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.shift-exception-banner span {
+  font-size: 0.85rem;
+}
+
+.shift-exception-banner button {
+  background: #f5a623;
+  border: 1px solid #f5a623;
+  color: #1a1a2e;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.shift-exception-banner button:hover {
+  background: #ffbf47;
+}
+
 /* Calendar Grid */
 .roster-calendar .calendar-grid {
   background: #252525;
@@ -340,6 +384,13 @@
   background: rgba(245, 166, 35, 0.2);
   color: #f5a623;
   border: 1px solid rgba(245, 166, 35, 0.3);
+}
+
+.day-badge.badge-shift-exception {
+  background: #f5a623;
+  color: #1a1a2e;
+  border: 1px solid #f5a623;
+  font-weight: 700;
 }
 
 /* Shift indicator in calendar cell */
@@ -475,6 +526,50 @@
   text-align: center;
   padding: 30px;
   font-style: italic;
+}
+
+.shift-exception-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.shift-exception-review-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.75);
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shift-exception-review-item:hover {
+  background: rgba(245, 166, 35, 0.2);
+}
+
+.shift-exception-review-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shift-exception-review-main strong {
+  color: #D9FF00;
+}
+
+.shift-exception-review-detail {
+  color: #f8d18a;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 /* Detail Sections */
@@ -684,6 +779,11 @@
   border-radius: 10px;
   padding: 15px;
   border-left: 4px solid #9b59b6;
+}
+
+.shift-card.shift-card-review-focus {
+  outline: 2px solid #f5a623;
+  box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.16);
 }
 
 .shift-card-header {

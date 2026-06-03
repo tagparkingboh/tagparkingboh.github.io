@@ -293,11 +293,13 @@ function RosterCalendar({
   const [teamShiftPopover, setTeamShiftPopover] = useState(null) // { initials, first_name, last_name, phone, date, end_date, start_time, end_time }
   const [bookings, setBookings] = useState([])
   const [employees, setEmployees] = useState([])
+  const [shiftExceptions, setShiftExceptions] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedDate, setSelectedDate] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [focusReview, setFocusReview] = useState(null) // { date, shiftId, bookingId }
 
   // Modal state
   const [showShiftModal, setShowShiftModal] = useState(false)
@@ -520,6 +522,39 @@ function RosterCalendar({
       console.error('Failed to load shifts:', err)
     }
   }, [token, currentDate, isAdmin, sourceFilter])
+
+  const fetchShiftExceptions = useCallback(async () => {
+    if (!token || !isAdmin) {
+      setShiftExceptions([])
+      return
+    }
+
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      const response = await authFetch(`${API_URL}/api/roster/shift-exceptions?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setShiftExceptions(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to load shift exceptions:', err)
+    }
+  }, [token, currentDate, isAdmin])
 
   // Fetch teammates' shifts (view-only, employee mode only).
   const fetchTeamShifts = useCallback(async () => {
@@ -796,13 +831,13 @@ function RosterCalendar({
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchDailyOccupancy(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchShiftExceptions(), fetchBlockedDates(), fetchDailyOccupancy(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchDailyOccupancy, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
+  }, [fetchBookings, fetchShifts, fetchShiftExceptions, fetchBlockedDates, fetchDailyOccupancy, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -878,11 +913,29 @@ function RosterCalendar({
       if (e.key === 'Escape' && showDetailModal) {
         setShowDetailModal(false)
         setSelectedDate(null)
+        setFocusReview(null)
       }
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
   }, [showDetailModal])
+
+  useEffect(() => {
+    if (!focusReview || !showDetailModal || selectedDate !== focusReview.date) return
+    if (!focusReview.shiftId) return
+    const hasShift = shifts.some((shift) => shift.id === focusReview.shiftId)
+    if (!hasShift) return
+
+    setCollapsedSections(prev => ({ ...prev, shifts: false }))
+    setExpandedShiftIds(prev => new Set([...prev, focusReview.shiftId]))
+
+    window.setTimeout(() => {
+      const target = document.querySelector(`[data-shift-id="${focusReview.shiftId}"]`)
+      if (target) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }
+    }, 80)
+  }, [focusReview, showDetailModal, selectedDate, shifts])
 
   // Fetch bookings for a specific date (for shift assignment)
   const fetchBookingsForDate = useCallback(async (dateStr, additionalDateStr = null) => {
@@ -1053,6 +1106,23 @@ function RosterCalendar({
     return grouped
   }, [shifts])
 
+  const shiftExceptionsByDate = useMemo(() => {
+    const grouped = {}
+    ;(shiftExceptions || []).forEach((exception) => {
+      if (!exception?.date) return
+      if (!grouped[exception.date]) grouped[exception.date] = []
+      grouped[exception.date].push(exception)
+    })
+    Object.keys(grouped).forEach((date) => {
+      grouped[date].sort((a, b) => {
+        const timeCompare = String(a.event_time || '').localeCompare(String(b.event_time || ''))
+        if (timeCompare !== 0) return timeCompare
+        return String(a.booking_reference || '').localeCompare(String(b.booking_reference || ''))
+      })
+    })
+    return grouped
+  }, [shiftExceptions])
+
   // Group teammates' view-only shifts by date (employee mode only).
   const teamShiftsByDate = useMemo(() => {
     const grouped = {}
@@ -1137,10 +1207,36 @@ function RosterCalendar({
     }
   }
 
+  const openShiftExceptionReview = (exception) => {
+    if (!exception?.date) return
+    const suggestedShiftId = exception.suggested_shift?.id || null
+    if (isAdmin && suggestedShiftId && sourceFilter !== 'all') {
+      const visible = shifts.some((shift) => shift.id === suggestedShiftId)
+      if (!visible) updateSourceFilter('all')
+    }
+    setSelectedDate(exception.date)
+    setShowDetailModal(true)
+    setCollapsedSections(prev => ({
+      ...prev,
+      shifts: false,
+      dropoffs: exception.event_type === 'dropoff' ? false : prev.dropoffs,
+      pickups: exception.event_type === 'pickup' ? false : prev.pickups,
+    }))
+    if (suggestedShiftId) {
+      setExpandedShiftIds(prev => new Set([...prev, suggestedShiftId]))
+    }
+    setFocusReview({
+      date: exception.date,
+      shiftId: suggestedShiftId,
+      bookingId: exception.booking_id,
+    })
+  }
+
   // Close detail modal handler
   const closeDetailModal = () => {
     setShowDetailModal(false)
     setSelectedDate(null)
+    setFocusReview(null)
   }
 
   // Modal handlers
@@ -1267,6 +1363,7 @@ function RosterCalendar({
           setTimeout(() => setSuccessMessage(''), 3000)
           closeShiftModal()
           fetchShifts()
+          fetchShiftExceptions()
           fetchMonthlyHours()
         } else {
           const errorData = await response.json().catch(() => ({}))
@@ -1331,6 +1428,7 @@ function RosterCalendar({
           setTimeout(() => setSuccessMessage(''), 3000)
           closeShiftModal()
           fetchShifts()
+          fetchShiftExceptions()
           fetchMonthlyHours()
         }
 
@@ -1433,6 +1531,7 @@ function RosterCalendar({
           setSelectedShiftIds([])
           closeBulkEditModal()
           fetchShifts()
+          fetchShiftExceptions()
           fetchMonthlyHours()
         }
 
@@ -1489,6 +1588,7 @@ function RosterCalendar({
           setSelectedShiftIds([])
           closeBulkEditModal()
           fetchShifts()
+          fetchShiftExceptions()
           fetchMonthlyHours()
         }
 
@@ -1511,6 +1611,7 @@ function RosterCalendar({
 
   const refreshAfterAction = () => {
     fetchShifts()
+    fetchShiftExceptions()
     fetchMonthlyHours()
     clearShiftSelection()
   }
@@ -1922,6 +2023,7 @@ function RosterCalendar({
         setShowDeleteModal(false)
         setShiftToDelete(null)
         fetchShifts()
+        fetchShiftExceptions()
         fetchMonthlyHours()
       } else {
         const errorData = await response.json().catch(() => ({}))
@@ -2497,6 +2599,7 @@ function RosterCalendar({
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
   const selectedDateHolidays = selectedDate ? getHolidaysForDate(selectedDate) : []
+  const selectedDateShiftExceptions = selectedDate ? (shiftExceptionsByDate[selectedDate] || []) : []
 
   return (
     <div className="roster-calendar">
@@ -2557,6 +2660,20 @@ function RosterCalendar({
       {/* Messages */}
       {error && <div className="roster-error">{error}</div>}
       {successMessage && <div className="roster-success">{successMessage}</div>}
+      {isAdmin && shiftExceptions.length > 0 && (
+        <div className="shift-exception-banner" role="status">
+          <div>
+            <strong>{shiftExceptions.length} booking{shiftExceptions.length === 1 ? '' : 's'} need shift review</strong>
+            <span>
+              {shiftExceptions[0].booking_reference} · {formatDateUK(shiftExceptions[0].date)} @ {formatTime(shiftExceptions[0].event_time)}
+              {shiftExceptions.length > 1 && ` + ${shiftExceptions.length - 1} more`}
+            </span>
+          </div>
+          <button type="button" onClick={() => openShiftExceptionReview(shiftExceptions[0])}>
+            Review
+          </button>
+        </div>
+      )}
 
       {/* Calendar Grid */}
       <div className="calendar-grid">
@@ -2576,6 +2693,7 @@ function RosterCalendar({
                 const dayShifts = getShiftsForDay(day)
                 const dayTeamShifts = !isAdmin ? getTeamShiftsForDay(day) : []
                 const dateKey = getDateKey(day)
+                const dayShiftExceptions = dateKey ? (shiftExceptionsByDate[dateKey] || []) : []
                 const blockedInfo = getBlockedInfoForDay(day)
                 const dayOccupancy = getOccupancyForDay(day)
                 const isAtCap = dayOccupancy >= SOFT_CAP
@@ -2585,14 +2703,15 @@ function RosterCalendar({
                 const hasShifts = dayShifts.length > 0
                 const hasTeamShifts = dayTeamShifts.length > 0
                 const hasHolidays = dayHolidays.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts || hasTeamShifts || blockedInfo || hasHolidays || isAtCap
+                const hasShiftExceptions = dayShiftExceptions.length > 0
+                const hasContent = hasDropoffs || hasPickups || hasShifts || hasTeamShifts || blockedInfo || hasHolidays || isAtCap || hasShiftExceptions
 
                 return (
                   <div
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''} ${hasShiftExceptions ? 'has-shift-exceptions' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
@@ -2613,6 +2732,18 @@ function RosterCalendar({
                           {!blockedInfo && isAtCap && (
                             <div className="day-badge badge-at-cap" title={`Full: ${dayOccupancy}/${SOFT_CAP} cars parked`}>
                               ⛔ Full ({dayOccupancy})
+                            </div>
+                          )}
+                          {hasShiftExceptions && (
+                            <div
+                              className="day-badge badge-shift-exception"
+                              title={`${dayShiftExceptions.length} booking${dayShiftExceptions.length === 1 ? '' : 's'} need shift review`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openShiftExceptionReview(dayShiftExceptions[0])
+                              }}
+                            >
+                              Review {dayShiftExceptions.length}
                             </div>
                           )}
                           {/* Holiday indicators */}
@@ -2879,6 +3010,30 @@ function RosterCalendar({
           </div>
 
           <div className="detail-content">
+            {isAdmin && selectedDateShiftExceptions.length > 0 && (
+              <div className="shift-exception-review-list">
+                {selectedDateShiftExceptions.map((exception) => (
+                  <button
+                    key={`${exception.booking_id}-${exception.event_type}-${exception.event_time}`}
+                    type="button"
+                    className="shift-exception-review-item"
+                    onClick={() => openShiftExceptionReview(exception)}
+                  >
+                    <span className="shift-exception-review-main">
+                      <strong>{exception.booking_reference}</strong>
+                      <span>{exception.event_type === 'dropoff' ? 'Drop-off' : 'Pick-up'} @ {formatTime(exception.event_time)}</span>
+                      <span>{exception.booking_customer_name}</span>
+                    </span>
+                    <span className="shift-exception-review-detail">
+                      {exception.suggested_shift
+                        ? `Suggested shift ${formatTime(exception.suggested_shift.start_time)}-${formatTime(exception.suggested_shift.end_time)}`
+                        : 'No covering shift'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Blocked Date Section - visible to all users, but edit/delete only for admins */}
             {selectedDateBlockedInfo && (
               <div className="blocked-dates-section">
@@ -3180,7 +3335,11 @@ function RosterCalendar({
                     const isShiftExpanded = expandedShiftIds.has(shift.id)
 
                     return (
-                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'} ${isShiftExpanded ? 'expanded' : 'collapsed'}`}>
+                      <div
+                        key={shift.id}
+                        data-shift-id={shift.id}
+                        className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'} ${isShiftExpanded ? 'expanded' : 'collapsed'} ${focusReview?.shiftId === shift.id ? 'shift-card-review-focus' : ''}`}
+                      >
                         {isAdmin && (
                           <div className="shift-select-checkbox">
                             <input
