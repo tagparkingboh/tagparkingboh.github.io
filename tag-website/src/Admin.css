@@ -840,13 +840,70 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #555;
+  color: #64748b;
   font-size: 13px;
+  flex-wrap: wrap;
 }
 
-.referrals-pagination > div {
+.referrals-pagination-controls {
   display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.referrals-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.referrals-page-size select {
+  min-width: 74px;
+  padding: 7px 26px 7px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.referrals-page-button {
+  min-width: 92px;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.referrals-page-button:hover:not(:disabled) {
+  border-color: #111827;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+}
+
+.referrals-page-button:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.referrals-page-size select:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
+  outline: none;
 }
 
 .referrals-table th,

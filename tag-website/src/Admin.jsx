@@ -14,7 +14,8 @@ import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const REFERRALS_PAGE_SIZE = 250
+const REFERRALS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+const REFERRALS_DEFAULT_PAGE_SIZE = 50
 
 // Sidebar navigation structure
 const NAV_STRUCTURE = [
@@ -359,9 +360,11 @@ function Admin() {
   const [referralsFilter, setReferralsFilter] = useState('all')
   const [referralsCustomerSearch, setReferralsCustomerSearch] = useState('')
   const [referralsCustomerOffset, setReferralsCustomerOffset] = useState(0)
+  const [referralsCustomerPageSize, setReferralsCustomerPageSize] = useState(REFERRALS_DEFAULT_PAGE_SIZE)
   const [referralsUsageFilter, setReferralsUsageFilter] = useState('all')
   const [referralsUsageSearch, setReferralsUsageSearch] = useState('')
   const [referralsUsageOffset, setReferralsUsageOffset] = useState(0)
+  const [referralsUsagePageSize, setReferralsUsagePageSize] = useState(REFERRALS_DEFAULT_PAGE_SIZE)
   const [referralDashboardAction, setReferralDashboardAction] = useState(null)
   const [manualReferralInvite, setManualReferralInvite] = useState({ first_name: '', last_name: '', email: '' })
   const [sendingManualReferralInvite, setSendingManualReferralInvite] = useState(false)
@@ -972,9 +975,11 @@ function Admin() {
     referralsFilter,
     referralsCustomerSearch,
     referralsCustomerOffset,
+    referralsCustomerPageSize,
     referralsUsageFilter,
     referralsUsageSearch,
     referralsUsageOffset,
+    referralsUsagePageSize,
   ])
 
   // Fetch email campaigns when marketing tab is active with campaigns sub-tab
@@ -2483,11 +2488,11 @@ function Admin() {
     setError('')
     try {
       const params = new URLSearchParams({
-        customer_limit: String(REFERRALS_PAGE_SIZE),
+        customer_limit: String(referralsCustomerPageSize),
         customer_offset: String(referralsCustomerOffset),
         customer_filter: referralsFilter,
         customer_search: referralsCustomerSearch.trim(),
-        usage_limit: String(REFERRALS_PAGE_SIZE),
+        usage_limit: String(referralsUsagePageSize),
         usage_offset: String(referralsUsageOffset),
         usage_filter: referralsUsageFilter,
         usage_search: referralsUsageSearch.trim(),
@@ -5362,9 +5367,9 @@ function Admin() {
   const referralCustomerTotal = referralsPagination.customer_total || 0
   const referralUsageTotal = referralsPagination.code_usage_filtered_total ?? referralsPagination.code_usage_total ?? 0
   const referralCustomerStart = referralCustomerTotal ? referralsCustomerOffset + 1 : 0
-  const referralCustomerEnd = Math.min(referralsCustomerOffset + REFERRALS_PAGE_SIZE, referralCustomerTotal)
+  const referralCustomerEnd = Math.min(referralsCustomerOffset + referralsCustomerPageSize, referralCustomerTotal)
   const referralUsageStart = referralUsageTotal ? referralsUsageOffset + 1 : 0
-  const referralUsageEnd = Math.min(referralsUsageOffset + REFERRALS_PAGE_SIZE, referralUsageTotal)
+  const referralUsageEnd = Math.min(referralsUsageOffset + referralsUsagePageSize, referralUsageTotal)
 
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
@@ -9876,18 +9881,32 @@ function Admin() {
                         <span>
                           Showing {referralCustomerStart}-{referralCustomerEnd} of {referralCustomerTotal} customers
                         </span>
-                        <div>
+                        <div className="referrals-pagination-controls">
+                          <label className="referrals-page-size">
+                            <span>Rows</span>
+                            <select
+                              value={referralsCustomerPageSize}
+                              onChange={(e) => {
+                                setReferralsCustomerPageSize(Number(e.target.value))
+                                setReferralsCustomerOffset(0)
+                              }}
+                            >
+                              {REFERRALS_PAGE_SIZE_OPTIONS.map(size => (
+                                <option key={size} value={size}>{size}</option>
+                              ))}
+                            </select>
+                          </label>
                           <button
-                            className="btn-secondary btn-small"
+                            className="referrals-page-button"
                             disabled={loadingReferrals || referralsCustomerOffset === 0}
-                            onClick={() => setReferralsCustomerOffset(Math.max(0, referralsCustomerOffset - REFERRALS_PAGE_SIZE))}
+                            onClick={() => setReferralsCustomerOffset(Math.max(0, referralsCustomerOffset - referralsCustomerPageSize))}
                           >
                             Previous
                           </button>
                           <button
-                            className="btn-secondary btn-small"
+                            className="referrals-page-button"
                             disabled={loadingReferrals || referralCustomerEnd >= referralCustomerTotal}
-                            onClick={() => setReferralsCustomerOffset(referralsCustomerOffset + REFERRALS_PAGE_SIZE)}
+                            onClick={() => setReferralsCustomerOffset(referralsCustomerOffset + referralsCustomerPageSize)}
                           >
                             Next
                           </button>
@@ -9984,18 +10003,32 @@ function Admin() {
                         <span>
                           Showing {referralUsageStart}-{referralUsageEnd} of {referralUsageTotal} code usages
                         </span>
-                        <div>
+                        <div className="referrals-pagination-controls">
+                          <label className="referrals-page-size">
+                            <span>Rows</span>
+                            <select
+                              value={referralsUsagePageSize}
+                              onChange={(e) => {
+                                setReferralsUsagePageSize(Number(e.target.value))
+                                setReferralsUsageOffset(0)
+                              }}
+                            >
+                              {REFERRALS_PAGE_SIZE_OPTIONS.map(size => (
+                                <option key={size} value={size}>{size}</option>
+                              ))}
+                            </select>
+                          </label>
                           <button
-                            className="btn-secondary btn-small"
+                            className="referrals-page-button"
                             disabled={loadingReferrals || referralsUsageOffset === 0}
-                            onClick={() => setReferralsUsageOffset(Math.max(0, referralsUsageOffset - REFERRALS_PAGE_SIZE))}
+                            onClick={() => setReferralsUsageOffset(Math.max(0, referralsUsageOffset - referralsUsagePageSize))}
                           >
                             Previous
                           </button>
                           <button
-                            className="btn-secondary btn-small"
+                            className="referrals-page-button"
                             disabled={loadingReferrals || referralUsageEnd >= referralUsageTotal}
-                            onClick={() => setReferralsUsageOffset(referralsUsageOffset + REFERRALS_PAGE_SIZE)}
+                            onClick={() => setReferralsUsageOffset(referralsUsageOffset + referralsUsagePageSize)}
                           >
                             Next
                           </button>
