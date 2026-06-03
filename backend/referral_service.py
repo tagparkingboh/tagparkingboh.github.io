@@ -33,7 +33,7 @@ ATTRIBUTION_STATUS_QUALIFIED = "qualified"
 ATTRIBUTION_STATUS_DISQUALIFIED = "disqualified"
 
 REFERRAL_REWARD_THRESHOLD = 6
-INVITE_DELAY_DAYS = 7
+INVITE_DELAY_DAYS = 2
 REMINDER_DELAY_DAYS = 28
 TOKEN_TTL_DAYS = 90
 
@@ -138,7 +138,7 @@ def _response_urls(program: ReferralProgram) -> tuple[str, str]:
 
 
 def process_eligible_referral_invites(db: Session, limit: int = 25, now: Optional[datetime] = None) -> int:
-    """Invite customers whose first completed booking is at least 7 days old."""
+    """Invite customers whose first completed booking is at least 2 days old."""
     if not referral_invites_enabled():
         return 0
 
