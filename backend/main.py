@@ -12,6 +12,7 @@ Provides REST API endpoints for the frontend to:
 """
 import uuid
 import secrets
+import logging
 from datetime import date, time, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Literal
@@ -110,6 +111,8 @@ from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArriv
 import db_service
 import json
 import traceback
+
+logger = logging.getLogger(__name__)
 
 # Email scheduler
 from email_scheduler import start_scheduler, stop_scheduler
@@ -4629,6 +4632,463 @@ def _format_referral_program_data(referral):
         "reward_earned_at": referral.reward_earned_at.isoformat() if referral.reward_earned_at else None,
         "reward_email_sent_at": referral.reward_email_sent_at.isoformat() if referral.reward_email_sent_at else None,
     }
+
+
+def _format_referral_status(status):
+    return (status or "").replace("_", " ").title() or "-"
+
+
+def _referral_code_is_active(code):
+    if not code:
+        return False
+    now = datetime.now(timezone.utc)
+    expires_at = code.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return code.can_be_used and (not expires_at or expires_at > now)
+
+
+def _booking_status_value(booking):
+    if not booking:
+        return None
+    status = getattr(booking, "status", None)
+    value = status.value if hasattr(status, "value") else status
+    return value.lower() if isinstance(value, str) else value
+
+
+def build_referrals_dashboard_data(
+    db: Session,
+    customer_limit: int = 250,
+    customer_offset: int = 0,
+    customer_filter: str = "all",
+    customer_search: str = "",
+    usage_limit: int = 250,
+    usage_offset: int = 0,
+    usage_filter: str = "all",
+    usage_search: str = "",
+):
+    """Build the admin referrals dashboard payload.
+
+    Code usage is intentionally based on promo_code_usages so unlimited
+    referral codes show every booking created with a referral code, regardless
+    of whether the booking has completed or qualified for reward progress.
+    """
+    from sqlalchemy import and_, or_
+    from sqlalchemy.orm import aliased, joinedload
+    from db_models import Booking, Customer as DbCustomer, PromoCode, PromoCodeUsage, Promotion, ReferralAttribution, ReferralProgram
+    from referral_service import (
+        ATTRIBUTION_STATUS_DISQUALIFIED,
+        ATTRIBUTION_STATUS_PENDING,
+        ATTRIBUTION_STATUS_QUALIFIED,
+        FRIEND_PROMOTION_NAME,
+        PROGRAM_STATUS_INVITED,
+        PROGRAM_STATUS_OPTED_IN,
+        PROGRAM_STATUS_OPTED_OUT,
+        PROGRAM_STATUS_REMINDED,
+    )
+
+    customer_limit = max(1, min(customer_limit, 1000))
+    customer_offset = max(customer_offset, 0)
+    customer_filter = (customer_filter or "all").strip()
+    customer_search = (customer_search or "").strip()
+    usage_limit = max(1, min(usage_limit, 1000))
+    usage_offset = max(usage_offset, 0)
+    usage_filter = (usage_filter or "all").strip()
+    usage_search = (usage_search or "").strip()
+
+    referral_code_count = (
+        db.query(PromoCode)
+        .join(Promotion, PromoCode.promotion_id == Promotion.id)
+        .filter(Promotion.name == FRIEND_PROMOTION_NAME)
+        .count()
+    )
+    usage_total = (
+        db.query(PromoCodeUsage)
+        .join(PromoCode, PromoCodeUsage.promo_code_id == PromoCode.id)
+        .join(Promotion, PromoCode.promotion_id == Promotion.id)
+        .filter(Promotion.name == FRIEND_PROMOTION_NAME)
+        .count()
+    )
+
+    stats = {
+        "invites_sent": db.query(ReferralProgram).filter(ReferralProgram.invite_sent_at.isnot(None)).count(),
+        "awaiting_response": db.query(ReferralProgram).filter(ReferralProgram.status.in_([PROGRAM_STATUS_INVITED, PROGRAM_STATUS_REMINDED])).count(),
+        "opted_in": db.query(ReferralProgram).filter(ReferralProgram.status == PROGRAM_STATUS_OPTED_IN).count(),
+        "opted_out": db.query(ReferralProgram).filter(ReferralProgram.status == PROGRAM_STATUS_OPTED_OUT).count(),
+        "referral_codes_generated": referral_code_count,
+        "referral_code_bookings_created": usage_total,
+        "completed_qualified_referrals": (
+            db.query(ReferralAttribution)
+            .filter(
+                ReferralAttribution.status == ATTRIBUTION_STATUS_QUALIFIED,
+                ReferralAttribution.is_self_use.is_(False),
+            )
+            .count()
+        ),
+        "self_use_disqualified_referrals": (
+            db.query(ReferralAttribution)
+            .filter(or_(ReferralAttribution.is_self_use.is_(True), ReferralAttribution.status == ATTRIBUTION_STATUS_DISQUALIFIED))
+            .count()
+        ),
+        "rewards_earned": (
+            db.query(ReferralProgram)
+            .filter(or_(ReferralProgram.reward_code_id.isnot(None), ReferralProgram.reward_earned_at.isnot(None)))
+            .count()
+        ),
+        "rewards_sent": db.query(ReferralProgram).filter(ReferralProgram.reward_email_sent_at.isnot(None)).count(),
+    }
+    responded = stats["opted_in"] + stats["opted_out"]
+    stats["opt_in_rate"] = round((stats["opted_in"] / responded) * 100, 1) if responded else 0
+
+    usage_counts_subq = (
+        db.query(
+            PromoCode.customer_id.label("customer_id"),
+            func.count(PromoCodeUsage.id).label("uses"),
+        )
+        .join(PromoCodeUsage, PromoCodeUsage.promo_code_id == PromoCode.id)
+        .join(Promotion, PromoCode.promotion_id == Promotion.id)
+        .filter(Promotion.name == FRIEND_PROMOTION_NAME)
+        .group_by(PromoCode.customer_id)
+        .subquery()
+    )
+    self_use_counts_subq = (
+        db.query(
+            PromoCode.customer_id.label("customer_id"),
+            func.count(PromoCodeUsage.id).label("self_uses"),
+        )
+        .join(PromoCodeUsage, PromoCodeUsage.promo_code_id == PromoCode.id)
+        .join(Promotion, PromoCode.promotion_id == Promotion.id)
+        .join(Booking, PromoCodeUsage.booking_id == Booking.id)
+        .filter(
+            Promotion.name == FRIEND_PROMOTION_NAME,
+            Booking.customer_id == PromoCode.customer_id,
+        )
+        .group_by(PromoCode.customer_id)
+        .subquery()
+    )
+    disqualified_program_ids_subq = (
+        db.query(ReferralAttribution.referral_program_id)
+        .filter(ReferralAttribution.status == ATTRIBUTION_STATUS_DISQUALIFIED)
+        .distinct()
+        .subquery()
+    )
+    ProgramCode = aliased(PromoCode)
+    programs_query = (
+        db.query(ReferralProgram)
+        .outerjoin(DbCustomer, ReferralProgram.customer_id == DbCustomer.id)
+        .outerjoin(ProgramCode, ReferralProgram.referral_code_id == ProgramCode.id)
+        .outerjoin(usage_counts_subq, usage_counts_subq.c.customer_id == ReferralProgram.customer_id)
+        .outerjoin(self_use_counts_subq, self_use_counts_subq.c.customer_id == ReferralProgram.customer_id)
+    )
+    if customer_search:
+        search = f"%{customer_search}%"
+        programs_query = programs_query.filter(or_(
+            DbCustomer.first_name.ilike(search),
+            DbCustomer.last_name.ilike(search),
+            DbCustomer.email.ilike(search),
+            ProgramCode.code.ilike(search),
+            ReferralProgram.status.ilike(search),
+        ))
+    if customer_filter == "awaiting_response":
+        programs_query = programs_query.filter(ReferralProgram.status.in_([PROGRAM_STATUS_INVITED, PROGRAM_STATUS_REMINDED]))
+    elif customer_filter == "opted_in":
+        programs_query = programs_query.filter(ReferralProgram.status == PROGRAM_STATUS_OPTED_IN)
+    elif customer_filter == "opted_out":
+        programs_query = programs_query.filter(ReferralProgram.status == PROGRAM_STATUS_OPTED_OUT)
+    elif customer_filter == "has_code_usage":
+        programs_query = programs_query.filter(func.coalesce(usage_counts_subq.c.uses, 0) > 0)
+    elif customer_filter == "has_qualified":
+        programs_query = programs_query.filter(ReferralProgram.qualified_referral_count > 0)
+    elif customer_filter == "reward_earned":
+        programs_query = programs_query.filter(or_(ReferralProgram.reward_code_id.isnot(None), ReferralProgram.reward_earned_at.isnot(None)))
+    elif customer_filter == "self_use_only":
+        programs_query = programs_query.filter(
+            func.coalesce(usage_counts_subq.c.uses, 0) > 0,
+            func.coalesce(self_use_counts_subq.c.self_uses, 0) == func.coalesce(usage_counts_subq.c.uses, 0),
+            func.coalesce(ReferralProgram.qualified_referral_count, 0) == 0,
+        )
+    elif customer_filter == "disqualified_usage":
+        programs_query = programs_query.filter(ReferralProgram.id.in_(disqualified_program_ids_subq))
+
+    program_total = programs_query.count()
+    programs = (
+        programs_query
+        .options(
+            joinedload(ReferralProgram.customer),
+            joinedload(ReferralProgram.referral_code),
+            joinedload(ReferralProgram.reward_code),
+        )
+        .order_by(ReferralProgram.created_at.desc())
+        .offset(customer_offset)
+        .limit(customer_limit)
+        .all()
+    )
+
+    UsageBooking = aliased(Booking)
+    UsedByCustomer = aliased(DbCustomer)
+    ReferrerCustomer = aliased(DbCustomer)
+    UsageAttribution = aliased(ReferralAttribution)
+    usage_query = (
+        db.query(PromoCodeUsage)
+        .join(PromoCode, PromoCodeUsage.promo_code_id == PromoCode.id)
+        .join(Promotion, PromoCode.promotion_id == Promotion.id)
+        .outerjoin(UsageBooking, PromoCodeUsage.booking_id == UsageBooking.id)
+        .outerjoin(UsedByCustomer, UsageBooking.customer_id == UsedByCustomer.id)
+        .outerjoin(ReferrerCustomer, PromoCode.customer_id == ReferrerCustomer.id)
+        .outerjoin(UsageAttribution, UsageAttribution.booking_id == PromoCodeUsage.booking_id)
+        .options(
+            joinedload(PromoCodeUsage.promo_code).joinedload(PromoCode.promotion),
+            joinedload(PromoCodeUsage.booking).joinedload(Booking.customer),
+        )
+        .filter(Promotion.name == FRIEND_PROMOTION_NAME)
+    )
+    if usage_search:
+        search = f"%{usage_search}%"
+        usage_query = usage_query.filter(or_(
+            PromoCode.code.ilike(search),
+            UsageBooking.reference.ilike(search),
+            ReferrerCustomer.first_name.ilike(search),
+            ReferrerCustomer.last_name.ilike(search),
+            ReferrerCustomer.email.ilike(search),
+            UsedByCustomer.first_name.ilike(search),
+            UsedByCustomer.last_name.ilike(search),
+            UsedByCustomer.email.ilike(search),
+        ))
+    if usage_filter == "pending":
+        usage_query = usage_query.filter(UsageAttribution.status == ATTRIBUTION_STATUS_PENDING)
+    elif usage_filter == "qualified":
+        usage_query = usage_query.filter(UsageAttribution.status == ATTRIBUTION_STATUS_QUALIFIED)
+    elif usage_filter == "disqualified":
+        usage_query = usage_query.filter(UsageAttribution.status == ATTRIBUTION_STATUS_DISQUALIFIED)
+    elif usage_filter == "self_use":
+        usage_query = usage_query.filter(or_(UsageAttribution.is_self_use.is_(True), UsageBooking.customer_id == PromoCode.customer_id))
+    elif usage_filter == "completed":
+        usage_query = usage_query.filter(UsageBooking.status == BookingStatus.COMPLETED)
+    elif usage_filter == "open_bookings":
+        usage_query = usage_query.filter(UsageBooking.status.in_([BookingStatus.PENDING, BookingStatus.CONFIRMED]))
+
+    usage_filtered_total = usage_query.count()
+    usage_rows = (
+        usage_query
+        .order_by(PromoCodeUsage.used_at.desc())
+        .offset(usage_offset)
+        .limit(usage_limit)
+        .all()
+    )
+
+    program_ids = [program.id for program in programs]
+    program_customer_ids = [program.customer_id for program in programs]
+    usage_booking_ids = [usage.booking_id for usage in usage_rows]
+    usage_customer_ids = [
+        usage.promo_code.customer_id
+        for usage in usage_rows
+        if usage.promo_code and usage.promo_code.customer_id
+    ]
+
+    attributions = (
+        db.query(ReferralAttribution)
+        .filter(ReferralAttribution.booking_id.in_(usage_booking_ids))
+        .all()
+        if usage_booking_ids else []
+    )
+    attribution_by_booking_id = {
+        attribution.booking_id: attribution
+        for attribution in attributions
+    }
+
+    attribution_program_ids = [attribution.referral_program_id for attribution in attributions]
+    lookup_customer_ids = set(program_customer_ids + usage_customer_ids)
+    lookup_program_ids = set(program_ids + attribution_program_ids)
+    lookup_programs = list(programs)
+    if lookup_customer_ids or lookup_program_ids:
+        lookup_programs = (
+            db.query(ReferralProgram)
+            .options(joinedload(ReferralProgram.customer))
+            .filter(or_(ReferralProgram.customer_id.in_(lookup_customer_ids), ReferralProgram.id.in_(lookup_program_ids)))
+            .all()
+        )
+
+    program_by_id = {program.id: program for program in lookup_programs}
+    program_by_customer_id = {program.customer_id: program for program in lookup_programs}
+
+    current_page_program_by_id = {program.id: program for program in programs}
+    usage_count_by_customer_id = {
+        customer_id: count
+        for customer_id, count in (
+            db.query(PromoCode.customer_id, func.count(PromoCodeUsage.id))
+            .join(PromoCodeUsage, PromoCodeUsage.promo_code_id == PromoCode.id)
+            .join(Promotion, PromoCode.promotion_id == Promotion.id)
+            .filter(Promotion.name == FRIEND_PROMOTION_NAME, PromoCode.customer_id.in_(program_customer_ids))
+            .group_by(PromoCode.customer_id)
+            .all()
+            if program_customer_ids else []
+        )
+    }
+    self_use_count_by_customer_id = {
+        customer_id: count
+        for customer_id, count in (
+            db.query(PromoCode.customer_id, func.count(PromoCodeUsage.id))
+            .join(PromoCodeUsage, PromoCodeUsage.promo_code_id == PromoCode.id)
+            .join(Promotion, PromoCode.promotion_id == Promotion.id)
+            .join(Booking, PromoCodeUsage.booking_id == Booking.id)
+            .filter(
+                Promotion.name == FRIEND_PROMOTION_NAME,
+                PromoCode.customer_id.in_(program_customer_ids),
+                Booking.customer_id == PromoCode.customer_id,
+            )
+            .group_by(PromoCode.customer_id)
+            .all()
+            if program_customer_ids else []
+        )
+    }
+    disqualified_program_ids = {
+        program_id
+        for program_id, in (
+            db.query(ReferralAttribution.referral_program_id)
+            .filter(
+                ReferralAttribution.referral_program_id.in_(program_ids),
+                ReferralAttribution.status == ATTRIBUTION_STATUS_DISQUALIFIED,
+            )
+            .distinct()
+            .all()
+            if program_ids else []
+        )
+    }
+
+    def program_summary(program):
+        if not program:
+            return None
+        customer = program.customer
+        return {
+            "program_id": program.id,
+            "customer_id": program.customer_id,
+            "customer_name": f"{customer.first_name or ''} {customer.last_name or ''}".strip() if customer else "",
+        }
+
+    customers = []
+    for program in programs:
+        customer = program.customer
+        code = program.referral_code
+        reward_code = program.reward_code
+        uses = usage_count_by_customer_id.get(program.customer_id, 0)
+        self_uses = self_use_count_by_customer_id.get(program.customer_id, 0)
+        customers.append({
+            "program_id": program.id,
+            "customer_id": program.customer_id,
+            "customer_name": f"{customer.first_name or ''} {customer.last_name or ''}".strip() if customer else "",
+            "email": customer.email if customer else None,
+            "status": program.status,
+            "status_label": _format_referral_status(program.status),
+            "code": code.code if code else None,
+            "code_active": _referral_code_is_active(code),
+            "uses": uses,
+            "qualified": program.qualified_referral_count or 0,
+            "reward_code": reward_code.code if reward_code else None,
+            "reward_earned": bool(program.reward_code_id or program.reward_earned_at),
+            "reward_sent": bool(program.reward_email_sent_at),
+            "invite_sent_at": program.invite_sent_at.isoformat() if program.invite_sent_at else None,
+            "code_email_sent_at": code.email_sent_at.isoformat() if code and code.email_sent_at else None,
+            "reminder_sent_at": program.reminder_sent_at.isoformat() if program.reminder_sent_at else None,
+            "responded_at": program.responded_at.isoformat() if program.responded_at else None,
+            "reward_earned_at": program.reward_earned_at.isoformat() if program.reward_earned_at else None,
+            "reward_email_sent_at": program.reward_email_sent_at.isoformat() if program.reward_email_sent_at else None,
+            "has_self_use_only": uses > 0 and self_uses == uses,
+            "has_disqualified_usage": program.id in disqualified_program_ids,
+        })
+
+    code_usage = []
+    for usage in usage_rows:
+        code = usage.promo_code
+        booking = usage.booking
+        attribution = attribution_by_booking_id.get(usage.booking_id)
+        program = program_by_id.get(attribution.referral_program_id) if attribution else None
+        if not program and code and code.customer_id:
+            program = program_by_customer_id.get(code.customer_id)
+
+        program_data = program_summary(program)
+        if not program_data and attribution and attribution.referral_program_id in current_page_program_by_id:
+            program_data = program_summary(current_page_program_by_id.get(attribution.referral_program_id))
+        if attribution:
+            is_self_use = bool(attribution.is_self_use)
+        else:
+            is_self_use = bool(program_data and booking and booking.customer_id == program_data["customer_id"])
+        attribution_status = attribution.status if attribution else "unattributed"
+
+        code_usage.append({
+            "usage_id": usage.id,
+            "referrer_customer_id": program_data["customer_id"] if program_data else None,
+            "referrer": program_data["customer_name"] if program_data else "",
+            "code": code.code if code else None,
+            "used_by_customer_id": booking.customer_id if booking else None,
+            "used_by": (
+                f"{booking.customer.first_name or ''} {booking.customer.last_name or ''}".strip()
+                if booking and booking.customer else ""
+            ),
+            "booking_id": booking.id if booking else None,
+            "booking_reference": booking.reference if booking else None,
+            "booking_status": _booking_status_value(booking),
+            "discount_percent": usage.discount_percent,
+            "discount_amount_pence": usage.discount_amount_pence,
+            "self_use": is_self_use,
+            "attribution_status": attribution_status,
+            "completed_at": booking.completed_at.isoformat() if booking and booking.completed_at else None,
+            "used_at": usage.used_at.isoformat() if usage.used_at else None,
+        })
+
+    return {
+        "stats": stats,
+        "customers": customers,
+        "code_usage": code_usage,
+        "pagination": {
+            "customer_total": program_total,
+            "customer_limit": customer_limit,
+            "customer_offset": customer_offset,
+            "customer_filter": customer_filter,
+            "customer_search": customer_search,
+            "code_usage_total": usage_total,
+            "code_usage_filtered_total": usage_filtered_total,
+            "usage_limit": usage_limit,
+            "usage_offset": usage_offset,
+            "usage_filter": usage_filter,
+            "usage_search": usage_search,
+        },
+    }
+
+
+@app.get("/api/admin/marketing/referrals")
+async def get_admin_referrals_dashboard(
+    customer_limit: int = Query(250, ge=1, le=1000),
+    customer_offset: int = Query(0, ge=0),
+    customer_filter: str = Query("all"),
+    customer_search: str = Query(""),
+    usage_limit: int = Query(250, ge=1, le=1000),
+    usage_offset: int = Query(0, ge=0),
+    usage_filter: str = Query("all"),
+    usage_search: str = Query(""),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    try:
+        return build_referrals_dashboard_data(
+            db,
+            customer_limit=customer_limit,
+            customer_offset=customer_offset,
+            customer_filter=customer_filter,
+            customer_search=customer_search,
+            usage_limit=usage_limit,
+            usage_offset=usage_offset,
+            usage_filter=usage_filter,
+            usage_search=usage_search,
+        )
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while loading referrals dashboard")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error while loading referrals dashboard: {exc.__class__.__name__}",
+        )
 
 
 @app.get("/api/admin/customers/{customer_id}")

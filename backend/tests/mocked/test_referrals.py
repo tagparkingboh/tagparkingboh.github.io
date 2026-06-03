@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import referral_service
-from db_models import Booking, BookingStatus, Customer, PromoCode, Promotion, ReferralAttribution, ReferralProgram, Vehicle
+from db_models import Booking, BookingStatus, Customer, PromoCode, PromoCodeUsage, Promotion, ReferralAttribution, ReferralProgram, Vehicle
 
 
 class FakeQuery:
@@ -791,6 +791,373 @@ class TestPromoUsageHook:
         assert promotion.codes_used == 1
         assert any(obj.__class__.__name__ == "PromoCodeUsage" for obj in db.added)
         record.assert_called_once_with(db, booking, promo_code)
+
+
+class TestAdminReferralsDashboard:
+    def _session(self):
+        engine = create_engine("sqlite:///:memory:")
+        tables = [
+            Customer.__table__,
+            Vehicle.__table__,
+            Booking.__table__,
+            Promotion.__table__,
+            PromoCode.__table__,
+            PromoCodeUsage.__table__,
+            ReferralProgram.__table__,
+            ReferralAttribution.__table__,
+        ]
+        Customer.metadata.create_all(engine, tables=tables)
+        Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        return Session()
+
+    def test_H_dashboard_stats_and_usage_include_non_completed_bookings(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            referrer = Customer(first_name="Ref", last_name="Errer", email="ref@example.com", phone="07700900001")
+            friend = Customer(first_name="Friend", last_name="Pending", email="friend@example.com", phone="07700900002")
+            db.add_all([referrer, friend])
+            db.flush()
+
+            vehicle = Vehicle(customer_id=friend.id, registration="REF26USE", make="Tesla", model="Y", colour="Blue")
+            promotion = Promotion(
+                name=referral_service.FRIEND_PROMOTION_NAME,
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            program = ReferralProgram(
+                customer_id=referrer.id,
+                status=referral_service.PROGRAM_STATUS_OPTED_IN,
+                invite_sent_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+                responded_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+                qualified_referral_count=0,
+            )
+            db.add_all([vehicle, promotion, program])
+            db.flush()
+
+            code = PromoCode(promotion_id=promotion.id, code="REF-DASH-TEST", customer_id=referrer.id, max_uses=0)
+            booking = Booking(
+                reference="DASHREF1",
+                customer_id=friend.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.CONFIRMED,
+                dropoff_date=date(2026, 6, 10),
+                dropoff_time=time(9, 0),
+                pickup_date=date(2026, 6, 17),
+                pickup_time=time(12, 0),
+            )
+            db.add_all([code, booking])
+            db.flush()
+            program.referral_code_id = code.id
+
+            usage = PromoCodeUsage(
+                promo_code_id=code.id,
+                booking_id=booking.id,
+                discount_percent=10,
+                discount_amount_pence=1200,
+                used_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+            )
+            attribution = ReferralAttribution(
+                referral_program_id=program.id,
+                referrer_customer_id=referrer.id,
+                referred_customer_id=friend.id,
+                booking_id=booking.id,
+                promo_code_id=code.id,
+                is_self_use=False,
+                status=referral_service.ATTRIBUTION_STATUS_PENDING,
+            )
+            db.add_all([usage, attribution])
+            db.commit()
+
+            dashboard = build_referrals_dashboard_data(db)
+
+            assert dashboard["stats"]["invites_sent"] == 1
+            assert dashboard["stats"]["opted_in"] == 1
+            assert dashboard["stats"]["referral_code_bookings_created"] == 1
+            assert dashboard["stats"]["completed_qualified_referrals"] == 0
+            assert dashboard["code_usage"][0]["booking_reference"] == "DASHREF1"
+            assert dashboard["code_usage"][0]["booking_status"] == "confirmed"
+            assert dashboard["code_usage"][0]["attribution_status"] == referral_service.ATTRIBUTION_STATUS_PENDING
+            assert dashboard["customers"][0]["uses"] == 1
+        finally:
+            db.close()
+
+    def test_U_empty_dashboard_returns_zero_counts(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            dashboard = build_referrals_dashboard_data(db)
+
+            assert dashboard["stats"]["invites_sent"] == 0
+            assert dashboard["stats"]["opt_in_rate"] == 0
+            assert dashboard["customers"] == []
+            assert dashboard["code_usage"] == []
+        finally:
+            db.close()
+
+    def test_H_dashboard_filters_search_and_pagination_are_server_side(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            referrer = Customer(first_name="Filter", last_name="Owner", email="filter@example.com", phone="07700900011")
+            friend = Customer(first_name="Filter", last_name="Friend", email="friend-filter@example.com", phone="07700900012")
+            waiting = Customer(first_name="Still", last_name="Waiting", email="waiting@example.com", phone="07700900013")
+            db.add_all([referrer, friend, waiting])
+            db.flush()
+
+            vehicle = Vehicle(customer_id=friend.id, registration="FILTER1", make="Tesla", model="3", colour="White")
+            promotion = Promotion(
+                name=referral_service.FRIEND_PROMOTION_NAME,
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            active_program = ReferralProgram(
+                customer_id=referrer.id,
+                status=referral_service.PROGRAM_STATUS_OPTED_IN,
+                qualified_referral_count=1,
+            )
+            waiting_program = ReferralProgram(
+                customer_id=waiting.id,
+                status=referral_service.PROGRAM_STATUS_INVITED,
+            )
+            db.add_all([vehicle, promotion, active_program, waiting_program])
+            db.flush()
+
+            code = PromoCode(promotion_id=promotion.id, code="REF-FILTER-1", customer_id=referrer.id, max_uses=0)
+            booking = Booking(
+                reference="FILTERBOOK1",
+                customer_id=friend.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.COMPLETED,
+                completed_at=datetime(2026, 6, 4, tzinfo=timezone.utc),
+                dropoff_date=date(2026, 6, 10),
+                dropoff_time=time(9, 0),
+                pickup_date=date(2026, 6, 17),
+                pickup_time=time(12, 0),
+            )
+            db.add_all([code, booking])
+            db.flush()
+            active_program.referral_code_id = code.id
+            db.add_all([
+                PromoCodeUsage(
+                    promo_code_id=code.id,
+                    booking_id=booking.id,
+                    discount_percent=10,
+                    discount_amount_pence=1200,
+                    used_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+                ),
+                ReferralAttribution(
+                    referral_program_id=active_program.id,
+                    referrer_customer_id=referrer.id,
+                    referred_customer_id=friend.id,
+                    booking_id=booking.id,
+                    promo_code_id=code.id,
+                    is_self_use=False,
+                    status=referral_service.ATTRIBUTION_STATUS_QUALIFIED,
+                ),
+            ])
+            db.commit()
+
+            usage_dashboard = build_referrals_dashboard_data(
+                db,
+                customer_filter="has_code_usage",
+                usage_filter="completed",
+                usage_search="FILTERBOOK1",
+            )
+            assert usage_dashboard["pagination"]["customer_total"] == 1
+            assert usage_dashboard["customers"][0]["email"] == "filter@example.com"
+            assert usage_dashboard["pagination"]["code_usage_filtered_total"] == 1
+            assert usage_dashboard["code_usage"][0]["booking_reference"] == "FILTERBOOK1"
+
+            waiting_dashboard = build_referrals_dashboard_data(
+                db,
+                customer_search="waiting@example.com",
+                customer_limit=1,
+                customer_offset=0,
+            )
+            assert waiting_dashboard["pagination"]["customer_total"] == 1
+            assert waiting_dashboard["customers"][0]["email"] == "waiting@example.com"
+        finally:
+            db.close()
+
+    def test_E_self_use_disqualified_usage_is_visible(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            customer = Customer(first_name="Self", last_name="User", email="self@example.com", phone="07700900001")
+            db.add(customer)
+            db.flush()
+
+            vehicle = Vehicle(customer_id=customer.id, registration="SELFUSE1", make="Ford", model="Focus", colour="Grey")
+            promotion = Promotion(
+                name=referral_service.FRIEND_PROMOTION_NAME,
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            program = ReferralProgram(customer_id=customer.id, status=referral_service.PROGRAM_STATUS_OPTED_IN)
+            db.add_all([vehicle, promotion, program])
+            db.flush()
+
+            code = PromoCode(promotion_id=promotion.id, code="REF-SELF-USE1", customer_id=customer.id, max_uses=0)
+            booking = Booking(
+                reference="SELFREF1",
+                customer_id=customer.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.COMPLETED,
+                completed_at=datetime(2026, 6, 4, tzinfo=timezone.utc),
+                dropoff_date=date(2026, 6, 10),
+                dropoff_time=time(9, 0),
+                pickup_date=date(2026, 6, 17),
+                pickup_time=time(12, 0),
+            )
+            db.add_all([code, booking])
+            db.flush()
+            program.referral_code_id = code.id
+
+            db.add_all([
+                PromoCodeUsage(
+                    promo_code_id=code.id,
+                    booking_id=booking.id,
+                    discount_percent=10,
+                    discount_amount_pence=900,
+                    used_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+                ),
+                ReferralAttribution(
+                    referral_program_id=program.id,
+                    referrer_customer_id=customer.id,
+                    referred_customer_id=customer.id,
+                    booking_id=booking.id,
+                    promo_code_id=code.id,
+                    is_self_use=True,
+                    status=referral_service.ATTRIBUTION_STATUS_DISQUALIFIED,
+                ),
+            ])
+            db.commit()
+
+            dashboard = build_referrals_dashboard_data(db)
+
+            assert dashboard["stats"]["self_use_disqualified_referrals"] == 1
+            assert dashboard["code_usage"][0]["self_use"] is True
+            assert dashboard["code_usage"][0]["attribution_status"] == referral_service.ATTRIBUTION_STATUS_DISQUALIFIED
+            assert dashboard["customers"][0]["has_self_use_only"] is True
+            assert dashboard["customers"][0]["has_disqualified_usage"] is True
+        finally:
+            db.close()
+
+    def test_B_non_referral_ref_prefixed_promo_is_excluded(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            customer = Customer(first_name="Campaign", last_name="User", email="campaign@example.com", phone="07700900003")
+            db.add(customer)
+            db.flush()
+
+            vehicle = Vehicle(customer_id=customer.id, registration="REFCAMP1", make="Kia", model="Niro", colour="Black")
+            promotion = Promotion(
+                name="Instagram REF campaign",
+                discount_percent=50,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            db.add_all([vehicle, promotion])
+            db.flush()
+
+            code = PromoCode(promotion_id=promotion.id, code="REF-INSTAGRAM-50", customer_id=customer.id, max_uses=1)
+            booking = Booking(
+                reference="NOTREF1",
+                customer_id=customer.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.CONFIRMED,
+                dropoff_date=date(2026, 6, 10),
+                dropoff_time=time(9, 0),
+                pickup_date=date(2026, 6, 17),
+                pickup_time=time(12, 0),
+            )
+            db.add_all([code, booking])
+            db.flush()
+            db.add(PromoCodeUsage(
+                promo_code_id=code.id,
+                booking_id=booking.id,
+                discount_percent=50,
+                discount_amount_pence=5000,
+                used_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+            ))
+            db.commit()
+
+            dashboard = build_referrals_dashboard_data(db)
+
+            assert dashboard["stats"]["referral_codes_generated"] == 0
+            assert dashboard["stats"]["referral_code_bookings_created"] == 0
+            assert dashboard["code_usage"] == []
+        finally:
+            db.close()
+
+    def test_B_regenerated_code_usage_without_attribution_keeps_referrer(self):
+        from main import build_referrals_dashboard_data
+
+        db = self._session()
+        try:
+            referrer = Customer(first_name="Historic", last_name="Referrer", email="historic@example.com", phone="07700900004")
+            friend = Customer(first_name="Historic", last_name="Friend", email="historicfriend@example.com", phone="07700900005")
+            db.add_all([referrer, friend])
+            db.flush()
+
+            vehicle = Vehicle(customer_id=friend.id, registration="OLDREF1", make="BMW", model="i3", colour="White")
+            promotion = Promotion(
+                name=referral_service.FRIEND_PROMOTION_NAME,
+                discount_percent=10,
+                discount_type="percentage",
+                code_prefix="REF",
+            )
+            program = ReferralProgram(
+                customer_id=referrer.id,
+                status=referral_service.PROGRAM_STATUS_OPTED_IN,
+                qualified_referral_count=0,
+            )
+            db.add_all([vehicle, promotion, program])
+            db.flush()
+
+            old_code = PromoCode(promotion_id=promotion.id, code="REF-OLD-CODE", customer_id=referrer.id, max_uses=0)
+            new_code = PromoCode(promotion_id=promotion.id, code="REF-NEW-CODE", customer_id=referrer.id, max_uses=0)
+            booking = Booking(
+                reference="OLDREFUSE1",
+                customer_id=friend.id,
+                vehicle_id=vehicle.id,
+                status=BookingStatus.CONFIRMED,
+                dropoff_date=date(2026, 6, 10),
+                dropoff_time=time(9, 0),
+                pickup_date=date(2026, 6, 17),
+                pickup_time=time(12, 0),
+            )
+            db.add_all([old_code, new_code, booking])
+            db.flush()
+            program.referral_code_id = new_code.id
+            db.add(PromoCodeUsage(
+                promo_code_id=old_code.id,
+                booking_id=booking.id,
+                discount_percent=10,
+                discount_amount_pence=1000,
+                used_at=datetime(2026, 6, 3, tzinfo=timezone.utc),
+            ))
+            db.commit()
+
+            dashboard = build_referrals_dashboard_data(db)
+
+            assert dashboard["customers"][0]["uses"] == 1
+            assert dashboard["code_usage"][0]["code"] == "REF-OLD-CODE"
+            assert dashboard["code_usage"][0]["referrer"] == "Historic Referrer"
+            assert dashboard["code_usage"][0]["referrer_customer_id"] == referrer.id
+            assert dashboard["code_usage"][0]["attribution_status"] == "unattributed"
+        finally:
+            db.close()
 
 
 class TestReferralAdminActions:

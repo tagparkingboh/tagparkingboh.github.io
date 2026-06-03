@@ -527,6 +527,104 @@
   color: #888;
 }
 
+.link-button {
+  background: none;
+  border: none;
+  color: #2563eb;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.danger-text {
+  color: #c53030;
+}
+
+.referrals-dashboard {
+  display: grid;
+  gap: 22px;
+}
+
+.referral-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.referral-stat-card {
+  min-height: 96px;
+}
+
+.referrals-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.referrals-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.referrals-panel-header h3 {
+  margin: 0;
+}
+
+.referrals-panel-header select {
+  min-width: 220px;
+}
+
+.referrals-search,
+.referrals-usage-search {
+  min-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.referrals-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #555;
+  font-size: 13px;
+}
+
+.referrals-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+
+.referrals-table th,
+.referrals-table td {
+  white-space: nowrap;
+}
+
+.referral-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 340px;
+}
+
+.referral-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: #333;
+}
+
+.referral-summary-line span {
+  padding-right: 10px;
+  border-right: 1px solid #e5e7eb;
+}
+
 /* Status badges */
 .status-badge {
   display: inline-block;
@@ -551,6 +649,30 @@
 .status-cancelled {
   background: #f8d7da;
   color: #721c24;
+}
+
+.status-badge.opted_in,
+.status-badge.qualified,
+.status-badge.completed {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.opted_out,
+.status-badge.disqualified,
+.status-badge.cancelled,
+.status-badge.refunded {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-badge.invited,
+.status-badge.reminded,
+.status-badge.pending,
+.status-badge.confirmed,
+.status-badge.unattributed {
+  background: #fff3cd;
+  color: #856404;
 }
 
 .status-completed {

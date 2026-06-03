@@ -14,6 +14,7 @@ import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const REFERRALS_PAGE_SIZE = 250
 
 // Sidebar navigation structure
 const NAV_STRUCTURE = [
@@ -51,6 +52,7 @@ const NAV_STRUCTURE = [
       { id: 'marketing', label: 'Subscribers' },
       { id: 'promotions', label: 'Promotions' },
       { id: 'campaigns', label: 'Email Campaigns' },
+      { id: 'referrals', label: 'Referrals' },
       { id: 'sources', label: 'Sources' },
     ]
   },
@@ -351,7 +353,18 @@ function Admin() {
   const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
   // Marketing sub-tab state
-  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers', 'promotions', 'campaigns', or 'sources'
+  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers', 'promotions', 'campaigns', 'referrals', or 'sources'
+  const [referralsDashboard, setReferralsDashboard] = useState({ stats: {}, customers: [], code_usage: [] })
+  const [loadingReferrals, setLoadingReferrals] = useState(false)
+  const [referralsFilter, setReferralsFilter] = useState('all')
+  const [referralsCustomerSearch, setReferralsCustomerSearch] = useState('')
+  const [referralsCustomerOffset, setReferralsCustomerOffset] = useState(0)
+  const [referralsUsageFilter, setReferralsUsageFilter] = useState('all')
+  const [referralsUsageSearch, setReferralsUsageSearch] = useState('')
+  const [referralsUsageOffset, setReferralsUsageOffset] = useState(0)
+  const [referralDashboardAction, setReferralDashboardAction] = useState(null)
+  const referralDashboardActionInFlightRef = useRef(false)
+  const referralUsageTableRef = useRef(null)
 
   // Email Campaigns state
   const [campaigns, setCampaigns] = useState([])
@@ -427,7 +440,6 @@ function Admin() {
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [loadingCustomerDetail, setLoadingCustomerDetail] = useState(false)
-  const [referralAction, setReferralAction] = useState(null)
   const [addingVehicle, setAddingVehicle] = useState(false)
   const [showAddVehicleForm, setShowAddVehicleForm] = useState(false)
   const [newVehicleForm, setNewVehicleForm] = useState({ registration: '', make: '', model: '', colour: '' })
@@ -945,6 +957,22 @@ function Admin() {
       fetchMarketingSources()
     }
   }, [activeTab, token, marketingSubTab])
+
+  useEffect(() => {
+    if (activeTab === 'marketing' && token && marketingSubTab === 'referrals') {
+      fetchReferralsDashboard()
+    }
+  }, [
+    activeTab,
+    token,
+    marketingSubTab,
+    referralsFilter,
+    referralsCustomerSearch,
+    referralsCustomerOffset,
+    referralsUsageFilter,
+    referralsUsageSearch,
+    referralsUsageOffset,
+  ])
 
   // Fetch email campaigns when marketing tab is active with campaigns sub-tab
   useEffect(() => {
@@ -2447,6 +2475,43 @@ function Admin() {
     }
   }
 
+  const fetchReferralsDashboard = async () => {
+    setLoadingReferrals(true)
+    setError('')
+    try {
+      const params = new URLSearchParams({
+        customer_limit: String(REFERRALS_PAGE_SIZE),
+        customer_offset: String(referralsCustomerOffset),
+        customer_filter: referralsFilter,
+        customer_search: referralsCustomerSearch.trim(),
+        usage_limit: String(REFERRALS_PAGE_SIZE),
+        usage_offset: String(referralsUsageOffset),
+        usage_filter: referralsUsageFilter,
+        usage_search: referralsUsageSearch.trim(),
+      })
+      const response = await fetch(`${API_URL}/api/admin/marketing/referrals?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setReferralsDashboard({
+          stats: data.stats || {},
+          customers: data.customers || [],
+          code_usage: data.code_usage || [],
+          pagination: data.pagination || {},
+        })
+      } else {
+        setError(data.detail || 'Failed to load referrals dashboard')
+      }
+    } catch (err) {
+      setError('Network error loading referrals dashboard')
+    } finally {
+      setLoadingReferrals(false)
+    }
+  }
+
   // Promotions functions
   const fetchPromotions = async () => {
     setLoadingPromotions(true)
@@ -3347,15 +3412,12 @@ function Admin() {
   const closeCustomerModal = () => {
     setShowCustomerModal(false)
     setSelectedCustomer(null)
-    setReferralAction(null)
     setShowAddVehicleForm(false)
     setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
   }
 
-  const handleReferralAction = async (action) => {
-    if (!selectedCustomer) return
-
-    const actionCopy = {
+  const getReferralActionCopy = (action) => (
+    {
       'cancel-code': {
         confirm: 'Cancel this referral promo code? The customer will need a new code before sharing again.',
         loading: 'Cancelling...',
@@ -3372,14 +3434,21 @@ function Admin() {
         success: 'Referral code resent',
       },
     }[action]
+  )
 
+  const handleReferralDashboardAction = async (customer, action) => {
+    if (!customer?.customer_id) return
+    if (referralDashboardActionInFlightRef.current) return
+
+    const actionCopy = getReferralActionCopy(action)
     if (!actionCopy) return
     if (actionCopy.confirm && !window.confirm(actionCopy.confirm)) return
 
-    setReferralAction(action)
-    setCustomerMessage('')
+    referralDashboardActionInFlightRef.current = true
+    setReferralDashboardAction(`${customer.customer_id}:${action}`)
+    setError('')
     try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}/referral/${action}`, {
+      const response = await fetch(`${API_URL}/api/admin/customers/${customer.customer_id}/referral/${action}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -3387,21 +3456,21 @@ function Admin() {
       })
       const data = await response.json()
       if (response.ok) {
-        setSelectedCustomer(prev => ({
-          ...prev,
-          referral_program: data.referral_program,
-        }))
-        setCustomerMessage(data.message || actionCopy.success)
-        setTimeout(() => setCustomerMessage(''), 3000)
+        await fetchReferralsDashboard()
+        if (selectedCustomer?.id === customer.customer_id && data.referral_program) {
+          setSelectedCustomer(prev => ({
+            ...prev,
+            referral_program: data.referral_program,
+          }))
+        }
       } else {
-        setCustomerMessage(`Error: ${data.detail || 'Referral action failed'}`)
-        setTimeout(() => setCustomerMessage(''), 5000)
+        setError(data.detail || 'Referral action failed')
       }
     } catch (err) {
-      setCustomerMessage('Network error updating referral program')
-      setTimeout(() => setCustomerMessage(''), 3000)
+      setError('Network error updating referral program')
     } finally {
-      setReferralAction(null)
+      referralDashboardActionInFlightRef.current = false
+      setReferralDashboardAction(null)
     }
   }
 
@@ -5236,6 +5305,26 @@ function Admin() {
     return statusColors[status] || 'status-pending'
   }
 
+  const formatPence = (amountPence) => (
+    amountPence === null || amountPence === undefined ? '-' : `£${(amountPence / 100).toFixed(2)}`
+  )
+
+  const filteredReferralCustomers = useMemo(() => {
+    return referralsDashboard.customers || []
+  }, [referralsDashboard.customers])
+
+  const filteredReferralUsage = useMemo(() => {
+    return referralsDashboard.code_usage || []
+  }, [referralsDashboard.code_usage])
+
+  const referralsPagination = referralsDashboard.pagination || {}
+  const referralCustomerTotal = referralsPagination.customer_total || 0
+  const referralUsageTotal = referralsPagination.code_usage_filtered_total ?? referralsPagination.code_usage_total ?? 0
+  const referralCustomerStart = referralCustomerTotal ? referralsCustomerOffset + 1 : 0
+  const referralCustomerEnd = Math.min(referralsCustomerOffset + REFERRALS_PAGE_SIZE, referralCustomerTotal)
+  const referralUsageStart = referralUsageTotal ? referralsUsageOffset + 1 : 0
+  const referralUsageEnd = Math.min(referralsUsageOffset + REFERRALS_PAGE_SIZE, referralUsageTotal)
+
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
     let filtered = [...subscribers]
@@ -6029,6 +6118,9 @@ function Admin() {
     } else if (tabId === 'campaigns') {
       setActiveTab('marketing')
       setMarketingSubTab('campaigns')
+    } else if (tabId === 'referrals') {
+      setActiveTab('marketing')
+      setMarketingSubTab('referrals')
     } else if (tabId === 'sources') {
       setActiveTab('marketing')
       setMarketingSubTab('sources')
@@ -6074,6 +6166,7 @@ function Admin() {
     if (itemId === 'marketing' && activeTab === 'marketing' && marketingSubTab === 'subscribers') return true
     if (itemId === 'promotions' && activeTab === 'marketing' && marketingSubTab === 'promotions') return true
     if (itemId === 'campaigns' && activeTab === 'marketing' && marketingSubTab === 'campaigns') return true
+    if (itemId === 'referrals' && activeTab === 'marketing' && marketingSubTab === 'referrals') return true
     if (itemId === 'sources' && activeTab === 'marketing' && marketingSubTab === 'sources') return true
     // Reports sub-tabs
     if (itemId === 'reports-growth' && activeTab === 'reports' && reportsSubTab === 'growth') return true
@@ -6085,7 +6178,7 @@ function Admin() {
     if (itemId === 'reports-analytics' && activeTab === 'reports' && reportsSubTab === 'analytics') return true
     if (itemId === 'reports-forecast' && activeTab === 'reports' && reportsSubTab === 'forecast') return true
     // Standard tabs (exclude marketing and reports sub-tab ids)
-    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics', 'reports-forecast']
+    const subTabIds = ['marketing', 'promotions', 'campaigns', 'referrals', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics', 'reports-forecast']
     if (!subTabIds.includes(itemId)) {
       return activeTab === itemId
     }
@@ -8010,6 +8103,7 @@ function Admin() {
               {marketingSubTab === 'subscribers' && 'Subscribers'}
               {marketingSubTab === 'promotions' && 'Promotions'}
               {marketingSubTab === 'campaigns' && 'Email Campaigns'}
+              {marketingSubTab === 'referrals' && 'Referrals'}
               {marketingSubTab === 'sources' && 'Sources'}
             </h2>
 
@@ -9520,6 +9614,289 @@ function Admin() {
               </div>
             )}
 
+            {marketingSubTab === 'referrals' && (
+              <div className="referrals-dashboard">
+                <div className="admin-section-header">
+                  <h2>Referral Program</h2>
+                  <button
+                    className="btn-secondary"
+                    onClick={fetchReferralsDashboard}
+                    disabled={loadingReferrals}
+                  >
+                    {loadingReferrals ? 'Loading...' : '↻ Refresh'}
+                  </button>
+                </div>
+
+                {loadingReferrals ? (
+                  <div className="loading-state">Loading referrals...</div>
+                ) : (
+                  <>
+                    <div className="referral-stats-grid">
+                      {[
+                        ['Invites sent', referralsDashboard.stats.invites_sent],
+                        ['Awaiting response', referralsDashboard.stats.awaiting_response],
+                        ['Opted in', referralsDashboard.stats.opted_in],
+                        ['Opted out', referralsDashboard.stats.opted_out],
+                        ['Response opt-in rate', `${referralsDashboard.stats.opt_in_rate || 0}%`],
+                        ['Codes generated', referralsDashboard.stats.referral_codes_generated],
+                        ['Code bookings', referralsDashboard.stats.referral_code_bookings_created],
+                        ['Qualified referrals', referralsDashboard.stats.completed_qualified_referrals],
+                        ['Self-use / disqualified', referralsDashboard.stats.self_use_disqualified_referrals],
+                        ['Rewards earned', referralsDashboard.stats.rewards_earned],
+                        ['Rewards sent', referralsDashboard.stats.rewards_sent],
+                      ].map(([label, value]) => (
+                        <div className="stats-card referral-stat-card" key={label}>
+                          <div className="stats-card-value">{value ?? 0}</div>
+                          <div className="stats-card-label">{label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="referrals-panel">
+                      <div className="referrals-panel-header">
+                        <h3>Referral Customers</h3>
+                        <select
+                          value={referralsFilter}
+                          onChange={(e) => {
+                            setReferralsFilter(e.target.value)
+                            setReferralsCustomerOffset(0)
+                          }}
+                        >
+                          <option value="all">All</option>
+                          <option value="awaiting_response">Awaiting response</option>
+                          <option value="opted_in">Opted in</option>
+                          <option value="opted_out">Opted out</option>
+                          <option value="has_code_usage">Has code usage</option>
+                          <option value="has_qualified">Has qualified referrals</option>
+                          <option value="reward_earned">Reward earned</option>
+                          <option value="self_use_only">Self-use only</option>
+                          <option value="disqualified_usage">Disqualified usage</option>
+                        </select>
+                        <input
+                          type="text"
+                          className="referrals-search"
+                          placeholder="Search customer, email, code"
+                          value={referralsCustomerSearch}
+                          onChange={(e) => {
+                            setReferralsCustomerSearch(e.target.value)
+                            setReferralsCustomerOffset(0)
+                          }}
+                        />
+                      </div>
+                      <div className="admin-table-container">
+                        <table className="admin-table referrals-table">
+                          <thead>
+                            <tr>
+                              <th>Customer</th>
+                              <th>Email</th>
+                              <th>Status</th>
+                              <th>Code</th>
+                              <th>Uses</th>
+                              <th>Qualified</th>
+                              <th>Reward</th>
+                              <th>Invite Sent</th>
+                              <th>Code Email Sent</th>
+                              <th>Reminder Sent</th>
+                              <th>Responded</th>
+                              <th>Reward Earned</th>
+                              <th>Reward Email Sent</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredReferralCustomers.map(row => (
+                              <tr key={row.program_id}>
+                                <td>{row.customer_name || '-'}</td>
+                                <td>{row.email || '-'}</td>
+                                <td><span className={`status-badge ${row.status}`}>{row.status_label}</span></td>
+                                <td><span className="promo-code-display">{row.code || '-'}</span></td>
+                                <td>{row.uses || 0}</td>
+                                <td>{row.qualified || 0}</td>
+                                <td>{row.reward_code || (row.reward_earned ? 'Earned' : '-')}</td>
+                                <td>{formatDateTimeUK(row.invite_sent_at)}</td>
+                                <td>{formatDateTimeUK(row.code_email_sent_at)}</td>
+                                <td>{formatDateTimeUK(row.reminder_sent_at)}</td>
+                                <td>{formatDateTimeUK(row.responded_at)}</td>
+                                <td>{formatDateTimeUK(row.reward_earned_at)}</td>
+                                <td>{formatDateTimeUK(row.reward_email_sent_at)}</td>
+                                <td>
+                                  <div className="referral-action-row">
+                                    <button className="btn-secondary btn-small" onClick={() => openCustomerModal({ id: row.customer_id })}>
+                                      View Customer
+                                    </button>
+                                    {row.code && (
+                                      <button
+                                        className="btn-secondary btn-small"
+                                        onClick={() => {
+                                          setReferralsUsageFilter('all')
+                                          setReferralsUsageSearch(row.code)
+                                          setReferralsUsageOffset(0)
+                                          setTimeout(() => {
+                                            referralUsageTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                          }, 0)
+                                        }}
+                                      >
+                                        View Bookings
+                                      </button>
+                                    )}
+                                    <button
+                                      className="btn-secondary btn-small"
+                                      onClick={() => handleReferralDashboardAction(row, 'resend-code')}
+                                      disabled={!!referralDashboardAction || !row.code || !row.code_active}
+                                    >
+                                      {referralDashboardAction === `${row.customer_id}:resend-code` ? 'Resending...' : 'Resend Code'}
+                                    </button>
+                                    <button
+                                      className="btn-secondary btn-small"
+                                      onClick={() => handleReferralDashboardAction(row, 'generate-new-code')}
+                                      disabled={!!referralDashboardAction}
+                                    >
+                                      {referralDashboardAction === `${row.customer_id}:generate-new-code` ? 'Generating...' : 'Generate Code'}
+                                    </button>
+                                    <button
+                                      className="btn-secondary btn-small danger-text"
+                                      onClick={() => handleReferralDashboardAction(row, 'cancel-code')}
+                                      disabled={!!referralDashboardAction || !row.code || !row.code_active}
+                                    >
+                                      {referralDashboardAction === `${row.customer_id}:cancel-code` ? 'Cancelling...' : 'Cancel Code'}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                            {filteredReferralCustomers.length === 0 && (
+                              <tr><td colSpan="14" className="no-data">No referral customers match this filter.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="referrals-pagination">
+                        <span>
+                          Showing {referralCustomerStart}-{referralCustomerEnd} of {referralCustomerTotal} customers
+                        </span>
+                        <div>
+                          <button
+                            className="btn-secondary btn-small"
+                            disabled={loadingReferrals || referralsCustomerOffset === 0}
+                            onClick={() => setReferralsCustomerOffset(Math.max(0, referralsCustomerOffset - REFERRALS_PAGE_SIZE))}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            className="btn-secondary btn-small"
+                            disabled={loadingReferrals || referralCustomerEnd >= referralCustomerTotal}
+                            onClick={() => setReferralsCustomerOffset(referralsCustomerOffset + REFERRALS_PAGE_SIZE)}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="referrals-panel" ref={referralUsageTableRef}>
+                      <div className="referrals-panel-header">
+                        <h3>Code Usage / Bookings</h3>
+                        <input
+                          type="text"
+                          className="referrals-usage-search"
+                          placeholder="Search code, booking, referrer"
+                          value={referralsUsageSearch}
+                          onChange={(e) => {
+                            setReferralsUsageSearch(e.target.value)
+                            setReferralsUsageOffset(0)
+                          }}
+                        />
+                        <select
+                          value={referralsUsageFilter}
+                          onChange={(e) => {
+                            setReferralsUsageFilter(e.target.value)
+                            setReferralsUsageOffset(0)
+                          }}
+                        >
+                          <option value="all">All</option>
+                          <option value="open_bookings">Pending / confirmed bookings</option>
+                          <option value="completed">Completed bookings</option>
+                          <option value="pending">Pending attribution</option>
+                          <option value="qualified">Qualified</option>
+                          <option value="disqualified">Disqualified</option>
+                          <option value="self_use">Self-use</option>
+                        </select>
+                      </div>
+                      <div className="admin-table-container">
+                        <table className="admin-table referrals-table">
+                          <thead>
+                            <tr>
+                              <th>Referrer</th>
+                              <th>Code</th>
+                              <th>Used By</th>
+                              <th>Booking</th>
+                              <th>Booking Status</th>
+                              <th>Discount</th>
+                              <th>Self-use</th>
+                              <th>Attribution</th>
+                              <th>Completed At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredReferralUsage.map(row => (
+                              <tr key={row.usage_id}>
+                                <td>{row.referrer || '-'}</td>
+                                <td><span className="promo-code-display">{row.code || '-'}</span></td>
+                                <td>{row.used_by || '-'}</td>
+                                <td>
+                                  {row.booking_reference ? (
+                                    <button
+                                      type="button"
+                                      className="link-button"
+                                      onClick={() => {
+                                        setActiveTab('bookings')
+                                        setSearchTerm(row.booking_reference)
+                                      }}
+                                    >
+                                      {row.booking_reference}
+                                    </button>
+                                  ) : '-'}
+                                </td>
+                                <td><span className={`status-badge ${row.booking_status || 'pending'}`}>{row.booking_status || '-'}</span></td>
+                                <td>{row.discount_percent}% {row.discount_amount_pence ? `(${formatPence(row.discount_amount_pence)})` : ''}</td>
+                                <td>{row.self_use ? 'Yes' : 'No'}</td>
+                                <td><span className={`status-badge ${row.attribution_status}`}>{row.attribution_status}</span></td>
+                                <td>{formatDateTimeUK(row.completed_at)}</td>
+                              </tr>
+                            ))}
+                            {filteredReferralUsage.length === 0 && (
+                              <tr><td colSpan="9" className="no-data">No referral code usage matches this filter.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="referrals-pagination">
+                        <span>
+                          Showing {referralUsageStart}-{referralUsageEnd} of {referralUsageTotal} code usages
+                        </span>
+                        <div>
+                          <button
+                            className="btn-secondary btn-small"
+                            disabled={loadingReferrals || referralsUsageOffset === 0}
+                            onClick={() => setReferralsUsageOffset(Math.max(0, referralsUsageOffset - REFERRALS_PAGE_SIZE))}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            className="btn-secondary btn-small"
+                            disabled={loadingReferrals || referralUsageEnd >= referralUsageTotal}
+                            onClick={() => setReferralsUsageOffset(referralsUsageOffset + REFERRALS_PAGE_SIZE)}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Sources Sub-tab (Marketing Sources) */}
             {marketingSubTab === 'sources' && (
               <div className="marketing-sources-section">
@@ -10747,95 +11124,27 @@ function Admin() {
                           )}
                         </div>
 
-                        {/* Referral Program */}
+                        {/* Referral Summary */}
                         <div className="customer-detail-section">
                           <div className="section-header">
-                            <h4>Referral Program</h4>
-                            {selectedCustomer.referral_program && (
-                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                <button
-                                  className="btn-secondary btn-small"
-                                  onClick={() => handleReferralAction('resend-code')}
-                                  disabled={
-                                    !!referralAction ||
-                                    !selectedCustomer.referral_program.referral_code ||
-                                    !selectedCustomer.referral_program.referral_code_active
-                                  }
-                                >
-                                  {referralAction === 'resend-code' ? 'Resending...' : 'Resend Code'}
-                                </button>
-                                <button
-                                  className="btn-secondary btn-small"
-                                  onClick={() => handleReferralAction('generate-new-code')}
-                                  disabled={!!referralAction}
-                                >
-                                  {referralAction === 'generate-new-code' ? 'Generating...' : 'Generate New Code'}
-                                </button>
-                                <button
-                                  className="btn-secondary btn-small"
-                                  onClick={() => handleReferralAction('cancel-code')}
-                                  disabled={
-                                    !!referralAction ||
-                                    !selectedCustomer.referral_program.referral_code ||
-                                    !selectedCustomer.referral_program.referral_code_active
-                                  }
-                                  style={{ color: '#c53030' }}
-                                >
-                                  {referralAction === 'cancel-code' ? 'Cancelling...' : 'Cancel Code'}
-                                </button>
-                              </div>
-                            )}
+                            <h4>Referral</h4>
                           </div>
                           {selectedCustomer.referral_program ? (
-                            <div className="customer-info-grid">
-                              <div className="info-row">
-                                <span className="info-label">Status:</span>
-                                <span className="info-value">{selectedCustomer.referral_program.status || '-'}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Referral Code:</span>
-                                <span className="info-value">{selectedCustomer.referral_program.referral_code || '-'}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Code State:</span>
-                                <span className="info-value">
-                                  {selectedCustomer.referral_program.referral_code
-                                    ? (selectedCustomer.referral_program.referral_code_active ? 'active' : 'cancelled / expired')
-                                    : '-'}
-                                </span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Code Email Sent:</span>
-                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.referral_code_email_sent_at)}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Qualified Referrals:</span>
-                                <span className="info-value">{selectedCustomer.referral_program.qualified_referral_count ?? 0}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Reward Code:</span>
-                                <span className="info-value">{selectedCustomer.referral_program.reward_code || '-'}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Invite Sent:</span>
-                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.invite_sent_at)}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Reminder Sent:</span>
-                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.reminder_sent_at)}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Responded:</span>
-                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.responded_at)}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Reward Earned:</span>
-                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.reward_earned_at)}</span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-label">Reward Email Sent:</span>
-                                <span className="info-value">{formatDateTimeUK(selectedCustomer.referral_program.reward_email_sent_at)}</span>
-                              </div>
+                            <div className="referral-summary-line">
+                              <span>{selectedCustomer.referral_program.status?.replace(/_/g, ' ') || '-'}</span>
+                              <span>{selectedCustomer.referral_program.referral_code || 'No code'}</span>
+                              <span>{selectedCustomer.referral_program.qualified_referral_count ?? 0} qualified</span>
+                              <button
+                                type="button"
+                                className="link-button"
+                                onClick={() => {
+                                  closeCustomerModal()
+                                  setActiveTab('marketing')
+                                  setMarketingSubTab('referrals')
+                                }}
+                              >
+                                View referral details
+                              </button>
                             </div>
                           ) : (
                             <p className="no-data-text">No referral program record</p>
