@@ -226,6 +226,7 @@ class TestReferralInviteScheduler:
             assert program.status == referral_service.PROGRAM_STATUS_INVITED
             assert program.invite_sent_at.replace(tzinfo=timezone.utc) == datetime(2026, 6, 3, tzinfo=timezone.utc)
             send.assert_called_once()
+            assert send.call_args.kwargs["intro_line"] == "Would you like to join our referral program?"
         finally:
             db.close()
 

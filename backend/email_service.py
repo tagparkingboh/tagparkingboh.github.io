@@ -239,9 +239,16 @@ def _send_referral_email(
     return send_email(email, subject, html_content)
 
 
-def send_referral_invite_email(first_name: str, email: str, yes_url: str, no_url: str) -> bool:
+def send_referral_invite_email(
+    first_name: str,
+    email: str,
+    yes_url: str,
+    no_url: str,
+    intro_line: str = "Thanks again for parking with Tag. Would you like to join our referral program?",
+) -> bool:
     subject = f"{first_name}, join Tag's referral program?"
     return _send_referral_email(email, first_name, subject, "referral_invite_email.html", {
+        "INTRO_LINE": intro_line,
         "ACTION_BUTTONS": _referral_action_buttons(yes_url, no_url),
     })
 

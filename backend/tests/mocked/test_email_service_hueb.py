@@ -437,6 +437,27 @@ class TestReferralBrandedTemplates:
         assert "Yes, send my code" in captured["html"]
         assert "Unsubscribe" not in captured["html"]
         assert "/api/marketing/unsubscribe" not in captured["html"]
+        assert "Thanks again for parking with Tag. Would you like to join our referral program?" in captured["html"]
+
+    def test_social_invite_can_use_neutral_intro_copy(self, monkeypatch):
+        captured = {}
+
+        def fake_send_email(to_email, subject, html_content):
+            captured["html"] = html_content
+            return True
+
+        monkeypatch.setattr(email_service, "send_email", fake_send_email)
+
+        assert email_service.send_referral_invite_email(
+            "Jo",
+            "jo@example.com",
+            "https://api.test/yes",
+            "https://api.test/no",
+            intro_line="Would you like to join our referral program?",
+        ) is True
+
+        assert "Would you like to join our referral program?" in captured["html"]
+        assert "Thanks again for parking with Tag" not in captured["html"]
 
     def test_code_email_uses_marketing_campaign_wrapper_and_code_block(self, monkeypatch):
         captured = {}

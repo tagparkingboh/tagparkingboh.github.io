@@ -244,7 +244,13 @@ def send_manual_referral_invite(
         return program, customer, created_customer, False
 
     yes_url, no_url = _response_urls(program)
-    if not send_referral_invite_email(customer.first_name, customer.email, yes_url, no_url):
+    if not send_referral_invite_email(
+        customer.first_name,
+        customer.email,
+        yes_url,
+        no_url,
+        intro_line="Would you like to join our referral program?",
+    ):
         db.rollback()
         raise ValueError("Failed to send referral invite email")
 
