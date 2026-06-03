@@ -122,6 +122,22 @@ class TestHeardAboutUs:
         assert resp.status_code == 200
         assert resp.json()["already_answered"] is True
 
+    def test_E_existing_source_repairs_false_flag_without_duplicate_insert(self):
+        c = _customer(
+            has_answered_heard_about_us=False,
+            marketing_source=SimpleNamespace(source="word_of_mouth", source_detail=None),
+        )
+        db = self._wire(c)
+        _override_public(db)
+        resp = TestClient(app).post("/api/customers/heard-about-us", json={
+            "email": "jo@x.test", "source": "word_of_mouth"
+        })
+        assert resp.status_code == 200
+        assert resp.json()["already_answered"] is True
+        assert c.has_answered_heard_about_us is True
+        db.add.assert_not_called()
+        db.commit.assert_called_once()
+
     def test_H_other_with_detail(self):
         c = _customer()
         _override_public(self._wire(c))

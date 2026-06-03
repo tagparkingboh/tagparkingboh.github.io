@@ -256,6 +256,24 @@ class TestHeardAboutUsStatus:
         assert body["has_answered_heard_about_us"] is True
         assert body["show_heard_about_us"] is False
 
+    def test_E_existing_marketing_source_hides_gate_and_repairs_flag(self):
+        c = SimpleNamespace(
+            id=42,
+            has_answered_heard_about_us=False,
+            marketing_source=SimpleNamespace(source="word_of_mouth", source_detail=None),
+        )
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = c
+        _override(db)
+        resp = TestClient(app).get("/api/customers/heard-about-us-status?email=jo@x.test")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["customer_id"] == 42
+        assert body["has_answered_heard_about_us"] is True
+        assert body["show_heard_about_us"] is False
+        assert c.has_answered_heard_about_us is True
+        db.commit.assert_called_once()
+
     def test_H_existing_customer_not_answered(self):
         c = SimpleNamespace(id=42, has_answered_heard_about_us=False)
         db = MagicMock()

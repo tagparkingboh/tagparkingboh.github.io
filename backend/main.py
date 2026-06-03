@@ -9879,11 +9879,17 @@ async def get_heard_about_us_status(
             "show_heard_about_us": True,
         }
 
+    existing_marketing_source = getattr(customer, "marketing_source", None)
+    has_answered = (customer.has_answered_heard_about_us or False) or bool(existing_marketing_source)
+    if existing_marketing_source and not (customer.has_answered_heard_about_us or False):
+        customer.has_answered_heard_about_us = True
+        db.commit()
+
     # Existing customer - check if they've already answered
     return {
         "customer_id": customer.id,
-        "has_answered_heard_about_us": customer.has_answered_heard_about_us or False,
-        "show_heard_about_us": not (customer.has_answered_heard_about_us or False),
+        "has_answered_heard_about_us": has_answered,
+        "show_heard_about_us": not has_answered,
     }
 
 
@@ -9942,8 +9948,15 @@ async def save_heard_about_us(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found. Please complete contact details first.")
 
-    # Check if already answered - silently succeed (idempotent)
-    if customer.has_answered_heard_about_us:
+    existing_marketing_source = getattr(customer, "marketing_source", None)
+
+    # Check if already answered - silently succeed (idempotent). Trust the
+    # attribution row as the source of truth too, so repaired/merged customers
+    # do not get trapped behind a duplicate insert attempt.
+    if customer.has_answered_heard_about_us or existing_marketing_source:
+        if existing_marketing_source and not customer.has_answered_heard_about_us:
+            customer.has_answered_heard_about_us = True
+            db.commit()
         return {
             "success": True,
             "message": "Marketing source already recorded",
