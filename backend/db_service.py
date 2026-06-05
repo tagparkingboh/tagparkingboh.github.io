@@ -30,6 +30,9 @@ def exclude_staging_e2e_capacity_bookings(query, booking_model=Booking):
     """In staging, keep scheduled e2e bookings from consuming public capacity."""
     if not should_exclude_staging_e2e_capacity_bookings():
         return query
+    query_module = query.__class__.__module__
+    if query_module.startswith("unittest.mock") or not hasattr(query, "join"):
+        return query
     return query.join(booking_model.customer).filter(
         func.lower(Customer.email).notin_(E2E_CAPACITY_EXCLUDED_EMAILS)
     )

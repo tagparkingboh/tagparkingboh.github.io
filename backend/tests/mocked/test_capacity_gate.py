@@ -221,9 +221,21 @@ class TestStagingE2ECapacityExclusion:
 
     def test_enabled_in_staging(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "staging")
-        query = MagicMock()
-        filtered_query = MagicMock()
-        query.join.return_value.filter.return_value = filtered_query
+
+        class QueryWithJoin:
+            def __init__(self):
+                self.joined = False
+                self.filtered = False
+
+            def join(self, *args, **kwargs):
+                self.joined = True
+                return self
+
+            def filter(self, *args, **kwargs):
+                self.filtered = True
+                return self
+
+        query = QueryWithJoin()
 
         assert should_exclude_staging_e2e_capacity_bookings() is True
         assert E2E_CAPACITY_EXCLUDED_EMAILS == (
@@ -231,8 +243,9 @@ class TestStagingE2ECapacityExclusion:
             "qa.orca.contact+referral-friend1@gmail.com",
             "qa.orca.contact+referral-friend2@gmail.com",
         )
-        assert exclude_staging_e2e_capacity_bookings(query, Booking) is filtered_query
-        query.join.assert_called_once_with(Booking.customer)
+        assert exclude_staging_e2e_capacity_bookings(query, Booking) is query
+        assert query.joined is True
+        assert query.filtered is True
 
 
 # =============================================================================

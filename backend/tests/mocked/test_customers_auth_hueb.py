@@ -242,6 +242,8 @@ class TestGetCustomerDetail:
                 chain.all.return_value = vehicles or []
             elif name == "Booking":
                 chain.count.return_value = booking_count
+            elif name == "ReferralProgram":
+                chain.first.return_value = None
             return chain
         db.query.side_effect = _query
         return db
