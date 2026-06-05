@@ -24,7 +24,8 @@ Usage:
     python create_test_bookings.py
 """
 
-from playwright.sync_api import sync_playwright, Page
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import time
@@ -32,6 +33,10 @@ import random
 import os
 import sys
 import psycopg2
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 # Configuration
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
@@ -1237,6 +1242,8 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
 
 def main():
+    from playwright.sync_api import sync_playwright
+
     print("=" * 60)
     print("TAG Parking - Automated Test Booking Creator")
     print("=" * 60)
