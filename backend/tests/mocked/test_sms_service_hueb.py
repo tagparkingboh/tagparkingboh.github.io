@@ -576,6 +576,24 @@ class TestHandleDeliveryReport:
         assert ok is True
         assert "Number invalid" in (rec.status_detail or "")
 
+    def test_E_expired_with_dict_failure_reason_sets_detail(self):
+        rec = MagicMock()
+        db = self._db_with_record(rec)
+        ok = sms_service.handle_delivery_report(
+            {
+                "messageid": "m1",
+                "status": "EXPIRED",
+                "failurereason": {
+                    "code": 6,
+                    "details": "Handset Error: No response. Handset may be switched off or in a low signal area.",
+                    "permanent": False,
+                },
+            },
+            db,
+        )
+        assert ok is True
+        assert "Handset Error: No response" in (rec.status_detail or "")
+
     def test_H_rejected_maps_to_failed(self):
         rec = MagicMock()
         db = self._db_with_record(rec)
