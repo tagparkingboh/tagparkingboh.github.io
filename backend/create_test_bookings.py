@@ -1036,7 +1036,16 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         continue_payment_btn = page.locator("button:has-text('Continue to Payment')")
         if continue_payment_btn.is_visible(timeout=5000):
             continue_payment_btn.click()
-            time.sleep(3)
+
+            payment_step_ready = page.locator(
+                ".promo-code-section, .promo-code-input input, "
+                "iframe[name^='__privateStripeFrame'], "
+                "button:has-text('Complete Free Booking')"
+            ).first
+            try:
+                payment_step_ready.wait_for(state="visible", timeout=15000)
+            except Exception:
+                print("    Warning: Payment step did not show an expected ready marker within 15s")
 
         # ============ STEP 4: Payment ============
         print("  Step 4: Payment...")
@@ -1050,25 +1059,37 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             time.sleep(1)
 
             # Find and fill promo code input
-            promo_input = page.locator(".promo-code-input input, input[placeholder*='promo' i]")
+            promo_input = page.locator(
+                ".promo-code-section .promo-code-input input, "
+                ".promo-code-input input, "
+                "input[placeholder*='promo' i]"
+            ).first
             if promo_input.is_visible(timeout=5000):
                 promo_input.fill(promo_code)
                 time.sleep(0.5)
 
                 # Click Apply button
-                apply_btn = page.locator(".promo-apply-btn, button:has-text('Apply')")
+                apply_btn = page.locator(
+                    ".promo-code-section .promo-apply-btn, "
+                    ".promo-apply-btn, "
+                    "button:has-text('Apply')"
+                ).first
                 if apply_btn.is_visible(timeout=3000):
                     apply_btn.click()
-                    time.sleep(2)
 
                     # Check for success - look for success indicators (use .first to avoid strict mode error)
-                    time.sleep(1)
-                    promo_success = page.locator(".promo-success, .promo-code-applied, .discount-applied").first
+                    promo_success = page.locator(
+                        ".promo-success, .promo-code-applied, .discount-applied, "
+                        "text=/Promo code applied/i"
+                    ).first
 
-                    if promo_success.is_visible(timeout=3000):
+                    if promo_success.is_visible(timeout=10000):
                         print(f"    Promo code {promo_code} applied successfully!")
                         promo_applied = True
                     else:
+                        promo_error = page.locator(".promo-error").first
+                        if promo_error.is_visible(timeout=1000):
+                            print(f"    Promo error: {promo_error.text_content()}")
                         print(f"    Error: Could not confirm promo code applied")
                 else:
                     print("    Error: Promo code Apply button not found")
