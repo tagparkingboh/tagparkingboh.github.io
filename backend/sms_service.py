@@ -610,7 +610,11 @@ def handle_delivery_report(payload: dict, db_session) -> bool:
         if new_status == SMSStatus.DELIVERED:
             sms_record.delivered_at = datetime.now(UK_TZ)
         elif new_status == SMSStatus.FAILED:
-            sms_record.status_detail = payload.get("failurereason", "")[:255]
+            failure = payload.get("failurereason", "")
+            if isinstance(failure, dict):
+                sms_record.status_detail = failure.get("details", "")[:255]
+            else:
+                sms_record.status_detail = str(failure)[:255]
 
         db_session.commit()
         logger.info(f"Updated SMS {message_id} status to {new_status.value}")
