@@ -74,8 +74,13 @@ jobs:
               text = log_path.read_text(errors="ignore")
               env_name = log_path.parent.name if log_path.parent != root else "single"
               test_name = log_path.stem.removeprefix("test_")
-              passed = "Successful: 1" in text and "Failed: 0" in text
-              reference_match = re.search(r"Reference:\s*([A-Z0-9-]+)", text)
+              summary_matches = re.findall(r"Successful:\s*(\d+)\s*\nFailed:\s*(\d+)", text)
+              if summary_matches:
+                  successful, failed = summary_matches[-1]
+                  passed = int(successful) > 0 and int(failed) == 0
+              else:
+                  passed = False
+              reference_matches = re.findall(r"Reference:\s*([A-Z0-9-]+)", text)
               error_line = ""
               if not passed:
                   for line in reversed(text.splitlines()):
@@ -88,7 +93,7 @@ jobs:
                       "environment": env_name,
                       "test": test_name,
                       "passed": passed,
-                      "reference": reference_match.group(1) if reference_match else "",
+                      "reference": reference_matches[-1] if reference_matches else "",
                       "error": error_line,
                   }
               )
