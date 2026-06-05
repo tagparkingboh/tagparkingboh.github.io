@@ -22,6 +22,11 @@ import referral_service
 from db_models import Booking, BookingStatus, Customer, PromoCode, PromoCodeUsage, Promotion, ReferralAttribution, ReferralProgram, Vehicle
 
 
+@pytest.fixture(autouse=True)
+def referral_token_secret(monkeypatch):
+    monkeypatch.setenv("REFERRAL_TOKEN_SECRET", "test-referral-token-secret")
+
+
 class FakeQuery:
     def __init__(self, all_rows=None, first_row=None, count_value=0):
         self.all_rows = all_rows or []

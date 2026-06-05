@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from main import app, get_db, require_admin
-from db_models import Testimonial
+from db_models import Testimonial, TestimonialStatus
 
 
 # ============================================================================
@@ -23,7 +23,7 @@ def create_mock_testimonial(
     booking_reference="TAG-12345",
     star_rating=5,
     title="Excellent Service!",
-    content="The service was fantastic. Highly recommend!",
+    review_text="The service was fantastic. Highly recommend!",
     is_approved=True,
     is_featured=False,
     submitted_at=None,
@@ -39,13 +39,17 @@ def create_mock_testimonial(
     testimonial.booking_reference = booking_reference
     testimonial.star_rating = star_rating  # Must be int for comparison
     testimonial.title = title
-    testimonial.content = content
+    testimonial.review_text = review_text
     testimonial.is_approved = is_approved
     testimonial.is_featured = is_featured
     testimonial.submitted_at = submitted_at or datetime.now(timezone.utc)
+    testimonial.date_added = submitted_at or datetime.now(timezone.utc)
+    testimonial.date_of_travel = None
     testimonial.approved_at = approved_at
     testimonial.approved_by = approved_by
     testimonial.display_order = display_order
+    testimonial.status = TestimonialStatus.ACTIVE if is_approved else TestimonialStatus.INACTIVE
+    testimonial.source = "Google"
     return testimonial
 
 
