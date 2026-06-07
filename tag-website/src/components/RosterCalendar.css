@@ -479,6 +479,10 @@
   padding: 14px 16px;
 }
 
+.roster-review-banner-calendar {
+  margin: 0 0 20px;
+}
+
 .roster-review-banner-header {
   display: flex;
   gap: 12px;
@@ -538,6 +542,13 @@
   font-size: 0.84rem;
   line-height: 1.35;
   margin-top: 3px;
+}
+
+.roster-review-more {
+  color: #f6d27b;
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin-top: 10px;
 }
 
 .no-content {

@@ -375,6 +375,20 @@ export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], picku
   return [...missingShiftItems, ...unassignedShiftItems]
 }
 
+export const getRosterCoverageReviewItemsByDate = (bookingsByDate = {}, shiftsByDate = {}, dateKeys = []) => (
+  (dateKeys.length > 0 ? dateKeys : Object.keys({ ...bookingsByDate, ...shiftsByDate }))
+    .flatMap((dateKey) => (
+      getRosterCoverageReviewItems(
+        bookingsByDate[dateKey] || { dropoffs: [], pickups: [] },
+        shiftsByDate[dateKey] || [],
+      ).map((item) => ({
+        ...item,
+        date: dateKey,
+        date_label: formatDateUK(dateKey),
+      }))
+    ))
+)
+
 function RosterCalendar({
   token,
   isAdmin = false,
@@ -2616,6 +2630,12 @@ function RosterCalendar({
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
   const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
   const selectedDateHolidays = selectedDate ? getHolidaysForDate(selectedDate) : []
+  const visibleDateKeys = calendarData.weeks
+    .flat()
+    .filter(Boolean)
+    .map((day) => getDateKey(day))
+  const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
+    .filter((item) => item.kind === 'unassigned-linked-shift')
 
   return (
     <div className="roster-calendar">
@@ -2676,6 +2696,38 @@ function RosterCalendar({
       {/* Messages */}
       {error && <div className="roster-error">{error}</div>}
       {successMessage && <div className="roster-success">{successMessage}</div>}
+
+      {isAdmin && calendarReviewItems.length > 0 && (
+        <div className="roster-review-banner roster-review-banner-calendar" role="alert">
+          <div className="roster-review-banner-header">
+            <span className="roster-review-icon" aria-hidden="true">⚠️</span>
+            <div>
+              <strong>Roster review needed</strong>
+              <p>
+                {calendarReviewItems.length} booking event{calendarReviewItems.length === 1 ? '' : 's'} are linked to shifts with no staff assigned.
+              </p>
+            </div>
+          </div>
+          <ul className="roster-review-list">
+            {calendarReviewItems.slice(0, 5).map((item) => (
+              <li key={`${item.date}-${item.key}`} className={`roster-review-item roster-review-${item.kind}`}>
+                <span className="roster-review-message">{item.date_label} · {item.message}</span>
+                <span className="roster-review-meta">
+                  {[item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  {item.shift_times?.length > 0 && ` · Shift ${item.shift_times.join(', ')}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {calendarReviewItems.length > 5 && (
+            <div className="roster-review-more">
+              +{calendarReviewItems.length - 5} more booking event{calendarReviewItems.length - 5 === 1 ? '' : 's'} need review
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Calendar Grid */}
       <div className="calendar-grid">
