@@ -521,7 +521,7 @@ describe('getRosterCoverageReviewItems', () => {
     expect(items[0].message).toContain('is not linked to a shift')
   })
 
-  it('flags a booking event linked to a shift that has no staff assigned', () => {
+  it('does not flag an ordinary unassigned shift with linked bookings', () => {
     const shifts = [
       {
         id: 1,
@@ -533,7 +533,33 @@ describe('getRosterCoverageReviewItems', () => {
       {
         id: 2,
         staff_id: null,
+        created_source: 'manual',
         start_time: '17:30',
+        end_time: '21:00',
+        bookings: [{ id: 202, reference: 'TAG-PICK202', type: 'pickup' }],
+      },
+    ]
+
+    const items = getRosterCoverageReviewItems(dayBookings, shifts)
+
+    expect(items).toEqual([])
+  })
+
+  it('flags an auto-created unassigned shift when it overlaps a staffed fixed shift', () => {
+    const shifts = [
+      {
+        id: 1,
+        staff_id: 11,
+        created_source: 'manual',
+        start_time: '17:30',
+        end_time: '20:30',
+        bookings: [{ id: 101, reference: 'TAG-DROP101', type: 'dropoff' }],
+      },
+      {
+        id: 2,
+        staff_id: null,
+        created_source: 'auto',
+        start_time: '18:00',
         end_time: '21:00',
         bookings: [{ id: 202, reference: 'TAG-PICK202', type: 'pickup' }],
       },
@@ -546,7 +572,7 @@ describe('getRosterCoverageReviewItems', () => {
       kind: 'unassigned-linked-shift',
       booking_reference: 'TAG-PICK202',
       event_type: 'pickup',
-      shift_times: ['17:30-21:00'],
+      shift_times: ['18:00-21:00'],
       shift_ids: [2],
     })
     expect(items[0].message).toContain('is linked to an unassigned shift')
@@ -585,8 +611,17 @@ describe('getRosterCoverageReviewItems', () => {
       {
         '2026-06-14': [
           {
+            id: 8,
+            staff_id: 3,
+            created_source: 'manual',
+            start_time: '18:00',
+            end_time: '20:00',
+            bookings: [],
+          },
+          {
             id: 9,
             staff_id: null,
+            created_source: 'auto',
             start_time: '18:00',
             end_time: '22:00',
             bookings: [{ id: 301, reference: 'TAG-SUN301', type: 'pickup' }],
