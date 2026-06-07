@@ -317,6 +317,41 @@ const normaliseStaffId = (staffId) => {
   return staffId
 }
 
+const timeToMinutes = (time) => {
+  if (!time) return 0
+  const [hours, minutes] = String(time).slice(0, 5).split(':').map(Number)
+  return (hours || 0) * 60 + (minutes || 0)
+}
+
+const shiftTimeRange = (shift) => {
+  if (!shift) return { start: 0, end: 0 }
+  let start = timeToMinutes(shift.displayStartTime || shift.start_time)
+  let end = timeToMinutes(shift.displayEndTime || shift.end_time)
+  const isAfterMidnightTail = !!(shift.end_date && shift.end_date !== shift.date) && start < end
+  if (isAfterMidnightTail) {
+    start += 24 * 60
+    end += 24 * 60
+  } else if (end <= start || !!(shift.end_date && shift.end_date !== shift.date)) {
+    end += 24 * 60
+  }
+  return { start, end }
+}
+
+const shiftsOverlap = (a, b) => {
+  const ar = shiftTimeRange(a)
+  const br = shiftTimeRange(b)
+  return ar.start < br.end && br.start < ar.end
+}
+
+const isAutoUnassignedShiftBlockedByAssignedShift = (shift, dayShifts = []) => {
+  if (shift?.created_source !== 'auto' || normaliseStaffId(shift?.staff_id) !== null) return false
+  return dayShifts.some((other) => (
+    other?.id !== shift.id &&
+    normaliseStaffId(other?.staff_id) !== null &&
+    shiftsOverlap(shift, other)
+  ))
+}
+
 export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], pickups: [] }, dayShifts = []) => {
   const events = [
     ...(dayBookings.dropoffs || []).map((booking) => ({ booking, type: 'dropoff' })),
@@ -354,7 +389,9 @@ export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], picku
 
   const unassignedShiftItems = []
   shiftBookingsByKey.forEach((linkedEntries, key) => {
-    const unassignedEntries = linkedEntries.filter(({ shift }) => normaliseStaffId(shift?.staff_id) === null)
+    const unassignedEntries = linkedEntries.filter(({ shift }) => (
+      isAutoUnassignedShiftBlockedByAssignedShift(shift, dayShifts)
+    ))
     if (unassignedEntries.length === 0) return
     const [first] = unassignedEntries
     const event = events.find(({ booking, type }) => bookingEventKey(booking.id, type) === key)
