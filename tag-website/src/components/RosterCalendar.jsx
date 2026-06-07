@@ -257,6 +257,124 @@ export const calculateShiftTotal = (employees = []) => employees.reduce((total, 
   return total + (Number.isFinite(shifts) ? shifts : 0)
 }, 0)
 
+const bookingCustomerName = (booking) => {
+  const customer = booking?.customer
+  return [
+    customer?.first_name || booking?.customer_first_name,
+    customer?.last_name || booking?.customer_last_name,
+  ].filter(Boolean).join(' ').trim()
+}
+
+const bookingEventTime = (booking, type) => (
+  type === 'dropoff'
+    ? booking?.dropoff_time
+    : booking?.flight_arrival_time || booking?.pickup_time
+)
+
+const bookingEventFlight = (booking, type) => (
+  type === 'dropoff'
+    ? booking?.dropoff_flight_number
+    : booking?.pickup_flight_number
+)
+
+const bookingEventDestination = (booking, type) => (
+  type === 'dropoff'
+    ? booking?.dropoff_destination
+    : booking?.pickup_origin
+)
+
+const bookingEventKey = (bookingId, type) => `${bookingId}:${type || 'unknown'}`
+
+const bookingEventLabel = (type) => (type === 'dropoff' ? 'Drop-off' : 'Pick-up')
+
+const shiftLinkedBookings = (shift) => {
+  if (Array.isArray(shift?.bookings) && shift.bookings.length > 0) return shift.bookings
+  if (shift?.booking_id) {
+    return [{
+      id: shift.booking_id,
+      reference: shift.booking_reference,
+      type: shift.booking_type,
+      customer_name: shift.booking_customer_name,
+      time: shift.booking_time,
+      flight_number: shift.booking_flight_number,
+      destination: shift.booking_destination,
+    }]
+  }
+  return []
+}
+
+const normaliseStaffId = (staffId) => {
+  if (staffId === null || staffId === undefined || staffId === '') return null
+  return staffId
+}
+
+export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], pickups: [] }, dayShifts = []) => {
+  const events = [
+    ...(dayBookings.dropoffs || []).map((booking) => ({ booking, type: 'dropoff' })),
+    ...(dayBookings.pickups || []).map((booking) => ({ booking, type: 'pickup' })),
+  ].filter(({ booking }) => booking?.id)
+
+  const linkedKeys = new Set()
+  const shiftBookingsByKey = new Map()
+
+  ;(dayShifts || []).forEach((shift) => {
+    shiftLinkedBookings(shift).forEach((booking) => {
+      if (!booking?.id || !booking?.type) return
+      const key = bookingEventKey(booking.id, booking.type)
+      linkedKeys.add(key)
+      if (!shiftBookingsByKey.has(key)) shiftBookingsByKey.set(key, [])
+      shiftBookingsByKey.get(key).push({ shift, booking })
+    })
+  })
+
+  const missingShiftItems = events
+    .filter(({ booking, type }) => !linkedKeys.has(bookingEventKey(booking.id, type)))
+    .map(({ booking, type }) => ({
+      key: `missing-${bookingEventKey(booking.id, type)}`,
+      severity: 'warning',
+      kind: 'missing-shift',
+      message: `${bookingEventLabel(type)} ${booking.reference || `#${booking.id}`} is not linked to a shift.`,
+      booking_reference: booking.reference,
+      booking_id: booking.id,
+      event_type: type,
+      customer_name: bookingCustomerName(booking),
+      time: bookingEventTime(booking, type),
+      flight_number: bookingEventFlight(booking, type),
+      destination: bookingEventDestination(booking, type),
+    }))
+
+  const unassignedShiftItems = []
+  shiftBookingsByKey.forEach((linkedEntries, key) => {
+    const unassignedEntries = linkedEntries.filter(({ shift }) => normaliseStaffId(shift?.staff_id) === null)
+    if (unassignedEntries.length === 0) return
+    const [first] = unassignedEntries
+    const event = events.find(({ booking, type }) => bookingEventKey(booking.id, type) === key)
+    const linkedBooking = first.booking || {}
+    const booking = event?.booking || linkedBooking
+    const type = event?.type || linkedBooking.type || 'unknown'
+    const shiftSummaries = unassignedEntries.map(({ shift }) => (
+      `${formatTime(shift.start_time)}-${formatTime(shift.end_time)}`
+    ))
+    unassignedShiftItems.push({
+      key: `unassigned-${key}`,
+      severity: 'critical',
+      kind: 'unassigned-linked-shift',
+      message: `${bookingEventLabel(type)} ${booking.reference || linkedBooking.reference || `#${booking.id}`} is linked to an unassigned shift.`,
+      booking_reference: booking.reference || linkedBooking.reference,
+      booking_id: booking.id || linkedBooking.id,
+      event_type: type,
+      customer_name: bookingCustomerName(booking) || linkedBooking.customer_name || '',
+      time: bookingEventTime(booking, type) || linkedBooking.time,
+      flight_number: bookingEventFlight(booking, type) || linkedBooking.flight_number,
+      destination: bookingEventDestination(booking, type) || linkedBooking.destination,
+      shift_times: shiftSummaries,
+      shift_ids: unassignedEntries.map(({ shift }) => shift.id).filter(Boolean),
+    })
+  })
+
+  return [...missingShiftItems, ...unassignedShiftItems]
+}
+
 function RosterCalendar({
   token,
   isAdmin = false,
@@ -2496,6 +2614,7 @@ function RosterCalendar({
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
+  const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
   const selectedDateHolidays = selectedDate ? getHolidaysForDate(selectedDate) : []
 
   return (
@@ -2879,6 +2998,33 @@ function RosterCalendar({
           </div>
 
           <div className="detail-content">
+            {isAdmin && selectedDateReviewItems.length > 0 && (
+              <div className="roster-review-banner" role="alert">
+                <div className="roster-review-banner-header">
+                  <span className="roster-review-icon" aria-hidden="true">⚠️</span>
+                  <div>
+                    <strong>Roster review needed</strong>
+                    <p>
+                      {selectedDateReviewItems.length} booking event{selectedDateReviewItems.length === 1 ? '' : 's'} need shift coverage checked.
+                    </p>
+                  </div>
+                </div>
+                <ul className="roster-review-list">
+                  {selectedDateReviewItems.map((item) => (
+                    <li key={item.key} className={`roster-review-item roster-review-${item.kind}`}>
+                      <span className="roster-review-message">{item.message}</span>
+                      <span className="roster-review-meta">
+                        {[item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        {item.shift_times?.length > 0 && ` · Shift ${item.shift_times.join(', ')}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Blocked Date Section - visible to all users, but edit/delete only for admins */}
             {selectedDateBlockedInfo && (
               <div className="blocked-dates-section">
