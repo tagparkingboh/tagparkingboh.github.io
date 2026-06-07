@@ -55,6 +55,7 @@ describe('HUEB: auto-roster unstaffed overlap alert', () => {
       event_type: 'pickup',
       shift_ids: [20],
       shift_times: ['21:45-00:10'],
+      blocking_shift_times: ['21:50-23:50'],
     })
   })
 
@@ -96,6 +97,7 @@ describe('HUEB: auto-roster unstaffed overlap alert', () => {
       kind: 'unassigned-linked-shift',
       shift_ids: [21],
       shift_times: ['23:40-01:35'],
+      blocking_shift_times: ['23:40-00:40'],
     })
   })
 })

@@ -573,12 +573,13 @@ describe('getRosterCoverageReviewItems', () => {
       booking_reference: 'TAG-PICK202',
       event_type: 'pickup',
       shift_times: ['18:00-21:00'],
+      blocking_shift_times: ['17:30-20:30'],
       shift_ids: [2],
     })
-    expect(items[0].message).toContain('is linked to an unassigned shift')
+    expect(items[0].message).toContain('is linked to an auto-created unstaffed shift')
   })
 
-  it('aggregates review items across visible calendar dates for the top banner', () => {
+  it('aggregates missing-shift and auto-overlap review items across visible calendar dates for the grouped top banner', () => {
     const items = getRosterCoverageReviewItemsByDate(
       {
         '2026-06-14': {
@@ -603,6 +604,19 @@ describe('getRosterCoverageReviewItems', () => {
               customer_first_name: 'Auto',
               customer_last_name: 'Roster',
               dropoff_time: '10:15',
+            },
+          ],
+          pickups: [],
+        },
+        '2026-06-16': {
+          dropoffs: [
+            {
+              id: 303,
+              status: 'confirmed',
+              reference: 'TAG-MISS303',
+              customer_first_name: 'Missing',
+              customer_last_name: 'Shift',
+              dropoff_time: '08:30',
             },
           ],
           pickups: [],
@@ -636,16 +650,24 @@ describe('getRosterCoverageReviewItems', () => {
             bookings: [{ id: 302, reference: 'TAG-MON302', type: 'dropoff' }],
           },
         ],
+        '2026-06-16': [],
       },
-      ['2026-06-14', '2026-06-15'],
+      ['2026-06-14', '2026-06-15', '2026-06-16'],
     )
 
-    expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({
+    expect(items).toHaveLength(2)
+    expect(items.find((item) => item.kind === 'unassigned-linked-shift')).toMatchObject({
       date: '2026-06-14',
       date_label: '14/06/2026',
       kind: 'unassigned-linked-shift',
       booking_reference: 'TAG-SUN301',
+      blocking_shift_times: ['18:00-20:00'],
+    })
+    expect(items.find((item) => item.kind === 'missing-shift')).toMatchObject({
+      date: '2026-06-16',
+      date_label: '16/06/2026',
+      kind: 'missing-shift',
+      booking_reference: 'TAG-MISS303',
     })
   })
 })

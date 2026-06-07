@@ -334,9 +334,9 @@ const shiftsOverlap = (a, b) => {
   return ar.start < br.end && br.start < ar.end
 }
 
-const isAutoUnassignedShiftBlockedByAssignedShift = (shift, dayShifts = []) => {
-  if (shift?.created_source !== 'auto' || normaliseStaffId(shift?.staff_id) !== null) return false
-  return dayShifts.some((other) => (
+const assignedShiftBlockersForAutoShift = (shift, dayShifts = []) => {
+  if (shift?.created_source !== 'auto' || normaliseStaffId(shift?.staff_id) !== null) return []
+  return dayShifts.filter((other) => (
     other?.id !== shift.id &&
     normaliseStaffId(other?.staff_id) !== null &&
     shiftsOverlap(shift, other)
@@ -380,9 +380,12 @@ export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], picku
 
   const unassignedShiftItems = []
   shiftBookingsByKey.forEach((linkedEntries, key) => {
-    const unassignedEntries = linkedEntries.filter(({ shift }) => (
-      isAutoUnassignedShiftBlockedByAssignedShift(shift, dayShifts)
-    ))
+    const unassignedEntries = linkedEntries
+      .map((entry) => ({
+        ...entry,
+        blockers: assignedShiftBlockersForAutoShift(entry.shift, dayShifts),
+      }))
+      .filter(({ blockers }) => blockers.length > 0)
     if (unassignedEntries.length === 0) return
     const [first] = unassignedEntries
     const event = events.find(({ booking, type }) => bookingEventKey(booking.id, type) === key)
@@ -392,11 +395,16 @@ export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], picku
     const shiftSummaries = unassignedEntries.map(({ shift }) => (
       `${formatTime(shift.start_time)}-${formatTime(shift.end_time)}`
     ))
+    const blockerSummaries = [
+      ...new Set(unassignedEntries.flatMap(({ blockers }) => (
+        blockers.map((shift) => `${formatTime(shift.start_time)}-${formatTime(shift.end_time)}`)
+      ))),
+    ]
     unassignedShiftItems.push({
       key: `unassigned-${key}`,
       severity: 'critical',
       kind: 'unassigned-linked-shift',
-      message: `${bookingEventLabel(type)} ${booking.reference || linkedBooking.reference || `#${booking.id}`} is linked to an unassigned shift.`,
+      message: `${bookingEventLabel(type)} ${booking.reference || linkedBooking.reference || `#${booking.id}`} is linked to an auto-created unstaffed shift.`,
       booking_reference: booking.reference || linkedBooking.reference,
       booking_id: booking.id || linkedBooking.id,
       event_type: type,
@@ -405,6 +413,7 @@ export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], picku
       flight_number: bookingEventFlight(booking, type) || linkedBooking.flight_number,
       destination: bookingEventDestination(booking, type) || linkedBooking.destination,
       shift_times: shiftSummaries,
+      blocking_shift_times: blockerSummaries,
       shift_ids: unassignedEntries.map(({ shift }) => shift.id).filter(Boolean),
     })
   })
@@ -2672,7 +2681,9 @@ function RosterCalendar({
     .filter(Boolean)
     .map((day) => getDateKey(day))
   const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
-    .filter((item) => item.kind === 'unassigned-linked-shift')
+  const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
+  const autoOverlapReviewItems = calendarReviewItems.filter((item) => item.kind === 'unassigned-linked-shift')
+  const calendarReviewCount = missingShiftReviewItems.length + autoOverlapReviewItems.length
 
   return (
     <div className="roster-calendar">
@@ -2734,35 +2745,55 @@ function RosterCalendar({
       {error && <div className="roster-error">{error}</div>}
       {successMessage && <div className="roster-success">{successMessage}</div>}
 
-      {isAdmin && calendarReviewItems.length > 0 && (
+      {isAdmin && calendarReviewCount > 0 && (
         <div className="roster-review-banner roster-review-banner-calendar" role="alert">
           <div className="roster-review-banner-header">
             <span className="roster-review-icon" aria-hidden="true">⚠️</span>
             <div>
               <strong>Roster review needed</strong>
               <p>
-                {calendarReviewItems.length} booking event{calendarReviewItems.length === 1 ? '' : 's'} are linked to shifts with no staff assigned.
+                {calendarReviewCount} booking event{calendarReviewCount === 1 ? '' : 's'} need roster coverage checked.
               </p>
             </div>
           </div>
-          <ul className="roster-review-list">
-            {calendarReviewItems.slice(0, 5).map((item) => (
-              <li key={`${item.date}-${item.key}`} className={`roster-review-item roster-review-${item.kind}`}>
-                <span className="roster-review-message">{item.date_label} · {item.message}</span>
-                <span className="roster-review-meta">
-                  {[item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  {item.shift_times?.length > 0 && ` · Shift ${item.shift_times.join(', ')}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {calendarReviewItems.length > 5 && (
-            <div className="roster-review-more">
-              +{calendarReviewItems.length - 5} more booking event{calendarReviewItems.length - 5 === 1 ? '' : 's'} need review
-            </div>
-          )}
+          <div className="roster-review-scroll">
+            {missingShiftReviewItems.length > 0 && (
+              <section className="roster-review-group">
+                <h4>Not linked to a shift</h4>
+                <ul className="roster-review-list">
+                  {missingShiftReviewItems.map((item) => (
+                    <li key={`${item.date}-${item.key}`} className={`roster-review-item roster-review-${item.kind}`}>
+                      <span className="roster-review-message">{item.date_label} · {item.message}</span>
+                      <span className="roster-review-meta">
+                        {[item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {autoOverlapReviewItems.length > 0 && (
+              <section className="roster-review-group">
+                <h4>Auto-roster created unstaffed overlap</h4>
+                <ul className="roster-review-list">
+                  {autoOverlapReviewItems.map((item) => (
+                    <li key={`${item.date}-${item.key}`} className={`roster-review-item roster-review-${item.kind}`}>
+                      <span className="roster-review-message">{item.date_label} · {item.message}</span>
+                      <span className="roster-review-meta">
+                        {[item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        {item.shift_times?.length > 0 && ` · Auto shift ${item.shift_times.join(', ')}`}
+                        {item.blocking_shift_times?.length > 0 && ` · Overlaps assigned ${item.blocking_shift_times.join(', ')}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
         </div>
       )}
 

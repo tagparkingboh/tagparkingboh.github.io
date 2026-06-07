@@ -509,12 +509,29 @@
   margin: 0;
 }
 
+.roster-review-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.roster-review-group h4 {
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
 .roster-review-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   list-style: none;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
 }
 
