@@ -216,15 +216,16 @@ def _shift_covers_event(shift: RosterShift, event_dt: datetime) -> bool:
 
 def _shift_covers_event_window(
     shift: RosterShift, start_dt: datetime, end_dt: datetime,
+    *, end_buffer_minutes: int = 0,
 ) -> bool:
     """Does `shift` cover the entire [start_dt, end_dt] event window?
 
-    Both endpoints must fall inside the shift's wall-clock span. This
-    is the rule the rebuild's skip-if-covered uses, exposed here so
-    auto-link can apply the same definition of "covered" — otherwise
-    a frozen shift can be considered covering by the rebuild but
-    non-covering by auto-link, leaving the booking orphaned (no new
-    shift, no link). Code-review finding 2026-05-28.
+    Both endpoints, plus the configured end buffer, must fall inside the
+    shift's wall-clock span. This is the rule the rebuild's skip-if-covered
+    uses, exposed here so auto-link can apply the same definition of
+    "covered" — otherwise a frozen shift can be considered covering by the
+    rebuild but non-covering by auto-link, leaving the booking orphaned
+    (no new shift, no link).
     """
     if start_dt is None or end_dt is None:
         return False
@@ -233,7 +234,21 @@ def _shift_covers_event_window(
         end_date = shift.date + timedelta(days=1)
     span_start = datetime.combine(shift.date, shift.start_time)
     span_end = datetime.combine(end_date, shift.end_time)
-    return span_start <= start_dt and end_dt <= span_end
+    required_end = end_dt + timedelta(minutes=end_buffer_minutes)
+    if required_end < end_dt:
+        return False
+    return span_start <= start_dt and required_end <= span_end
+
+
+def _planner_end_buffer_minutes(db: Session) -> int:
+    """Best-effort read of the live planner end buffer for auto-link."""
+    try:
+        from roster_planner import PlannerSettings
+        from routers.roster import _load_planner_settings_rows
+
+        return PlannerSettings.from_kv(_load_planner_settings_rows(db)).end_buffer_minutes
+    except Exception:
+        return 30
 
 
 def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
@@ -249,9 +264,9 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
       * intended_driver_type 'jockey' or NULL — fleet shifts ignored
         (bookings are jockey workload in the current model). NULL coerces
         to jockey to match the shift_to_response convention.
-      * Window covers booking's drop-off OR pickup event time. A booking
-        can hit two shifts (one for drop-off, another for pickup); both
-        get linked.
+      * Window covers booking's drop-off OR pickup event, including the
+        configured end buffer. A booking can hit two shifts (one for
+        drop-off, another for pickup); both get linked.
       * Idempotent: skip pairs that already have a ShiftBookingLink row.
 
     Returns the list of shift IDs that received a new link this call.
@@ -276,6 +291,7 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
         events = _events_for_booking(booking)
         if not events:
             return []
+        end_buffer_minutes = _planner_end_buffer_minutes(db)
 
         # Pull candidate shifts in a date window that could plausibly
         # cover any event endpoint. -1/+1 catches overnight wraps.
@@ -298,7 +314,12 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
             if intended not in (None, "jockey"):
                 continue  # fleet (or other) — not jockey workload
             if not any(
-                _shift_covers_event_window(shift, s, e)
+                _shift_covers_event_window(
+                    shift,
+                    s,
+                    e,
+                    end_buffer_minutes=end_buffer_minutes,
+                )
                 for _et, s, e in events
             ):
                 continue

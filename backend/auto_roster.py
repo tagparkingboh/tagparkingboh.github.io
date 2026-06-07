@@ -339,21 +339,20 @@ def rebuild_auto_for_dates(
         window of at least one frozen shift. Partial overlap still
         materialises the whole cluster.
 
-        Both endpoints matter: `auto_link_booking_to_shifts` keys off
-        `pickup_time` (the handoff, == end anchor for pickups) to decide
-        whether to write a link row. If skip-if-covered used only the
-        start anchor, a flight arriving at 14:45 with handoff at 15:15
-        sitting against a frozen 12:00-15:00 shift would be skipped by
-        rebuild (14:45 is inside) but rejected by auto_link (15:15 is
-        outside) — booking ends up with no shift, no link. Forcing both
-        endpoints to fit closes that gap. Code-review finding 2026-05-28."""
+        The full work window matters: start anchor through end anchor plus
+        the configured end buffer. If a 06:45 drop-off sits in a frozen
+        03:50-07:00 shift, it is NOT covered when end_buffer_minutes=30
+        because the required coverage reaches 07:15. Without this, auto-link
+        can attach late edge bookings to fixed shifts that cannot actually
+        absorb the buffer. Regression caught on TAG-SHS00925."""
         if not frozen_shifts:
             return False
+        coverage_tail = timedelta(minutes=settings.end_buffer_minutes)
         for ev in cluster_events:
             start_dt = ev.event_time.replace(tzinfo=None)
             # end_anchor_time is the handoff for pickups (arrival + 30 min),
             # or the same as event_time for drop-offs.
-            end_dt = (ev.end_anchor_time or ev.event_time).replace(tzinfo=None)
+            end_dt = (ev.end_anchor_time or ev.event_time).replace(tzinfo=None) + coverage_tail
             inside_any = False
             for fs in frozen_shifts:
                 fs_start = datetime.combine(fs.date, fs.start_time)
