@@ -709,6 +709,55 @@ class TestRebuildAutoForDates:
         # Wall-clock start = 00:35 - 15m pickup-led buffer = 00:20.
         assert s.start_time == time(0, 20)
 
+    def test_arrival_before_0200_recreates_when_previous_day_is_rebuilt(self):
+        """Happy: if a later booking rebuilds Fri 6/26, TAG-GTW73712's Sat
+        00:35 pickup is still owned by the Fri operational day and must be
+        recreated. This is the live failure where an old booking lost its
+        pickup shift after a different booking regenerated 6/26."""
+        b = mk_booking(
+            booking_id=685, reference="TAG-GTW73712",
+            dropoff_dt=datetime(2026, 6, 19, 12, 15),
+            pickup_dt=datetime(2026, 6, 27, 1, 5),
+            flight_arrival_time=time(0, 35),
+        )
+        b.flight_arrival_date = date(2026, 6, 27)
+        db = make_db(bookings=[b])
+        rebuild_auto_for_dates(db, {date(2026, 6, 26)}, mk_settings())
+        from db_models import RosterShift
+        pickup_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date == date(2026, 6, 26)
+        ]
+        assert len(pickup_shifts) == 1
+        s = pickup_shifts[0]
+        assert s.end_date == date(2026, 6, 27)
+        assert s.start_time == time(0, 20)
+        assert s.end_time == time(1, 35)
+
+    def test_arrival_before_0200_buffer_crossing_midnight_is_not_two_days_back(self):
+        """Boundary: a 00:10 arrival with the pickup-led 15m buffer starts
+        at 23:55 the previous calendar day. The operational date is still
+        D-1, not D-2."""
+        b = mk_booking(
+            booking_id=686, reference="TAG-EARLY001",
+            dropoff_dt=datetime(2026, 6, 19, 12, 15),
+            pickup_dt=datetime(2026, 6, 27, 0, 40),
+            flight_arrival_time=time(0, 10),
+        )
+        b.flight_arrival_date = date(2026, 6, 27)
+        db = make_db(bookings=[b])
+        rebuild_auto_for_dates(db, {date(2026, 6, 26)}, mk_settings())
+        from db_models import RosterShift
+        pickup_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date == date(2026, 6, 26)
+        ]
+        assert len(pickup_shifts) == 1
+        s = pickup_shifts[0]
+        assert s.end_date == date(2026, 6, 27)
+        assert s.start_time == time(23, 55)
+        assert s.end_time == time(1, 10)
+
     def test_arrival_at_0200_stays_on_day(self):
         """Cutoff is exclusive — arrival 02:00 stays on its own calendar day."""
         b = mk_booking(

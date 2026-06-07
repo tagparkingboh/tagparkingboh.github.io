@@ -365,7 +365,10 @@ def rebuild_auto_for_dates(
                 return False
         return True
 
-    # 4. Materialise shifts for clusters whose start lands on a target date.
+    # 4. Materialise shifts for clusters whose owner lands in target_set.
+    # Usually that owner is the event anchor date. For arrivals before the
+    # 02:00 operational cutoff, the owner is the prior operational day, so a
+    # 26 Jun rebuild must recreate a 27 Jun 00:35 pickup shift dated 26 Jun.
     min_duration = timedelta(minutes=settings.min_shift_minutes)
 
     for cluster in clusters:
@@ -377,10 +380,6 @@ def rebuild_auto_for_dates(
         cluster_end = max(
             (e.end_anchor_time or e.event_time) for e in cluster.events
         )
-        if cluster_start.date() not in target_set:
-            # Adjacent-day rebuilds will own this cluster — don't double-write.
-            continue
-
         # Per-cluster buffers: extend by 30 min for each tight (<30 min) same-type
         # pair — pickups push the start earlier, drop-offs push the end later.
         # Pickup-led clusters override the start base to 15 min (locked 2026-05-12)
@@ -414,15 +413,19 @@ def rebuild_auto_for_dates(
             earliest_event.event_type == "pick_up"
             and cluster_start.time() < ARRIVAL_OVERNIGHT_CUTOFF
         ):
-            shift_end_date_val = shift_start.date()
-            if shift_end.date() > shift_end_date_val:
-                shift_end_date_val = shift_end.date()
-            shift_date_val = shift_start.date() - timedelta(days=1)
+            shift_date_val = cluster_start.date() - timedelta(days=1)
+            shift_end_date_val = (
+                shift_end.date() if shift_end.date() != shift_date_val else None
+            )
         else:
             shift_date_val = shift_start.date()
             shift_end_date_val = (
                 shift_end.date() if shift_end.date() != shift_start.date() else None
             )
+
+        if cluster_start.date() not in target_set and shift_date_val not in target_set:
+            # Adjacent-day rebuilds will own this cluster — don't double-write.
+            continue
 
         booking_ids = sorted({e.booking_id for e in cluster.events})
 
