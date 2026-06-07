@@ -758,6 +758,105 @@ class TestRebuildAutoForDates:
         assert s.start_time == time(23, 55)
         assert s.end_time == time(1, 10)
 
+    @pytest.mark.parametrize(
+        (
+            "arrival_time",
+            "target_date",
+            "expected_date",
+            "expected_end_date",
+            "expected_start",
+            "expected_end",
+        ),
+        [
+            pytest.param(
+                time(0, 14),
+                date(2026, 6, 26),
+                date(2026, 6, 26),
+                date(2026, 6, 27),
+                time(23, 59),
+                time(1, 14),
+                id="H-0014-buffer-crosses-midnight-but-owner-is-D-minus-1",
+            ),
+            pytest.param(
+                time(0, 15),
+                date(2026, 6, 26),
+                date(2026, 6, 26),
+                date(2026, 6, 27),
+                time(0, 0),
+                time(1, 15),
+                id="U-0015-buffer-starts-at-midnight-and-still-owner-is-D-minus-1",
+            ),
+            pytest.param(
+                time(0, 16),
+                date(2026, 6, 26),
+                date(2026, 6, 26),
+                date(2026, 6, 27),
+                time(0, 1),
+                time(1, 16),
+                id="E-0016-buffer-after-midnight-and-still-owner-is-D-minus-1",
+            ),
+            pytest.param(
+                time(1, 59),
+                date(2026, 6, 26),
+                date(2026, 6, 26),
+                date(2026, 6, 27),
+                time(1, 44),
+                time(2, 59),
+                id="B-0159-last-minute-before-cutoff-rebuckets-to-D-minus-1",
+            ),
+            pytest.param(
+                time(2, 0),
+                date(2026, 6, 27),
+                date(2026, 6, 27),
+                None,
+                time(1, 45),
+                time(3, 0),
+                id="B-0200-cutoff-is-exclusive-stays-on-D",
+            ),
+            pytest.param(
+                time(2, 1),
+                date(2026, 6, 27),
+                date(2026, 6, 27),
+                None,
+                time(1, 46),
+                time(3, 1),
+                id="B-0201-after-cutoff-stays-on-D",
+            ),
+        ],
+    )
+    def test_HUEB_arrival_cutoff_and_pickup_buffer_boundaries(
+        self,
+        arrival_time,
+        target_date,
+        expected_date,
+        expected_end_date,
+        expected_start,
+        expected_end,
+    ):
+        """HUEB: lock the pickup-led 15m buffer and 02:00 cutoff boundaries."""
+        pickup_dt = datetime.combine(date(2026, 6, 27), arrival_time) + timedelta(minutes=30)
+        b = mk_booking(
+            booking_id=700 + arrival_time.hour * 60 + arrival_time.minute,
+            reference=f"TAG-CUT{arrival_time.hour:02d}{arrival_time.minute:02d}",
+            dropoff_dt=datetime(2026, 6, 19, 12, 15),
+            pickup_dt=pickup_dt,
+            flight_arrival_time=arrival_time,
+        )
+        b.flight_arrival_date = date(2026, 6, 27)
+        db = make_db(bookings=[b])
+        rebuild_auto_for_dates(db, {target_date}, mk_settings())
+
+        from db_models import RosterShift
+        pickup_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date == expected_date
+        ]
+        assert len(pickup_shifts) == 1
+        s = pickup_shifts[0]
+        assert s.end_date == expected_end_date
+        assert s.start_time == expected_start
+        assert s.end_time == expected_end
+
     def test_arrival_at_0200_stays_on_day(self):
         """Cutoff is exclusive — arrival 02:00 stays on its own calendar day."""
         b = mk_booking(
