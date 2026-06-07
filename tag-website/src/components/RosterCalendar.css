@@ -561,6 +561,23 @@
   margin-top: 3px;
 }
 
+.roster-review-affected-list {
+  color: #f6d27b;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.roster-review-affected-list li {
+  border-top: 1px solid rgba(246, 210, 123, 0.16);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  padding-top: 5px;
+}
+
 .roster-review-more {
   color: #f6d27b;
   font-size: 0.86rem;

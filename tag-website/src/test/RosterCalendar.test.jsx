@@ -19,6 +19,7 @@ import {
   calculateShiftTotal,
   getRosterCoverageReviewItems,
   getRosterCoverageReviewItemsByDate,
+  groupAutoOverlapReviewItems,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -669,6 +670,78 @@ describe('getRosterCoverageReviewItems', () => {
       kind: 'missing-shift',
       booking_reference: 'TAG-MISS303',
     })
+  })
+
+  it('groups auto-overlap booking events by the underlying auto shift issue', () => {
+    const items = getRosterCoverageReviewItemsByDate(
+      {
+        '2026-06-28': {
+          dropoffs: [
+            {
+              id: 401,
+              reference: 'TAG-DROP401',
+              customer_first_name: 'Suzie',
+              customer_last_name: 'Castles',
+              dropoff_time: '12:25',
+              dropoff_flight_number: 'LS3685',
+              dropoff_destination: 'Fuerteventura Airport',
+            },
+          ],
+          pickups: [
+            {
+              id: 402,
+              reference: 'TAG-PICK402',
+              customer_first_name: 'Richard',
+              customer_last_name: 'Treadwell',
+              flight_arrival_time: '13:00',
+              pickup_flight_number: 'FR828',
+              pickup_origin: 'Palma de Mallorca Airport',
+            },
+          ],
+        },
+      },
+      {
+        '2026-06-28': [
+          {
+            id: 20,
+            staff_id: 15,
+            created_source: 'auto',
+            start_time: '12:05',
+            end_time: '13:45',
+            bookings: [],
+          },
+          {
+            id: 21,
+            staff_id: null,
+            created_source: 'auto',
+            start_time: '11:05',
+            end_time: '15:00',
+            bookings: [
+              { id: 401, reference: 'TAG-DROP401', type: 'dropoff' },
+              { id: 402, reference: 'TAG-PICK402', type: 'pickup' },
+            ],
+          },
+        ],
+      },
+      ['2026-06-28'],
+    )
+
+    const grouped = groupAutoOverlapReviewItems(items)
+
+    expect(items).toHaveLength(2)
+    expect(grouped).toHaveLength(1)
+    expect(grouped[0]).toMatchObject({
+      date: '2026-06-28',
+      date_label: '28/06/2026',
+      shift_ids: [21],
+      shift_times: ['11:05-15:00'],
+      blocking_shift_times: ['12:05-13:45'],
+      affected_count: 2,
+    })
+    expect(grouped[0].affected_items.map((item) => item.booking_reference)).toEqual([
+      'TAG-DROP401',
+      'TAG-PICK402',
+    ])
   })
 })
 
