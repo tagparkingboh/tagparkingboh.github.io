@@ -555,7 +555,7 @@ class TestRebuildPickupExtensionBoundaries:
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s.date == date(2026, 6, 15)
+        assert s.date == date(2026, 6, 16)
         assert s.start_time == time(23, 15)
         assert s.end_date == date(2026, 6, 17)
         assert s.end_time == time(1, 50)

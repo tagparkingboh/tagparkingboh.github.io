@@ -330,7 +330,7 @@ def rebuild_auto_for_dates(
         .all()
     )
 
-    def _cluster_fully_covered(cluster_events) -> bool:
+    def _cluster_fully_covered(cluster_events, required_start: datetime, required_end: datetime) -> bool:
         """All-or-nothing skip rule (partial-overlap pivot 2026-05-28):
         return True only when EVERY event in the cluster has BOTH its
         start anchor (flight_arrival_time for pickups, dropoff_time for
@@ -339,25 +339,19 @@ def rebuild_auto_for_dates(
         window of at least one frozen shift. Partial overlap still
         materialises the whole cluster.
 
-        The full work window matters: start anchor through end anchor plus
-        the configured end buffer. If a 06:45 drop-off sits in a frozen
-        03:50-07:00 shift, it is NOT covered when end_buffer_minutes=30
-        because the required coverage reaches 07:15. Without this, auto-link
-        can attach late edge bookings to fixed shifts that cannot actually
-        absorb the buffer. Regression caught on TAG-SHS00925."""
+        The full generated shift window matters: start anchor minus start
+        buffer through end anchor plus end buffer, including tight-pair
+        extensions. If pickups at 22:55 and 23:00 sit in a fixed 22:45-23:45
+        shift, they are NOT covered: the tight pickup pair requires an
+        earlier 22:10 start. Regression caught on TAG-SHS00925 / TAG-LDH79714."""
         if not frozen_shifts:
             return False
-        coverage_tail = timedelta(minutes=settings.end_buffer_minutes)
         for ev in cluster_events:
-            start_dt = ev.event_time.replace(tzinfo=None)
-            # end_anchor_time is the handoff for pickups (arrival + 30 min),
-            # or the same as event_time for drop-offs.
-            end_dt = (ev.end_anchor_time or ev.event_time).replace(tzinfo=None) + coverage_tail
             inside_any = False
             for fs in frozen_shifts:
                 fs_start = datetime.combine(fs.date, fs.start_time)
                 fs_end = datetime.combine(fs.end_date or fs.date, fs.end_time)
-                if fs_start <= start_dt and end_dt <= fs_end:
+                if fs_start <= required_start and required_end <= fs_end:
                     inside_any = True
                     break
             if not inside_any:
@@ -434,7 +428,7 @@ def rebuild_auto_for_dates(
         # is the bridge that writes the ShiftBookingLink rows — it runs
         # on confirmation and only links bookings whose event time the
         # shift window actually covers. (Driver-trust pivot 2026-05-28.)
-        if _cluster_fully_covered(cluster.events):
+        if _cluster_fully_covered(cluster.events, shift_start, shift_end):
             summary["skipped_covered"] += 1
             continue
 
