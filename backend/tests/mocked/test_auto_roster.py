@@ -1061,12 +1061,10 @@ class TestRebuildSkipsCoveredClusters:
         assert result["created"] >= 1
         assert result["skipped_covered"] == 0
 
-    def test_B_event_at_window_boundary_counts_as_covered(self):
-        """Boundary: cluster of one event at exactly 15:00, same as the
-        frozen shift's end_time. `<=` on both ends of the coverage check
-        means 15:00 IS inside the [12:00, 15:00] window. Cluster
-        skipped. (The reverse boundary, 12:00 == start_time, is the
-        symmetric case.)"""
+    def test_B_event_at_window_boundary_needs_end_buffer(self):
+        """Boundary: a 15:00 drop-off in a frozen 12:00-15:00 shift leaves
+        no 30m end buffer, so the cluster is NOT covered and rebuild must
+        materialise a new unassigned shift."""
         frozen = mk_assigned_shift(
             id=99, shift_date=date(2026, 6, 10),
             start_time=time(12, 0), end_time=time(15, 0),
@@ -1083,10 +1081,64 @@ class TestRebuildSkipsCoveredClusters:
 
         from db_models import RosterShift
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
-        assert new_shifts == []
+        assert len(new_shifts) == 1
         assert frozen.end_time == original_end
+        assert result["skipped_covered"] == 0
+        assert result["created"] == 1
+
+    def test_B_event_at_end_buffer_boundary_counts_as_covered(self):
+        """Boundary: a 14:30 drop-off in a frozen 12:00-15:00 shift has
+        exactly 30m of tail coverage, so it is covered inclusively."""
+        frozen = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        b = mk_booking(
+            booking_id=531, reference="TAG-BOUNDARY2",
+            dropoff_dt=datetime(2026, 6, 10, 14, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == []
         assert result["skipped_covered"] == 1
         assert result["created"] == 0
+
+    def test_HUEB_dropoff_0645_not_covered_by_fixed_shift_ending_0700(self):
+        """HUEB regression: TAG-SHS00925-style 06:45 drop-off needs coverage
+        through 07:15. A fixed 03:50-07:00 assigned shift must not cause
+        rebuild to skip materialising fresh coverage."""
+        frozen = mk_assigned_shift(
+            id=3663,
+            shift_date=date(2026, 6, 8),
+            start_time=time(3, 50),
+            end_time=time(7, 0),
+            staff_id=15,
+        )
+        b = mk_booking(
+            booking_id=807,
+            reference="TAG-SHS00925",
+            dropoff_dt=datetime(2026, 6, 8, 6, 45),
+            pickup_dt=datetime(2026, 6, 11, 23, 25),
+            flight_arrival_time=time(22, 55),
+        )
+        b.flight_arrival_date = date(2026, 6, 11)
+        db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 8)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        assert new_shifts[0].date == date(2026, 6, 8)
+        # Start buffer makes this 06:25; min_shift_minutes=60 extends it
+        # beyond the bare 07:15 buffered requirement to 07:25.
+        assert new_shifts[0].end_time == time(7, 25)
+        assert result["skipped_covered"] == 0
+        assert result["created"] == 1
 
     def test_E_mixed_frozen_coverage_event_A_shift_1_event_B_shift_2(self):
         """Edge: the all-or-nothing skip rule is PER-EVENT covered, not
@@ -1358,15 +1410,16 @@ class TestSkipAndLinkAgreeForFlightArrivalBooking:
 
     def test_H_link_writes_and_rebuild_skips_for_same_inputs(self):
         # Reviewer's mismatch example, shaped for both paths:
-        #   shift           15:30 – 16:15 on 6/14, assigned, staff_id=10
+        #   shift           15:30 – 16:40 on 6/14, assigned, staff_id=10
         #   flight_arrival  15:40 on 6/14
         #   derived handoff 16:10 on 6/14
+        #   buffered end    16:40 on 6/14
         #   stored pickup   17:30 on 6/14
-        # Both endpoints (15:40, 16:10) inside the shift; literal pickup
-        # (17:30) outside — must be irrelevant to both paths.
+        # Full buffered event window (15:40, 16:40) sits inside the shift;
+        # literal pickup (17:30) outside — must be irrelevant to both paths.
         frozen = mk_assigned_shift(
             id=999, shift_date=date(2026, 6, 14),
-            start_time=time(15, 30), end_time=time(16, 15),
+            start_time=time(15, 30), end_time=time(16, 40),
             staff_id=10,
         )
         original_window = (
@@ -1409,8 +1462,8 @@ class TestSkipAndLinkAgreeForFlightArrivalBooking:
         from db_models import ShiftBookingLink
         linked_ids = auto_link_booking_to_shifts(link_db, b)
         assert linked_ids == [999], (
-            "auto_link must attach the booking to the frozen 15:30-16:15 "
-            "shift — both anchors fit; literal pickup at 17:30 must NOT "
+            "auto_link must attach the booking to the frozen 15:30-16:40 "
+            "shift — the buffered event fits; literal pickup at 17:30 must NOT "
             "block the link"
         )
         link_rows = [a for a in link_added if isinstance(a, ShiftBookingLink)]
