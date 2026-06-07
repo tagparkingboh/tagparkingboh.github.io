@@ -200,6 +200,63 @@ export const shiftSortMinutes = (shift) => {
   return (h || 0) * 60 + (m || 0) + (isAfterMidnightTail ? 24 * 60 : 0)
 }
 
+const calendarShiftEntry = (shift) => {
+  const isOvernight = shift.end_date && shift.end_date !== shift.date
+  return {
+    ...shift,
+    isOvernight,
+    shiftPart: null,
+    displayStartTime: shift.start_time,
+    displayEndTime: shift.end_time,
+  }
+}
+
+const sortShiftGroups = (grouped) => {
+  const sourceOrder = (s) => (s.created_source === 'auto' ? 1 : 0)
+  Object.keys(grouped).forEach((date) => {
+    grouped[date].sort((a, b) => {
+      const so = sourceOrder(a) - sourceOrder(b)
+      if (so !== 0) return so
+      const t = shiftSortMinutes(a) - shiftSortMinutes(b)
+      if (t !== 0) return t
+      return (a.id || 0) - (b.id || 0)
+    })
+  })
+  return grouped
+}
+
+export const computeShiftsByStartDate = (shifts = []) => {
+  const grouped = {}
+
+  ;(shifts || []).forEach((shift) => {
+    if (!shift?.date) return
+    const startDateKey = shift.date
+    if (!grouped[startDateKey]) grouped[startDateKey] = []
+    grouped[startDateKey].push(calendarShiftEntry(shift))
+  })
+
+  return sortShiftGroups(grouped)
+}
+
+export const computeShiftsByCoverageDate = (shifts = []) => {
+  const grouped = {}
+
+  ;(shifts || []).forEach((shift) => {
+    if (!shift?.date) return
+    const entry = calendarShiftEntry(shift)
+    const dateKeys = [shift.date]
+    if (shift.end_date && shift.end_date !== shift.date) {
+      dateKeys.push(shift.end_date)
+    }
+    dateKeys.forEach((dateKey) => {
+      if (!grouped[dateKey]) grouped[dateKey] = []
+      grouped[dateKey].push(entry)
+    })
+  })
+
+  return sortShiftGroups(grouped)
+}
+
 // Sort bookings within a shift in true chronological order. For overnight
 // shifts (start > end across midnight) any booking time before the shift
 // start belongs to the next day, so add 24h before comparing — otherwise
@@ -1214,25 +1271,6 @@ function RosterCalendar({
 
   // Group shifts by date (overnight shifts show entirely on start date)
   const shiftsByDate = useMemo(() => {
-    const grouped = {}
-
-    shifts.forEach((shift) => {
-      const isOvernight = shift.end_date && shift.end_date !== shift.date
-
-      // Add to start date only - overnight shifts display with actual end time
-      const startDateKey = shift.date
-      if (!grouped[startDateKey]) {
-        grouped[startDateKey] = []
-      }
-      grouped[startDateKey].push({
-        ...shift,
-        isOvernight,
-        shiftPart: null,
-        displayStartTime: shift.start_time,
-        displayEndTime: shift.end_time  // Show actual end time (e.g., 00:45 next day)
-      })
-    })
-
     // v3: when the toggle is "All" the day cell mixes manual + auto. Sort by
     // source first (manual / planner above auto) so admins see committed work
     // grouped at the top and auto-roster output as a clearly separate block;
@@ -1247,19 +1285,13 @@ function RosterCalendar({
     // bottom of D's list, where the work actually happens chronologically.
     // Without this, a 00:20-01:20 tail of Friday-evening work would sort
     // ahead of Friday's afternoon 13:10 shift.
-    const sourceOrder = (s) => (s.created_source === 'auto' ? 1 : 0)
-    Object.keys(grouped).forEach((date) => {
-      grouped[date].sort((a, b) => {
-        const so = sourceOrder(a) - sourceOrder(b)
-        if (so !== 0) return so
-        const t = shiftSortMinutes(a) - shiftSortMinutes(b)
-        if (t !== 0) return t
-        return (a.id || 0) - (b.id || 0)
-      })
-    })
-
-    return grouped
+    return computeShiftsByStartDate(shifts)
   }, [shifts])
+
+  const shiftsByCoverageDate = useMemo(
+    () => computeShiftsByCoverageDate(shifts),
+    [shifts]
+  )
 
   // Group teammates' view-only shifts by date (employee mode only).
   const teamShiftsByDate = useMemo(() => {
@@ -2704,7 +2736,8 @@ function RosterCalendar({
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
-  const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
+  const selectedDateCoverageShifts = selectedDate ? (shiftsByCoverageDate[selectedDate] || []) : []
+  const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateCoverageShifts)
   const selectedMissingShiftReviewItems = selectedDateReviewItems.filter((item) => item.kind === 'missing-shift')
   const selectedAutoOverlapIssueGroups = groupAutoOverlapReviewItems(
     selectedDateReviewItems.filter((item) => item.kind === 'unassigned-linked-shift'),
@@ -2719,7 +2752,7 @@ function RosterCalendar({
     .flat()
     .filter(Boolean)
     .map((day) => getDateKey(day))
-  const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
+  const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByCoverageDate, visibleDateKeys)
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
   const autoOverlapReviewItems = calendarReviewItems.filter((item) => item.kind === 'unassigned-linked-shift')
   const autoOverlapIssueGroups = groupAutoOverlapReviewItems(autoOverlapReviewItems)
