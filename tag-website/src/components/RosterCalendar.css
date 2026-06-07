@@ -544,6 +544,76 @@
   padding: 20px;
 }
 
+.roster-review-banner {
+  background: rgba(255, 170, 0, 0.12);
+  border: 2px solid #ffaa00;
+  border-radius: 10px;
+  color: #ffb020;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+}
+
+.roster-review-banner-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.roster-review-icon {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  line-height: 1.4;
+}
+
+.roster-review-banner strong {
+  color: #ffb020;
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.roster-review-banner p {
+  color: #f6d27b;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.roster-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.roster-review-item {
+  background: rgba(26, 26, 46, 0.72);
+  border-left: 4px solid #ffaa00;
+  border-radius: 6px;
+  padding: 9px 11px;
+}
+
+.roster-review-unassigned-linked-shift {
+  border-left-color: #ff4d4d;
+}
+
+.roster-review-message {
+  color: #fff;
+  display: block;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.roster-review-meta {
+  color: #f6d27b;
+  display: block;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
 .no-content {
   color: #666;
   text-align: center;

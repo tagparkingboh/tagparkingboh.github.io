@@ -17,6 +17,7 @@ import {
   sourceParamFor,
   calculateHoursTotal,
   calculateShiftTotal,
+  getRosterCoverageReviewItems,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -445,6 +446,109 @@ describe('shiftSortMinutes', () => {
     expect(shiftSortMinutes(null)).toBe(0)
     expect(shiftSortMinutes({})).toBe(0)
     expect(shiftSortMinutes({ start_time: null })).toBe(0)
+  })
+})
+
+describe('getRosterCoverageReviewItems', () => {
+  const dayBookings = {
+    dropoffs: [
+      {
+        id: 101,
+        status: 'confirmed',
+        reference: 'TAG-DROP101',
+        customer_first_name: 'Alex',
+        customer_last_name: 'Driver',
+        dropoff_time: '09:15',
+        dropoff_flight_number: 'BA123',
+        dropoff_destination: 'LHR',
+      },
+    ],
+    pickups: [
+      {
+        id: 202,
+        status: 'confirmed',
+        reference: 'TAG-PICK202',
+        customer_first_name: 'Sam',
+        customer_last_name: 'Return',
+        flight_arrival_time: '18:40',
+        pickup_flight_number: 'KL456',
+        pickup_origin: 'AMS',
+      },
+    ],
+  }
+
+  it('returns no review items when every booking event is linked to an assigned shift', () => {
+    const shifts = [
+      {
+        id: 1,
+        staff_id: 11,
+        start_time: '08:00',
+        end_time: '12:00',
+        bookings: [{ id: 101, reference: 'TAG-DROP101', type: 'dropoff' }],
+      },
+      {
+        id: 2,
+        staff_id: 12,
+        start_time: '17:00',
+        end_time: '21:00',
+        bookings: [{ id: 202, reference: 'TAG-PICK202', type: 'pickup' }],
+      },
+    ]
+
+    expect(getRosterCoverageReviewItems(dayBookings, shifts)).toEqual([])
+  })
+
+  it('flags a booking event that is not linked to any shift', () => {
+    const shifts = [
+      {
+        id: 1,
+        staff_id: 11,
+        start_time: '08:00',
+        end_time: '12:00',
+        bookings: [{ id: 101, reference: 'TAG-DROP101', type: 'dropoff' }],
+      },
+    ]
+
+    const items = getRosterCoverageReviewItems(dayBookings, shifts)
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'missing-shift',
+      booking_reference: 'TAG-PICK202',
+      event_type: 'pickup',
+    })
+    expect(items[0].message).toContain('is not linked to a shift')
+  })
+
+  it('flags a booking event linked to a shift that has no staff assigned', () => {
+    const shifts = [
+      {
+        id: 1,
+        staff_id: 11,
+        start_time: '08:00',
+        end_time: '12:00',
+        bookings: [{ id: 101, reference: 'TAG-DROP101', type: 'dropoff' }],
+      },
+      {
+        id: 2,
+        staff_id: null,
+        start_time: '17:30',
+        end_time: '21:00',
+        bookings: [{ id: 202, reference: 'TAG-PICK202', type: 'pickup' }],
+      },
+    ]
+
+    const items = getRosterCoverageReviewItems(dayBookings, shifts)
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'unassigned-linked-shift',
+      booking_reference: 'TAG-PICK202',
+      event_type: 'pickup',
+      shift_times: ['17:30-21:00'],
+      shift_ids: [2],
+    })
+    expect(items[0].message).toContain('is linked to an unassigned shift')
   })
 })
 
