@@ -236,15 +236,100 @@ def _shift_covers_event_window(
     return span_start <= start_dt and required_end <= span_end
 
 
-def _planner_end_buffer_minutes(db: Session) -> int:
-    """Best-effort read of the live planner end buffer for auto-link."""
+def _planner_settings(db: Session):
+    """Best-effort read of live planner settings for auto-link."""
     try:
         from roster_planner import PlannerSettings
         from routers.roster import _load_planner_settings_rows
 
-        return PlannerSettings.from_kv(_load_planner_settings_rows(db)).end_buffer_minutes
+        return PlannerSettings.from_kv(_load_planner_settings_rows(db))
     except Exception:
-        return 30
+        from roster_planner import PlannerSettings
+
+        return PlannerSettings.from_kv({})
+
+
+def _shift_linked_bookings(shift: RosterShift) -> list[Booking]:
+    """Return real linked bookings when the relationship is loaded/iterable."""
+    linked = getattr(shift, "bookings", None)
+    if isinstance(linked, (list, tuple, set)):
+        return list(linked)
+    return []
+
+
+def _required_windows_for_shift_candidate(
+    shift: RosterShift,
+    booking: Booking,
+    settings,
+) -> list[tuple[datetime, datetime]]:
+    """Buffered windows the candidate shift must cover for this booking.
+
+    The window is calculated from the booking plus the candidate shift's
+    existing linked bookings, using the same clustering and tight-pair buffer
+    rules as auto-roster. This catches cases like 22:55 + 23:00 pickups:
+    the pair is under 30 minutes apart, so the required start moves another
+    30 minutes earlier.
+    """
+    from auto_roster import _events_for_booking
+    from roster_planner import (
+        Event,
+        UK_TZ,
+        compute_shift_buffers,
+        group_events_by_gap,
+        pickup_led_start_buffer,
+    )
+
+    source_bookings = [booking]
+    seen_booking_ids = {getattr(booking, "id", None)}
+    for linked_booking in _shift_linked_bookings(shift):
+        linked_id = getattr(linked_booking, "id", None)
+        if linked_id in seen_booking_ids:
+            continue
+        seen_booking_ids.add(linked_id)
+        source_bookings.append(linked_booking)
+
+    events: list[Event] = []
+    for source in source_bookings:
+        for event_type, start_dt, end_dt in _events_for_booking(source):
+            events.append(
+                Event(
+                    booking_id=getattr(source, "id", None),
+                    booking_reference=getattr(source, "reference", "") or "",
+                    event_type=event_type,
+                    event_time=start_dt.replace(tzinfo=UK_TZ),
+                    end_anchor_time=end_dt.replace(tzinfo=UK_TZ),
+                )
+            )
+    if not events:
+        return []
+
+    windows: list[tuple[datetime, datetime]] = []
+    min_duration = timedelta(minutes=settings.min_shift_minutes)
+    for cluster in group_events_by_gap(
+        events,
+        gap_max_minutes=settings.gap_max_minutes,
+        mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
+    ):
+        if not any(e.booking_id == getattr(booking, "id", None) for e in cluster.events):
+            continue
+
+        cluster_start = cluster.events[0].event_time.replace(tzinfo=None)
+        cluster_end = max(
+            (e.end_anchor_time or e.event_time) for e in cluster.events
+        ).replace(tzinfo=None)
+        base_start = pickup_led_start_buffer(cluster, settings.start_buffer_minutes)
+        start_buf_min, end_buf_min = compute_shift_buffers(
+            cluster,
+            base_start_minutes=base_start,
+            base_end_minutes=settings.end_buffer_minutes,
+        )
+        required_start = cluster_start - timedelta(minutes=start_buf_min)
+        required_end = cluster_end + timedelta(minutes=end_buf_min)
+        if required_end - required_start < min_duration:
+            required_end = required_start + min_duration
+        windows.append((required_start, required_end))
+
+    return windows
 
 
 def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
@@ -260,9 +345,8 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
       * intended_driver_type 'jockey' or NULL — fleet shifts ignored
         (bookings are jockey workload in the current model). NULL coerces
         to jockey to match the shift_to_response convention.
-      * Window covers booking's drop-off OR pickup event, including the
-        configured end buffer. A booking can hit two shifts (one for
-        drop-off, another for pickup); both get linked.
+      * Window covers the booking's buffered cluster window. A booking can
+        hit two shifts (one for drop-off, another for pickup); both get linked.
       * Idempotent: skip pairs that already have a ShiftBookingLink row.
 
     Returns the list of shift IDs that received a new link this call.
@@ -287,7 +371,7 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
         events = _events_for_booking(booking)
         if not events:
             return []
-        end_buffer_minutes = _planner_end_buffer_minutes(db)
+        settings = _planner_settings(db)
 
         # Pull candidate shifts in a date window that could plausibly
         # cover any event endpoint. -1/+1 catches overnight wraps.
@@ -310,13 +394,12 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
             if intended not in (None, "jockey"):
                 continue  # fleet (or other) — not jockey workload
             if not any(
-                _shift_covers_event_window(
+                _shift_covers_event_window(shift, s, e)
+                for s, e in _required_windows_for_shift_candidate(
                     shift,
-                    s,
-                    e,
-                    end_buffer_minutes=end_buffer_minutes,
+                    booking,
+                    settings,
                 )
-                for _et, s, e in events
             ):
                 continue
             # Idempotency: don't write a duplicate link.

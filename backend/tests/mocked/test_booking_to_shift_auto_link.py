@@ -285,9 +285,18 @@ class TestAutoLinkEdge:
 
 
 class TestAutoLinkBoundary:
-    def test_event_exactly_at_shift_start_links(self, db):
-        """Drop-off time == shift.start_time → covered (inclusive)."""
+    def test_event_exactly_at_shift_start_does_not_link_without_lead_buffer(self, db):
+        """Drop-off time == shift.start_time leaves no start buffer → no link."""
         booking = _mk_booking(dropoff_time=time(8, 0))
+        shift = _mk_shift(shift_id=100, start_time=time(8, 0), end_time=time(16, 0))
+        db._candidate_shifts = [shift]
+
+        result = auto_link_booking_to_shifts(db, booking)
+        assert result == []
+
+    def test_event_exactly_start_buffer_after_shift_start_links(self, db):
+        """Drop-off at 08:20 in 08:00-16:00 leaves the 20m start buffer."""
+        booking = _mk_booking(dropoff_time=time(8, 20))
         shift = _mk_shift(shift_id=100, start_time=time(8, 0), end_time=time(16, 0))
         db._candidate_shifts = [shift]
 
@@ -304,8 +313,8 @@ class TestAutoLinkBoundary:
         assert result == []
 
     def test_event_exactly_end_buffer_before_shift_end_links(self, db):
-        """Drop-off at 15:30 in 08:00-16:00 leaves the 30m end buffer."""
-        booking = _mk_booking(dropoff_time=time(15, 30))
+        """Drop-off at 15:20 in 08:00-16:00 leaves the generated 60m window."""
+        booking = _mk_booking(dropoff_time=time(15, 20))
         shift = _mk_shift(shift_id=100, start_time=time(8, 0), end_time=time(16, 0))
         db._candidate_shifts = [shift]
 
@@ -331,7 +340,7 @@ class TestAutoLinkBoundary:
             shift_id=9001,
             shift_date=date(2026, 6, 8),
             start_time=time(3, 50),
-            end_time=time(7, 15),
+            end_time=time(7, 25),
         )
 
         db._candidate_shifts = [short_shift]
@@ -341,6 +350,54 @@ class TestAutoLinkBoundary:
         db._committed = False
         db._candidate_shifts = [covered_shift]
         assert auto_link_booking_to_shifts(db, booking) == [9001]
+
+    def test_HUEB_pickup_cluster_requires_tight_pair_start_extension(self, db):
+        """HUEB regression: SHS 22:55 + existing LDH 23:00 are a tight pickup
+        pair, so the candidate shift must start 45m before 22:55: 22:10."""
+        shs = _mk_booking_with_flight(
+            booking_id=807,
+            reference="TAG-SHS00925",
+            dropoff_date=date(2026, 6, 8),
+            dropoff_time=time(6, 45),
+            flight_arrival_date=date(2026, 6, 11),
+            flight_arrival_time=time(22, 55),
+            pickup_date=date(2026, 6, 11),
+            pickup_time=time(23, 25),
+        )
+        ldh = _mk_booking_with_flight(
+            booking_id=755,
+            reference="TAG-LDH79714",
+            dropoff_date=date(2026, 6, 6),
+            dropoff_time=time(6, 5),
+            flight_arrival_date=date(2026, 6, 11),
+            flight_arrival_time=time(23, 0),
+            pickup_date=date(2026, 6, 11),
+            pickup_time=time(23, 30),
+        )
+        short_shift = _mk_shift(
+            shift_id=4527,
+            shift_date=date(2026, 6, 11),
+            end_date=date(2026, 6, 12),
+            start_time=time(22, 45),
+            end_time=time(0, 0),
+        )
+        short_shift.bookings = [ldh]
+        covered_shift = _mk_shift(
+            shift_id=9002,
+            shift_date=date(2026, 6, 11),
+            end_date=date(2026, 6, 12),
+            start_time=time(22, 10),
+            end_time=time(0, 0),
+        )
+        covered_shift.bookings = [ldh]
+
+        db._candidate_shifts = [short_shift]
+        assert auto_link_booking_to_shifts(db, shs) == []
+
+        db._added.clear()
+        db._committed = False
+        db._candidate_shifts = [covered_shift]
+        assert auto_link_booking_to_shifts(db, shs) == [9002]
 
     def test_event_one_minute_before_start_does_not_link(self, db):
         """07:59 falls just outside 08:00-16:00 → no link."""
@@ -437,16 +494,16 @@ class TestAutoLinkSharesEventExtraction:
 
     def test_H_flight_arrival_drives_linking_not_pickup_time(self, db):
         """Happy / the EXACT reviewer mismatch case:
-            shift           15:30 – 16:15
+            shift           15:25 – 16:40
             flight_arrival  15:40
             derived handoff 16:10   (arrival + 30)
             stored pickup   17:30
         Arrival (15:40), derived handoff (16:10), and the configured 30m
-        end buffer sit inside 15:30–16:40. The customer-facing pickup_time (17:30) is way
+        end buffer sit inside 15:25–16:40. The customer-facing pickup_time (17:30) is way
         outside but auto-link must NOT consult it any more — keying on
         the canonical arrival anchor closes the orphan gap that the
         old (literal pickup_time) code would have hit here. Old code:
-        17:30 outside 15:30–16:40 → no link → orphan. New code: buffered handoff
+        17:30 outside 15:25–16:40 → no link → orphan. New code: buffered handoff
         anchor inside → link."""
         booking = _mk_booking_with_flight(
             booking_id=10,
@@ -461,13 +518,13 @@ class TestAutoLinkSharesEventExtraction:
         )
         s_pick = _mk_shift(
             shift_id=200, shift_date=date(2026, 5, 14),
-            start_time=time(15, 30), end_time=time(16, 40),
+            start_time=time(15, 25), end_time=time(16, 40),
         )
         db._candidate_shifts = [s_drop, s_pick]
 
         result = auto_link_booking_to_shifts(db, booking)
         assert 200 in result, (
-            "shift 15:30–16:40 covers arrival 15:40, derived handoff "
+            "shift 15:25–16:40 covers arrival 15:40, derived handoff "
             "16:10, and the 30m end buffer — link must be created; literal pickup_time 17:30 is "
             "irrelevant"
         )
@@ -476,7 +533,7 @@ class TestAutoLinkSharesEventExtraction:
 
     def test_E_pickup_time_later_than_handoff_still_links(self, db):
         """Edge: arrival 14:00, derived handoff 14:30, literal pickup_time
-        17:30. Shift 14:00–15:00 covers the canonical event plus buffer but ends
+        17:30. Shift 13:45–15:00 covers the canonical event plus buffer but ends
         before the literal pickup. Auto-link must still link — the link
         is keyed on the canonical event window, not the customer-facing
         pickup_time. (Closes the orphan-gap reviewer flagged: rebuild
@@ -494,7 +551,7 @@ class TestAutoLinkSharesEventExtraction:
         )
         s_pick = _mk_shift(
             shift_id=300, shift_date=date(2026, 5, 14),
-            start_time=time(14, 0), end_time=time(15, 0),  # covers canonical
+            start_time=time(13, 45), end_time=time(15, 0),  # covers canonical
         )
         db._candidate_shifts = [s_drop, s_pick]
 
