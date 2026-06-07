@@ -211,73 +211,6 @@
   margin-bottom: 15px;
 }
 
-.shift-exception-banner {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  background: rgba(245, 166, 35, 0.14);
-  border: 1px solid #f5a623;
-  color: #f8d18a;
-  padding: 12px 14px;
-  border-radius: 8px;
-  margin-bottom: 15px;
-}
-
-.shift-exception-banner-header {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.shift-exception-banner-header strong {
-  color: #fff;
-  font-size: 0.95rem;
-}
-
-.shift-exception-banner-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.shift-exception-banner-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
-  background: rgba(26, 26, 46, 0.48);
-  border: 1px solid rgba(245, 166, 35, 0.42);
-  border-radius: 6px;
-  padding: 7px 9px;
-  color: #f8d18a;
-}
-
-.shift-exception-banner-item strong {
-  color: #d9ff00;
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
-
-.shift-exception-banner-item span {
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-@media (max-width: 720px) {
-  .shift-exception-banner-list {
-    flex-direction: column;
-  }
-
-  .shift-exception-banner-item {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
-  }
-}
-
 /* Calendar Grid */
 .roster-calendar .calendar-grid {
   background: #252525;
@@ -583,12 +516,29 @@
   margin: 0;
 }
 
+.roster-review-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.roster-review-group h4 {
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
 .roster-review-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   list-style: none;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
 }
 
