@@ -14,7 +14,6 @@ import {
   computeBookingsByDate,
   ARRIVAL_OVERNIGHT_CUTOFF,
   shiftSortMinutes,
-  computeShiftsByCoverageDate,
   sourceParamFor,
   calculateHoursTotal,
   calculateShiftTotal,
@@ -381,6 +380,22 @@ describe('computeBookingsByDate', () => {
     expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([1])
     expect(grouped['2026-07-05']?.pickups ?? []).toHaveLength(0)
   })
+
+  it('H: legacy row with arrival before a midnight handoff buckets to the previous day', () => {
+    // Real shape: TAG-YEK17675 has no flight_arrival_date, arrival 23:30,
+    // and pickup_time 00:00 on pickup_date 2026-09-28. The flight landed on
+    // 2026-09-27 and the linked shift correctly starts on the 27th.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(587, {
+        flight_arrival_date: null,
+        flight_arrival_time: '23:30',
+        pickup_date: '2026-09-28',
+        pickup_time: '00:00',
+      }),
+    ])
+    expect(grouped['2026-09-27']?.pickups.map((b) => b.id)).toEqual([587])
+    expect(grouped['2026-09-28']?.pickups ?? []).toHaveLength(0)
+  })
 })
 
 // =============================================================================
@@ -449,70 +464,6 @@ describe('shiftSortMinutes', () => {
     expect(shiftSortMinutes(null)).toBe(0)
     expect(shiftSortMinutes({})).toBe(0)
     expect(shiftSortMinutes({ start_time: null })).toBe(0)
-  })
-})
-
-describe('computeShiftsByCoverageDate', () => {
-  it('indexes overnight shifts by end_date so linked next-day pickups are covered', () => {
-    const shiftsByCoverageDate = computeShiftsByCoverageDate([
-      {
-        id: 4950,
-        date: '2026-09-27',
-        end_date: '2026-09-28',
-        start_time: '23:15',
-        end_time: '00:15',
-        created_source: 'auto',
-        bookings: [
-          {
-            id: 587,
-            reference: 'TAG-YEK17675',
-            type: 'pickup',
-            time: '23:30',
-          },
-        ],
-      },
-      {
-        id: 4951,
-        date: '2026-09-28',
-        start_time: '12:15',
-        end_time: '13:15',
-        created_source: 'auto',
-        bookings: [
-          {
-            id: 588,
-            reference: 'TAG-PQU76584',
-            type: 'dropoff',
-            time: '12:45',
-          },
-        ],
-      },
-    ])
-
-    expect(shiftsByCoverageDate['2026-09-27'].map((shift) => shift.id)).toEqual([4950])
-    expect(shiftsByCoverageDate['2026-09-28'].map((shift) => shift.id)).toEqual([4951, 4950])
-
-    const items = getRosterCoverageReviewItemsByDate(
-      {
-        '2026-09-28': {
-          dropoffs: [],
-          pickups: [
-            {
-              id: 587,
-              reference: 'TAG-YEK17675',
-              customer_first_name: 'Paula',
-              customer_last_name: 'Bones',
-              flight_arrival_time: '23:30',
-              pickup_flight_number: '3945',
-              pickup_origin: 'Faro Airport',
-            },
-          ],
-        },
-      },
-      shiftsByCoverageDate,
-      ['2026-09-28'],
-    )
-
-    expect(items).toEqual([])
   })
 })
 

@@ -115,6 +115,13 @@ export const computeBookingsByDate = (bookings) => {
     if (booking.flight_arrival_time) {
       arrivalDate = booking.flight_arrival_date || booking.pickup_date
       arrivalTime = String(booking.flight_arrival_time).slice(0, 5)
+      if (
+        !booking.flight_arrival_date
+        && booking.pickup_time
+        && arrivalTime > String(booking.pickup_time).slice(0, 5)
+      ) {
+        arrivalDate = prevIsoDate(arrivalDate)
+      }
     } else if (booking.pickup_date && booking.pickup_time) {
       const [y, m, d] = booking.pickup_date.split('-').map(Number)
       const [hh, mm] = String(booking.pickup_time).slice(0, 5).split(':').map(Number)
@@ -233,25 +240,6 @@ export const computeShiftsByStartDate = (shifts = []) => {
     const startDateKey = shift.date
     if (!grouped[startDateKey]) grouped[startDateKey] = []
     grouped[startDateKey].push(calendarShiftEntry(shift))
-  })
-
-  return sortShiftGroups(grouped)
-}
-
-export const computeShiftsByCoverageDate = (shifts = []) => {
-  const grouped = {}
-
-  ;(shifts || []).forEach((shift) => {
-    if (!shift?.date) return
-    const entry = calendarShiftEntry(shift)
-    const dateKeys = [shift.date]
-    if (shift.end_date && shift.end_date !== shift.date) {
-      dateKeys.push(shift.end_date)
-    }
-    dateKeys.forEach((dateKey) => {
-      if (!grouped[dateKey]) grouped[dateKey] = []
-      grouped[dateKey].push(entry)
-    })
   })
 
   return sortShiftGroups(grouped)
@@ -1287,11 +1275,6 @@ function RosterCalendar({
     // ahead of Friday's afternoon 13:10 shift.
     return computeShiftsByStartDate(shifts)
   }, [shifts])
-
-  const shiftsByCoverageDate = useMemo(
-    () => computeShiftsByCoverageDate(shifts),
-    [shifts]
-  )
 
   // Group teammates' view-only shifts by date (employee mode only).
   const teamShiftsByDate = useMemo(() => {
@@ -2736,8 +2719,7 @@ function RosterCalendar({
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
-  const selectedDateCoverageShifts = selectedDate ? (shiftsByCoverageDate[selectedDate] || []) : []
-  const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateCoverageShifts)
+  const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
   const selectedMissingShiftReviewItems = selectedDateReviewItems.filter((item) => item.kind === 'missing-shift')
   const selectedAutoOverlapIssueGroups = groupAutoOverlapReviewItems(
     selectedDateReviewItems.filter((item) => item.kind === 'unassigned-linked-shift'),
@@ -2752,7 +2734,7 @@ function RosterCalendar({
     .flat()
     .filter(Boolean)
     .map((day) => getDateKey(day))
-  const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByCoverageDate, visibleDateKeys)
+  const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
   const autoOverlapReviewItems = calendarReviewItems.filter((item) => item.kind === 'unassigned-linked-shift')
   const autoOverlapIssueGroups = groupAutoOverlapReviewItems(autoOverlapReviewItems)
