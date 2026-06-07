@@ -18,6 +18,7 @@ import {
   calculateHoursTotal,
   calculateShiftTotal,
   getRosterCoverageReviewItems,
+  getRosterCoverageReviewItemsByDate,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -549,6 +550,68 @@ describe('getRosterCoverageReviewItems', () => {
       shift_ids: [2],
     })
     expect(items[0].message).toContain('is linked to an unassigned shift')
+  })
+
+  it('aggregates review items across visible calendar dates for the top banner', () => {
+    const items = getRosterCoverageReviewItemsByDate(
+      {
+        '2026-06-14': {
+          dropoffs: [],
+          pickups: [
+            {
+              id: 301,
+              status: 'confirmed',
+              reference: 'TAG-SUN301',
+              customer_first_name: 'Late',
+              customer_last_name: 'Booking',
+              flight_arrival_time: '19:20',
+            },
+          ],
+        },
+        '2026-06-15': {
+          dropoffs: [
+            {
+              id: 302,
+              status: 'confirmed',
+              reference: 'TAG-MON302',
+              customer_first_name: 'Auto',
+              customer_last_name: 'Roster',
+              dropoff_time: '10:15',
+            },
+          ],
+          pickups: [],
+        },
+      },
+      {
+        '2026-06-14': [
+          {
+            id: 9,
+            staff_id: null,
+            start_time: '18:00',
+            end_time: '22:00',
+            bookings: [{ id: 301, reference: 'TAG-SUN301', type: 'pickup' }],
+          },
+        ],
+        '2026-06-15': [
+          {
+            id: 10,
+            staff_id: 4,
+            start_time: '09:00',
+            end_time: '12:00',
+            bookings: [{ id: 302, reference: 'TAG-MON302', type: 'dropoff' }],
+          },
+        ],
+      },
+      ['2026-06-14', '2026-06-15'],
+    )
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      date: '2026-06-14',
+      date_label: '14/06/2026',
+      kind: 'unassigned-linked-shift',
+      booking_reference: 'TAG-SUN301',
+    })
   })
 })
 
