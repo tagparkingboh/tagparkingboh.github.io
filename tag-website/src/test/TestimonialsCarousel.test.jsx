@@ -9,6 +9,10 @@
  * - Source badge rendering
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  balanceTestimonialsForMasonry,
+  getMasonryColumnCount,
+} from '../TestimonialsCarousel'
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -65,6 +69,40 @@ const mockTestimonialLowRated = {
 }
 
 describe('TestimonialsCarousel Unit Tests', () => {
+  describe('Masonry balance helpers (HUEB)', () => {
+    it('H: uses 4 desktop columns, 2 tablet columns, and 1 mobile column', () => {
+      expect(getMasonryColumnCount(1440)).toBe(4)
+      expect(getMasonryColumnCount(1024)).toBe(4)
+      expect(getMasonryColumnCount(900)).toBe(2)
+      expect(getMasonryColumnCount(390)).toBe(1)
+    })
+
+    it('E: distributes the most recent 10 by estimated card height instead of filling the left column', () => {
+      const longReview = 'Excellent meet and greet service. '.repeat(18)
+      const mediumReview = 'Really smooth service and good value. '.repeat(6)
+      const shortReview = 'Fantastic.'
+      const reviews = [
+        { id: 1, review_text: shortReview },
+        { id: 2, review_text: longReview },
+        { id: 3, review_text: mediumReview },
+        { id: 4, review_text: shortReview },
+        { id: 5, review_text: longReview },
+        { id: 6, review_text: shortReview },
+        { id: 7, review_text: mediumReview },
+        { id: 8, review_text: shortReview },
+        { id: 9, review_text: mediumReview },
+        { id: 10, review_text: shortReview },
+      ]
+
+      const columns = balanceTestimonialsForMasonry(reviews, 4)
+
+      expect(columns).toHaveLength(4)
+      expect(columns.every((column) => column.length > 0)).toBe(true)
+      expect(columns[0].length).toBeLessThan(4)
+      expect(columns.flat().map((review) => review.id).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    })
+  })
+
   describe('Star rating rendering logic', () => {
     it('should render 5 filled stars for 5-star rating', () => {
       const rating = mockTestimonialRated5Stars.star_rating

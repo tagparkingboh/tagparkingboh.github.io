@@ -1,6 +1,32 @@
 import { useState, useEffect } from 'react'
 import './TestimonialsCarousel.css'
 
+export const getMasonryColumnCount = (width) => {
+  if (width < 768) return 1
+  if (width < 1024) return 2
+  return 4
+}
+
+const estimateTestimonialHeight = (testimonial) => {
+  const textLength = testimonial?.review_text?.length || 0
+  const lineEstimate = Math.ceil(textLength / 46)
+  return 126 + lineEstimate * 24
+}
+
+export const balanceTestimonialsForMasonry = (items = [], columnCount = 4) => {
+  const count = Math.max(1, Math.floor(columnCount) || 1)
+  const columns = Array.from({ length: count }, () => [])
+  const columnHeights = Array.from({ length: count }, () => 0)
+
+  ;(items || []).forEach((item) => {
+    const targetIndex = columnHeights.indexOf(Math.min(...columnHeights))
+    columns[targetIndex].push(item)
+    columnHeights[targetIndex] += estimateTestimonialHeight(item)
+  })
+
+  return columns
+}
+
 function TestimonialsCarousel() {
   const [testimonials, setTestimonials] = useState([])
   const [stats, setStats] = useState(null)
@@ -10,6 +36,9 @@ function TestimonialsCarousel() {
   const [currentPage, setCurrentPage] = useState(0) // Pagination only used when showAll
   const [expandedReview, setExpandedReview] = useState(null) // Expanded review modal
   const [showAll, setShowAll] = useState(false) // false = top 10 only; true = full archive
+  const [masonryColumnCount, setMasonryColumnCount] = useState(() => (
+    typeof window === 'undefined' ? 4 : getMasonryColumnCount(window.innerWidth)
+  ))
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -88,6 +117,16 @@ function TestimonialsCarousel() {
     return () => clearInterval(interval)
   }, [cyclingGroups.length])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handleResize = () => {
+      setMasonryColumnCount(getMasonryColumnCount(window.innerWidth))
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   // Render star rating (or nothing for unrated)
   const renderRating = (rating) => {
     if (rating === null || rating === undefined) {
@@ -165,6 +204,7 @@ function TestimonialsCarousel() {
   }
 
   const hiddenCount = testimonials.length - DEFAULT_VISIBLE_COUNT
+  const masonryColumns = balanceTestimonialsForMasonry(visibleTestimonials, masonryColumnCount)
 
   return (
     <section id="testimonials" className="testimonials-section">
@@ -205,29 +245,33 @@ function TestimonialsCarousel() {
 
       {/* Masonry Grid */}
       <div className="testimonials-masonry">
-        {visibleTestimonials.map((testimonial, index) => (
-          <div
-            key={testimonial.id}
-            className="masonry-card"
-            style={{ animationDelay: `${(index % 12) * 0.05}s` }}
-            onClick={() => setExpandedReview(testimonial)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && setExpandedReview(testimonial)}
-          >
-            <div className="masonry-card-header">
-              {renderRating(testimonial.star_rating)}
-              {renderSourceBadge(testimonial.source)}
-            </div>
-            <blockquote className="masonry-card-text">
-              "{testimonial.review_text}"
-            </blockquote>
-            <div className="masonry-card-footer">
-              <span className="masonry-card-author">{testimonial.customer_name}</span>
-              {testimonial.date_of_travel && (
-                <span className="masonry-card-date">{formatDate(testimonial.date_of_travel)}</span>
-              )}
-            </div>
+        {masonryColumns.map((column, columnIndex) => (
+          <div className="testimonials-masonry-column" key={`masonry-column-${columnIndex}`}>
+            {column.map((testimonial, index) => (
+              <div
+                key={testimonial.id}
+                className="masonry-card"
+                style={{ animationDelay: `${((columnIndex * 3 + index) % 12) * 0.05}s` }}
+                onClick={() => setExpandedReview(testimonial)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && setExpandedReview(testimonial)}
+              >
+                <div className="masonry-card-header">
+                  {renderRating(testimonial.star_rating)}
+                  {renderSourceBadge(testimonial.source)}
+                </div>
+                <blockquote className="masonry-card-text">
+                  "{testimonial.review_text}"
+                </blockquote>
+                <div className="masonry-card-footer">
+                  <span className="masonry-card-author">{testimonial.customer_name}</span>
+                  {testimonial.date_of_travel && (
+                    <span className="masonry-card-date">{formatDate(testimonial.date_of_travel)}</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
