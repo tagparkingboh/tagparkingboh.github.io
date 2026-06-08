@@ -321,6 +321,83 @@ def compute_shift_buffers(
     )
 
 
+def compute_cluster_shift_window(
+    cluster: EventCluster,
+    *,
+    start_buffer_minutes: int,
+    end_buffer_minutes: int,
+    min_shift_minutes: int,
+    tight_gap_minutes: int = 30,
+    extension_minutes: int = 30,
+) -> tuple[datetime, datetime]:
+    """Return the buffered shift window for a mixed event cluster.
+
+    Drop-offs and pick-ups apply pressure to different sides of the shift:
+      - drop-offs need lead time before the customer arrives, but tight
+        pick-up prep must not be anchored to that drop-off time.
+      - pick-ups need the cars ready before the pax arrive, so tight pick-up
+        pairs can pull the start earlier from the first arrival anchor.
+      - tight drop-off pairs can push the end later from the last drop-off.
+
+    The final shift spans the outer bounds of those independent requirements.
+    """
+    if not cluster.events:
+        raise ValueError("Cannot compute a shift window for an empty cluster")
+
+    pickups = sorted(
+        (e for e in cluster.events if e.event_type == "pick_up"),
+        key=lambda e: e.event_time,
+    )
+    dropoffs = sorted(
+        (e for e in cluster.events if e.event_type == "drop_off"),
+        key=lambda e: e.event_time,
+    )
+
+    def _tight_pairs(events: list[Event]) -> int:
+        n = 0
+        for prev, curr in zip(events, events[1:]):
+            gap_min = (curr.event_time - prev.event_time).total_seconds() / 60
+            if gap_min < tight_gap_minutes:
+                n += 1
+        return n
+
+    start_candidates: list[datetime] = []
+    if dropoffs:
+        start_candidates.append(
+            dropoffs[0].event_time - timedelta(minutes=start_buffer_minutes)
+        )
+    if pickups:
+        pickup_start_minutes = (
+            PICKUP_LED_START_BUFFER_MINUTES
+            + extension_minutes * _tight_pairs(pickups)
+        )
+        start_candidates.append(
+            pickups[0].event_time - timedelta(minutes=pickup_start_minutes)
+        )
+
+    end_candidates: list[datetime] = []
+    if dropoffs:
+        dropoff_end_minutes = (
+            end_buffer_minutes + extension_minutes * _tight_pairs(dropoffs)
+        )
+        latest_dropoff_end = max(e.end_anchor_time or e.event_time for e in dropoffs)
+        end_candidates.append(
+            latest_dropoff_end + timedelta(minutes=dropoff_end_minutes)
+        )
+    if pickups:
+        latest_pickup_end = max(e.end_anchor_time or e.event_time for e in pickups)
+        end_candidates.append(
+            latest_pickup_end + timedelta(minutes=end_buffer_minutes)
+        )
+
+    shift_start = min(start_candidates)
+    shift_end = max(end_candidates)
+    min_duration = timedelta(minutes=min_shift_minutes)
+    if shift_end - shift_start < min_duration:
+        shift_end = shift_start + min_duration
+    return shift_start, shift_end
+
+
 def peak_concurrent_count(events: Iterable[Event], window_minutes: int = 15) -> int:
     """Max number of events falling within any `window_minutes` rolling window.
 
@@ -872,9 +949,9 @@ def propose_roster(
                 anchor_time = _combine_uk(flight_date, arrival_t)
             else:
                 # Pickup fallback start-anchor: flight typically lands 30 min
-                # before pickup_time. The pickup-led-cluster start_buffer
-                # (15 min, applied in compute_shift_buffers) then takes
-                # shift_start to pickup_time - 45.
+                # before pickup_time. The pickup-side start buffer (15 min
+                # in compute_cluster_shift_window) then takes shift_start to
+                # pickup_time - 45 for a pickup-only window.
                 anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=30)
             # End anchor — customer handoff. shift_end = pickup_time + end_buffer
             # so the jockey stays on the clock through the actual handover.
@@ -914,24 +991,18 @@ def propose_roster(
     warnings: list[dict] = []
     proposed_hours_by_staff_week: dict[tuple[int, date], float] = {}
     proposed_last_end_by_staff: dict[int, datetime] = {}
-    end_buffer = timedelta(minutes=settings.end_buffer_minutes)
-
     for cluster in clusters:
-        # Pickup-led clusters use a tighter 15-min start_buffer (locked
-        # 2026-05-12) so shift_start lands at pickup_time - 45. Drop-off-led
-        # clusters keep settings.start_buffer_minutes.
-        start_buffer = timedelta(minutes=pickup_led_start_buffer(
-            cluster, settings.start_buffer_minutes,
-        ))
-        shift_start_dt = cluster.start - start_buffer
-        shift_end_dt = cluster.end + end_buffer
-        # Min shift length — extend the END (not the start) when the
-        # buffered window is shorter than the floor. A single drop-off
-        # at 13:00 with 20/30 buffer would otherwise give 12:40-13:30
-        # (50 min); we extend to 12:40-13:40.
-        min_duration = timedelta(minutes=settings.min_shift_minutes)
-        if shift_end_dt - shift_start_dt < min_duration:
-            shift_end_dt = shift_start_dt + min_duration
+        # Compute each event type's requirement independently, then use the
+        # outer bounds. Tight pickups pull the start earlier from the first
+        # pickup arrival; tight drop-offs push the end later from the last
+        # drop-off. Mixed events in the middle do not magnify the opposite
+        # side of the shift.
+        shift_start_dt, shift_end_dt = compute_cluster_shift_window(
+            cluster,
+            start_buffer_minutes=settings.start_buffer_minutes,
+            end_buffer_minutes=settings.end_buffer_minutes,
+            min_shift_minutes=settings.min_shift_minutes,
+        )
         shift_type, is_custom = round_to_shift_type(shift_start_dt, shift_end_dt)
         peak = peak_concurrent_count(cluster.events, window_minutes=15)
         required = required_staff_count(peak, settings.staffing_thresholds)

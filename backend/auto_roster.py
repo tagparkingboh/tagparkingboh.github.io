@@ -55,9 +55,8 @@ from roster_planner import (
     Event,
     PlannerSettings,
     UK_TZ,
-    compute_shift_buffers,
+    compute_cluster_shift_window,
     group_events_by_gap,
-    pickup_led_start_buffer,
     round_to_shift_type,
 )
 
@@ -362,37 +361,22 @@ def rebuild_auto_for_dates(
     # Usually that owner is the event anchor date. For arrivals before the
     # 02:00 operational cutoff, the owner is the prior operational day, so a
     # 26 Jun rebuild must recreate a 27 Jun 00:35 pickup shift dated 26 Jun.
-    min_duration = timedelta(minutes=settings.min_shift_minutes)
-
     for cluster in clusters:
         cluster_start = cluster.events[0].event_time
-        # cluster_end pivots on the latest *end* anchor — for pickups that's
-        # pickup_time (handoff), for drop-offs that's dropoff_time. The
-        # events list is sorted by event_time (start anchor) which doesn't
-        # necessarily put the latest end anchor last; max() handles that.
-        cluster_end = max(
-            (e.end_anchor_time or e.event_time) for e in cluster.events
-        )
-        # Per-cluster buffers: extend by 30 min for each tight (<30 min) same-type
-        # pair — pickups push the start earlier, drop-offs push the end later.
-        # Pickup-led clusters override the start base to 15 min (locked 2026-05-12)
-        # so a single-pickup shift comes out at pickup_time - 45.
-        base_start = pickup_led_start_buffer(cluster, settings.start_buffer_minutes)
-        start_buf_min, end_buf_min = compute_shift_buffers(
+        # Compute each event type's requirement independently, then use the
+        # outer bounds. Tight pickups can pull the start earlier from the
+        # pickup arrival anchor; tight drop-offs can push the end later from
+        # the drop-off anchor. A mixed event in the middle must not magnify
+        # the opposite side of the shift.
+        shift_start, shift_end = compute_cluster_shift_window(
             cluster,
-            base_start_minutes=base_start,
-            base_end_minutes=settings.end_buffer_minutes,
+            start_buffer_minutes=settings.start_buffer_minutes,
+            end_buffer_minutes=settings.end_buffer_minutes,
+            min_shift_minutes=settings.min_shift_minutes,
         )
-        start_buffer = timedelta(minutes=start_buf_min)
-        end_buffer = timedelta(minutes=end_buf_min)
-
         # Strip tz for naive DB storage.
-        c_start = cluster_start.replace(tzinfo=None)
-        c_end = cluster_end.replace(tzinfo=None)
-        shift_start = c_start - start_buffer
-        shift_end = c_end + end_buffer
-        if shift_end - shift_start < min_duration:
-            shift_end = shift_start + min_duration
+        shift_start = shift_start.replace(tzinfo=None)
+        shift_end = shift_end.replace(tzinfo=None)
 
         shift_type, _ = round_to_shift_type(shift_start, shift_end)
 
