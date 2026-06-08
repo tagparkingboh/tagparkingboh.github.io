@@ -143,19 +143,25 @@
 
 /* ===== MASONRY GRID LAYOUT ===== */
 .testimonials-masonry {
-  column-count: 4;
-  column-gap: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
   max-width: 1400px;
   margin: 0 auto 2rem;
   position: relative;
 }
 
+.testimonials-masonry-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
 .masonry-card {
-  break-inside: avoid;
   background: var(--white);
   border-radius: 12px;
   padding: 1.5rem;
-  margin-bottom: 1.25rem;
   text-align: left;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -715,7 +721,7 @@
   }
 
   .testimonials-masonry {
-    column-count: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .testimonial-card {
@@ -793,13 +799,16 @@
   }
 
   .testimonials-masonry {
-    column-count: 1;
-    column-gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .testimonials-masonry-column {
+    gap: 1rem;
   }
 
   .masonry-card {
     padding: 1.25rem;
-    margin-bottom: 1rem;
   }
 
   .masonry-card-text {
