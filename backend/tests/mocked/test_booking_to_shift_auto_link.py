@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from db_models import RosterShift, ShiftBookingLink, ShiftStatus, Booking
+from roster_planner import PlannerSettings
 from roster_planner_runner import (
     auto_link_booking_to_shifts,
     _shift_covers_event,
@@ -398,6 +399,62 @@ class TestAutoLinkBoundary:
         db._committed = False
         db._candidate_shifts = [covered_shift]
         assert auto_link_booking_to_shifts(db, shs) == [9002]
+
+    def test_HUEB_mixed_cluster_pickup_pressure_uses_pickup_anchor(self, db, monkeypatch):
+        """TAG-CML85116 shape: 11:25 drop-off plus several 12:20 pickups.
+
+        A 10:30-13:05 staffed shift covers the corrected mixed-cluster window:
+        pickup prep pulls from 12:20, not from the earlier drop-off at 11:25.
+        """
+        monkeypatch.setattr(
+            "roster_planner_runner._planner_settings",
+            lambda _db: PlannerSettings(
+                window_days=None,
+                gap_max_minutes=150,
+                mixed_gap_max_minutes=150,
+                start_buffer_minutes=30,
+                end_buffer_minutes=15,
+                staffing_thresholds=({"max_peak": 3, "staff": 1}, {"max_peak": 999, "staff": 2}),
+                max_hours_per_week=40,
+                min_rest_hours=8,
+                untouchable_hours=24,
+                min_shift_minutes=60,
+            ),
+        )
+        cml = _mk_booking_with_flight(
+            booking_id=826,
+            reference="TAG-CML85116",
+            dropoff_date=date(2026, 6, 14),
+            dropoff_time=time(11, 25),
+            flight_arrival_date=date(2026, 6, 18),
+            flight_arrival_time=time(16, 55),
+            pickup_date=date(2026, 6, 18),
+            pickup_time=time(17, 25),
+        )
+        existing_pickups = [
+            _mk_booking_with_flight(
+                booking_id=900 + i,
+                reference=f"TAG-PICK{i:05d}",
+                dropoff_date=date(2026, 6, 1),
+                dropoff_time=time(9, 0),
+                flight_arrival_date=date(2026, 6, 14),
+                flight_arrival_time=time(12, 20),
+                pickup_date=date(2026, 6, 14),
+                pickup_time=time(12, 50),
+            )
+            for i in range(4)
+        ]
+        shift = _mk_shift(
+            shift_id=4531,
+            shift_date=date(2026, 6, 14),
+            start_time=time(10, 30),
+            end_time=time(13, 5),
+        )
+        shift.bookings = existing_pickups
+
+        db._candidate_shifts = [shift]
+
+        assert auto_link_booking_to_shifts(db, cml) == [4531]
 
     def test_event_one_minute_before_start_does_not_link(self, db):
         """07:59 falls just outside 08:00-16:00 → no link."""

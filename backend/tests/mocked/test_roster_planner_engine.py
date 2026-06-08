@@ -1786,8 +1786,9 @@ class TestPickupShiftEndAnchorsToHandoff:
         s = new_shifts[0]
         assert s["date"].isoformat() == "2026-05-10"
         assert s["end_date"].isoformat() == "2026-05-11"
-        # Pickup-led 15-min start_buffer (locked 2026-05-12): 23:30 - 15 = 23:15.
-        assert s["start_time"].strftime("%H:%M") == "23:15"
+        # Pickup-led 15-min start buffer plus two tight pickup pairs:
+        # 23:30 - (15 + 60) = 22:15.
+        assert s["start_time"].strftime("%H:%M") == "22:15"
         assert s["end_time"].strftime("%H:%M") == "01:50"   # 01:20 + 30m
 
     def test_edge_dropoff_only_cluster_unchanged(self):

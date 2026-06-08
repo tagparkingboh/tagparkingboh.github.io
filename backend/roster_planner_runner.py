@@ -274,9 +274,8 @@ def _required_windows_for_shift_candidate(
     from roster_planner import (
         Event,
         UK_TZ,
-        compute_shift_buffers,
+        compute_cluster_shift_window,
         group_events_by_gap,
-        pickup_led_start_buffer,
     )
 
     source_bookings = [booking]
@@ -304,7 +303,6 @@ def _required_windows_for_shift_candidate(
         return []
 
     windows: list[tuple[datetime, datetime]] = []
-    min_duration = timedelta(minutes=settings.min_shift_minutes)
     for cluster in group_events_by_gap(
         events,
         gap_max_minutes=settings.gap_max_minutes,
@@ -313,21 +311,16 @@ def _required_windows_for_shift_candidate(
         if not any(e.booking_id == getattr(booking, "id", None) for e in cluster.events):
             continue
 
-        cluster_start = cluster.events[0].event_time.replace(tzinfo=None)
-        cluster_end = max(
-            (e.end_anchor_time or e.event_time) for e in cluster.events
-        ).replace(tzinfo=None)
-        base_start = pickup_led_start_buffer(cluster, settings.start_buffer_minutes)
-        start_buf_min, end_buf_min = compute_shift_buffers(
+        required_start, required_end = compute_cluster_shift_window(
             cluster,
-            base_start_minutes=base_start,
-            base_end_minutes=settings.end_buffer_minutes,
+            start_buffer_minutes=settings.start_buffer_minutes,
+            end_buffer_minutes=settings.end_buffer_minutes,
+            min_shift_minutes=settings.min_shift_minutes,
         )
-        required_start = cluster_start - timedelta(minutes=start_buf_min)
-        required_end = cluster_end + timedelta(minutes=end_buf_min)
-        if required_end - required_start < min_duration:
-            required_end = required_start + min_duration
-        windows.append((required_start, required_end))
+        windows.append((
+            required_start.replace(tzinfo=None),
+            required_end.replace(tzinfo=None),
+        ))
 
     return windows
 

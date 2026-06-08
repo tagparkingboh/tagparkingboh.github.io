@@ -43,7 +43,13 @@ from db_models import (  # noqa: E402
     ShiftStatus,
     ShiftType,
 )
-from roster_planner import Event, EventCluster, PlannerSettings, UK_TZ  # noqa: E402
+from roster_planner import (  # noqa: E402
+    Event,
+    EventCluster,
+    PlannerSettings,
+    UK_TZ,
+    compute_cluster_shift_window,
+)
 from auto_roster import rebuild_auto_for_dates  # noqa: E402
 
 
@@ -433,6 +439,83 @@ class TestRebuildAppliesPickupExtension:
         # End buffer = base 30 (no drop-off pairs) → 00:40 next day.
         assert s.end_date == date(2026, 6, 18)
         assert s.end_time == time(0, 40)
+
+
+class TestMixedClusterAnchorsSameTypePressure:
+    def test_HUEB_dropoff_in_middle_does_not_anchor_pickup_start_extension(self):
+        """TAG-CML85116 shape: one 11:25 drop-off plus several 12:20 pickups.
+
+        The pickups still pull the shift start earlier because cars need to be
+        ready for pax arrivals. But that pickup pressure is anchored to the
+        pickup arrivals, not to the unrelated drop-off earlier in the same
+        efficient mixed cluster.
+        """
+        cml = mk_booking(
+            booking_id=826,
+            reference="TAG-CML85116",
+            dropoff_dt=datetime(2026, 6, 14, 11, 25),
+            pickup_dt=datetime(2026, 6, 18, 17, 25),
+            flight_arrival_time=time(16, 55),
+        )
+        pickups = [
+            mk_booking(
+                booking_id=900 + i,
+                reference=f"TAG-PICK{i:05d}",
+                dropoff_dt=datetime(2026, 6, 1, 9, 0),
+                pickup_dt=datetime(2026, 6, 14, 12, 50),
+                flight_arrival_time=time(12, 20),
+            )
+            for i in range(4)
+        ]
+        db = make_db(bookings=[cml, *pickups])
+
+        rebuild_auto_for_dates(
+            db,
+            {date(2026, 6, 14)},
+            mk_settings(
+                gap_max_minutes=150,
+                mixed_gap_max_minutes=150,
+                start_buffer_minutes=30,
+                end_buffer_minutes=15,
+            ),
+        )
+
+        from db_models import RosterShift
+        new_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date == date(2026, 6, 14)
+        ]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s.start_time == time(10, 35)
+        assert s.end_time == time(13, 5)
+
+    def test_HUEB_pickup_in_middle_does_not_anchor_dropoff_end_extension(self):
+        """Mirror rule: tight drop-offs extend from the drop-off side only.
+
+        A pickup within the efficient mixed cluster must not become the anchor
+        that lengthens the drop-off end requirement.
+        """
+        cluster = _cluster(
+            _dropoff_event(datetime(2026, 6, 14, 10, 0), booking_id=1),
+            _dropoff_event(datetime(2026, 6, 14, 10, 10), booking_id=2),
+            _dropoff_event(datetime(2026, 6, 14, 10, 20), booking_id=3),
+            _pickup_event(
+                datetime(2026, 6, 14, 11, 0),
+                end=datetime(2026, 6, 14, 11, 30),
+                booking_id=4,
+            ),
+        )
+
+        shift_start, shift_end = compute_cluster_shift_window(
+            cluster,
+            start_buffer_minutes=30,
+            end_buffer_minutes=15,
+            min_shift_minutes=60,
+        )
+
+        assert shift_start.time() == time(9, 30)
+        assert shift_end.time() == time(11, 45)
 
 
 class TestRebuildAppliesDropoffExtension:
