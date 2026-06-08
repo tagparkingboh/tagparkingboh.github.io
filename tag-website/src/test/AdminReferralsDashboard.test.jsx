@@ -74,6 +74,8 @@ describe('Admin referrals dashboard', () => {
     expect(adminSource).toContain('referralsUsageSearchQuery')
     expect(adminSource).toContain('setReferralsUsageSearchQuery(referralsUsageSearch.trim())')
     expect(adminSource).toContain('}, 350)')
+    expect(adminSource).toContain('referralsDashboardHasLoaded')
+    expect(adminSource).toContain("aria-busy={loadingReferrals ? 'true' : 'false'}")
     expect(adminSource).toContain('Showing {referralCustomerStart}-{referralCustomerEnd}')
     expect(adminSource).toContain('Showing {referralUsageStart}-{referralUsageEnd}')
     expect(adminSource).toContain('REFERRALS_PAGE_SIZE_OPTIONS')

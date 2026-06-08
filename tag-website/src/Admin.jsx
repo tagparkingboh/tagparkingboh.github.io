@@ -5411,6 +5411,12 @@ function Admin() {
   }, [referralsDashboard.code_usage])
 
   const referralsPagination = referralsDashboard.pagination || {}
+  const referralsDashboardHasLoaded = Boolean(
+    referralsDashboard.pagination ||
+    (referralsDashboard.customers || []).length ||
+    (referralsDashboard.code_usage || []).length ||
+    Object.keys(referralsDashboard.stats || {}).length
+  )
   const referralCustomerTotal = referralsPagination.customer_total || 0
   const referralUsageTotal = referralsPagination.code_usage_filtered_total ?? referralsPagination.code_usage_total ?? 0
   const referralCustomerStart = referralCustomerTotal ? referralsCustomerOffset + 1 : 0
@@ -9773,10 +9779,10 @@ function Admin() {
                   )}
                 </form>
 
-                {loadingReferrals ? (
+                {loadingReferrals && !referralsDashboardHasLoaded ? (
                   <div className="loading-state">Loading referrals...</div>
                 ) : (
-                  <>
+                  <div className="referrals-dashboard-content" aria-busy={loadingReferrals ? 'true' : 'false'}>
                     <div className="referral-stats-grid">
                       {[
                         ['Invites sent', referralsDashboard.stats.invites_sent, 'blue'],
@@ -10081,7 +10087,7 @@ function Admin() {
                         </div>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}
