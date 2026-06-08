@@ -384,10 +384,12 @@ function Admin() {
   const [loadingReferrals, setLoadingReferrals] = useState(false)
   const [referralsFilter, setReferralsFilter] = useState('all')
   const [referralsCustomerSearch, setReferralsCustomerSearch] = useState('')
+  const [referralsCustomerSearchQuery, setReferralsCustomerSearchQuery] = useState('')
   const [referralsCustomerOffset, setReferralsCustomerOffset] = useState(0)
   const [referralsCustomerPageSize, setReferralsCustomerPageSize] = useState(REFERRALS_DEFAULT_PAGE_SIZE)
   const [referralsUsageFilter, setReferralsUsageFilter] = useState('all')
   const [referralsUsageSearch, setReferralsUsageSearch] = useState('')
+  const [referralsUsageSearchQuery, setReferralsUsageSearchQuery] = useState('')
   const [referralsUsageOffset, setReferralsUsageOffset] = useState(0)
   const [referralsUsagePageSize, setReferralsUsagePageSize] = useState(REFERRALS_DEFAULT_PAGE_SIZE)
   const [referralDashboardAction, setReferralDashboardAction] = useState(null)
@@ -994,6 +996,22 @@ function Admin() {
   }, [activeTab, token, marketingSubTab])
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setReferralsCustomerSearchQuery(referralsCustomerSearch.trim())
+      setReferralsCustomerOffset(0)
+    }, 350)
+    return () => window.clearTimeout(timeout)
+  }, [referralsCustomerSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setReferralsUsageSearchQuery(referralsUsageSearch.trim())
+      setReferralsUsageOffset(0)
+    }, 350)
+    return () => window.clearTimeout(timeout)
+  }, [referralsUsageSearch])
+
+  useEffect(() => {
     if (activeTab === 'marketing' && token && marketingSubTab === 'referrals') {
       fetchReferralsDashboard()
     }
@@ -1002,11 +1020,11 @@ function Admin() {
     token,
     marketingSubTab,
     referralsFilter,
-    referralsCustomerSearch,
+    referralsCustomerSearchQuery,
     referralsCustomerOffset,
     referralsCustomerPageSize,
     referralsUsageFilter,
-    referralsUsageSearch,
+    referralsUsageSearchQuery,
     referralsUsageOffset,
     referralsUsagePageSize,
   ])
@@ -2520,11 +2538,11 @@ function Admin() {
         customer_limit: String(referralsCustomerPageSize),
         customer_offset: String(referralsCustomerOffset),
         customer_filter: referralsFilter,
-        customer_search: referralsCustomerSearch.trim(),
+        customer_search: referralsCustomerSearchQuery,
         usage_limit: String(referralsUsagePageSize),
         usage_offset: String(referralsUsageOffset),
         usage_filter: referralsUsageFilter,
-        usage_search: referralsUsageSearch.trim(),
+        usage_search: referralsUsageSearchQuery,
       })
       const response = await fetch(`${API_URL}/api/admin/marketing/referrals?${params.toString()}`, {
         headers: {
@@ -9811,10 +9829,7 @@ function Admin() {
                               className="referrals-search"
                               placeholder="Customer, email, code"
                               value={referralsCustomerSearch}
-                              onChange={(e) => {
-                                setReferralsCustomerSearch(e.target.value)
-                                setReferralsCustomerOffset(0)
-                              }}
+                              onChange={(e) => setReferralsCustomerSearch(e.target.value)}
                             />
                           </label>
                         </div>
@@ -9959,10 +9974,7 @@ function Admin() {
                               className="referrals-usage-search"
                               placeholder="Code, booking, referrer"
                               value={referralsUsageSearch}
-                              onChange={(e) => {
-                                setReferralsUsageSearch(e.target.value)
-                                setReferralsUsageOffset(0)
-                              }}
+                              onChange={(e) => setReferralsUsageSearch(e.target.value)}
                             />
                           </label>
                           <label className="referrals-control">
