@@ -11,6 +11,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   prevIsoDate,
+  getUKDateKey,
+  currentAndFutureDateKeysForUK,
   computeBookingsByDate,
   ARRIVAL_OVERNIGHT_CUTOFF,
   ROSTER_DEMAND_BUCKETS,
@@ -56,6 +58,36 @@ describe('prevIsoDate', () => {
   it('returns empty string for missing input', () => {
     expect(prevIsoDate('')).toBe('')
     expect(prevIsoDate(undefined)).toBe('')
+  })
+})
+
+describe('UK date filtering', () => {
+  it('H: derives today from Europe/London rather than the browser timezone', () => {
+    expect(getUKDateKey(new Date('2026-06-09T23:30:00-07:00'))).toBe('2026-06-10')
+  })
+
+  it('B: hides dates before the current UK day but keeps today and future dates', () => {
+    const visibleDates = [
+      '2026-06-08',
+      '2026-06-09',
+      '2026-06-10',
+      '2026-06-11',
+    ]
+
+    expect(currentAndFutureDateKeysForUK(
+      visibleDates,
+      new Date('2026-06-09T23:30:00-07:00'),
+    )).toEqual([
+      '2026-06-10',
+      '2026-06-11',
+    ])
+  })
+
+  it('U: returns an empty list when the visible calendar month is already past in the UK', () => {
+    expect(currentAndFutureDateKeysForUK(
+      ['2026-05-29', '2026-05-30', '2026-05-31'],
+      new Date('2026-06-09T12:00:00Z'),
+    )).toEqual([])
   })
 })
 
@@ -527,14 +559,14 @@ describe('getRosterDemandByDate', () => {
     expect(ROSTER_DEMAND_BUCKETS.map((bucket) => bucket.label)).toEqual([
       'Early',
       'Drop',
-      'Return',
+      'Pick-up',
       'Late',
     ])
     expect(ROSTER_DEMAND_BUCKETS.map((bucket) => bucket.name)).toEqual([
       'Early drop-offs',
       'Day drop-offs',
-      'Day returns',
-      'Late returns',
+      'Day pick-ups',
+      'Late pick-ups',
     ])
   })
 })

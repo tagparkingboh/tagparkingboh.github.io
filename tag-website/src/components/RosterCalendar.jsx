@@ -53,6 +53,25 @@ const formatDateISO = (date) => {
   return `${year}-${month}-${day}`
 }
 
+export const getUKDateKey = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value
+    return acc
+  }, {})
+
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+export const currentAndFutureDateKeysForUK = (dateKeys = [], date = new Date()) => {
+  const todayKey = getUKDateKey(date)
+  return (dateKeys || []).filter((dateKey) => dateKey && dateKey >= todayKey)
+}
+
 // Previous day as ISO string. UTC math avoids any DST drift.
 export const prevIsoDate = (isoDate) => {
   if (!isoDate) return ''
@@ -335,8 +354,8 @@ const demandLevelFor = (total, maxTotal) => {
 export const ROSTER_DEMAND_BUCKETS = [
   { key: 'early_dropoffs', label: 'Early', name: 'Early drop-offs' },
   { key: 'day_dropoffs', label: 'Drop', name: 'Day drop-offs' },
-  { key: 'day_returns', label: 'Return', name: 'Day returns' },
-  { key: 'late_returns', label: 'Late', name: 'Late returns' },
+  { key: 'day_returns', label: 'Pick-up', name: 'Day pick-ups' },
+  { key: 'late_returns', label: 'Late', name: 'Late pick-ups' },
 ]
 
 export const getRosterDemandByDate = (bookingsByDate = {}, dateKeys = []) => {
@@ -2944,7 +2963,8 @@ function RosterCalendar({
     .flat()
     .filter(Boolean)
     .map((day) => getDateKey(day))
-  const calendarDemandItems = getRosterDemandByDate(bookingsByDate, visibleDateKeys)
+  const heatmapDateKeys = currentAndFutureDateKeysForUK(visibleDateKeys)
+  const calendarDemandItems = getRosterDemandByDate(bookingsByDate, heatmapDateKeys)
   const calendarDemandTotal = calendarDemandItems.reduce((total, item) => total + item.total, 0)
   const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
