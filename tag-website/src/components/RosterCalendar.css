@@ -16,6 +16,13 @@
   gap: 15px;
 }
 
+.roster-calendar-header-bottom {
+  display: flex;
+  margin: 16px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
 .roster-calendar .calendar-nav {
   display: flex;
   align-items: center;
