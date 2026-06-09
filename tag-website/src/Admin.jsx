@@ -11855,7 +11855,7 @@ function Admin() {
                             <span className="trip-insight-value">{bookingStats.avg_trip_duration || 0} days</span>
                             {bookingStats.top_durations?.length > 0 && (
                               <div className="trip-insight-busiest-section">
-                                <span className="trip-insight-busiest-label">Top 5:</span>
+                                <span className="trip-insight-busiest-label">Top 10:</span>
                                 {bookingStats.top_durations.map((d, i) => (
                                   <span key={i} className="trip-insight-busiest">
                                     {d.days} day{d.days !== 1 ? 's' : ''} ({d.count} · {d.percent}%)
