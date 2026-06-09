@@ -2997,27 +2997,25 @@ function RosterCalendar({
                 key={item.date}
                 className={`roster-demand-day demand-level-${item.level}`}
                 onClick={() => openDetailForDate(item.date)}
-                title={`${formatDateUK(item.date)} - ${item.total} booking event${item.total === 1 ? '' : 's'}`}
+                title={`${formatDateUK(item.date)} - ${item.total} booking event${item.total === 1 ? '' : 's'}: ${ROSTER_DEMAND_BUCKETS.map((bucket) => `${bucket.name} ${item[bucket.key] || 0}`).join(', ')}`}
               >
                 <span className="roster-demand-day-top">
                   <span className="roster-demand-date">{item.dayLabel}</span>
                   <span className="roster-demand-total">{item.total}</span>
                 </span>
-                <span className="roster-demand-bars" aria-hidden="true">
+                <span className="roster-demand-bars">
                   {ROSTER_DEMAND_BUCKETS.map((bucket) => (
-                    <span
-                      key={bucket.key}
-                      className={`roster-demand-bar roster-demand-bar-${bucket.key}`}
-                      style={{
-                        '--demand-height': `${Math.round(((item[bucket.key] || 0) / item.maxBucket) * 22) + 2}px`,
-                      }}
-                    />
-                  ))}
-                </span>
-                <span className="roster-demand-breakdown">
-                  {ROSTER_DEMAND_BUCKETS.map((bucket) => (
-                    <span key={bucket.key}>
-                      {bucket.label} {item[bucket.key] || 0}
+                    <span key={bucket.key} className="roster-demand-bar-group">
+                      <span
+                        className={`roster-demand-bar roster-demand-bar-${bucket.key}`}
+                        style={{
+                          '--demand-height': `${Math.round(((item[bucket.key] || 0) / item.maxBucket) * 22) + 2}px`,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <span className="roster-demand-count" aria-label={`${bucket.name}: ${item[bucket.key] || 0}`}>
+                        {item[bucket.key] || 0}
+                      </span>
                     </span>
                   ))}
                 </span>

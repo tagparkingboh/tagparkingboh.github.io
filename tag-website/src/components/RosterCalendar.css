@@ -678,9 +678,18 @@
 .roster-demand-bars {
   align-items: end;
   display: grid;
-  gap: 4px;
+  gap: 6px;
   grid-template-columns: repeat(4, 1fr);
-  height: 24px;
+  min-height: 42px;
+}
+
+.roster-demand-bar-group {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .roster-demand-bar {
@@ -688,6 +697,7 @@
   border-radius: 3px 3px 0 0;
   height: var(--demand-height);
   min-height: 2px;
+  width: 100%;
 }
 
 .roster-demand-bar-early_dropoffs {
@@ -706,17 +716,12 @@
   background: #b197fc;
 }
 
-.roster-demand-breakdown {
+.roster-demand-count {
   color: #cfcfcf;
-  display: grid;
-  font-size: 0.68rem;
-  gap: 3px 6px;
-  grid-template-columns: repeat(2, 1fr);
+  font-size: 0.76rem;
+  font-weight: 700;
   line-height: 1.2;
-}
-
-.roster-demand-breakdown span {
-  white-space: nowrap;
+  min-height: 1em;
 }
 
 .roster-review-meta {
@@ -1846,8 +1851,8 @@
     min-height: 88px;
   }
 
-  .roster-demand-breakdown {
-    font-size: 0.65rem;
+  .roster-demand-count {
+    font-size: 0.7rem;
   }
 
   .roster-calendar .calendar-day {
