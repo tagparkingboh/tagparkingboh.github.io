@@ -13,6 +13,7 @@ import {
   prevIsoDate,
   computeBookingsByDate,
   ARRIVAL_OVERNIGHT_CUTOFF,
+  ROSTER_DEMAND_BUCKETS,
   shiftSortMinutes,
   sourceParamFor,
   calculateHoursTotal,
@@ -519,6 +520,21 @@ describe('getRosterDemandByDate', () => {
       { date: '2026-06-21', total: 0, level: 0 },
       { date: '2026-06-22', total: 2, level: 2 },
       { date: '2026-06-23', total: 4, level: 4 },
+    ])
+  })
+
+  it('H: exposes readable bucket labels for the calendar heatmap UI', () => {
+    expect(ROSTER_DEMAND_BUCKETS.map((bucket) => bucket.label)).toEqual([
+      'Early',
+      'Drop',
+      'Return',
+      'Late',
+    ])
+    expect(ROSTER_DEMAND_BUCKETS.map((bucket) => bucket.name)).toEqual([
+      'Early drop-offs',
+      'Day drop-offs',
+      'Day returns',
+      'Late returns',
     ])
   })
 })

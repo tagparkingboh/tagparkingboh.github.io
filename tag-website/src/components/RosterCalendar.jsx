@@ -324,10 +324,10 @@ const demandLevelFor = (total, maxTotal) => {
 }
 
 export const ROSTER_DEMAND_BUCKETS = [
-  { key: 'early_dropoffs', label: 'ED', name: 'Early drop-offs' },
-  { key: 'day_dropoffs', label: 'DD', name: 'Day drop-offs' },
-  { key: 'day_returns', label: 'DR', name: 'Day returns' },
-  { key: 'late_returns', label: 'LR', name: 'Late returns' },
+  { key: 'early_dropoffs', label: 'Early', name: 'Early drop-offs' },
+  { key: 'day_dropoffs', label: 'Drop', name: 'Day drop-offs' },
+  { key: 'day_returns', label: 'Return', name: 'Day returns' },
+  { key: 'late_returns', label: 'Late', name: 'Late returns' },
 ]
 
 export const getRosterDemandByDate = (bookingsByDate = {}, dateKeys = []) => {
@@ -2958,6 +2958,17 @@ function RosterCalendar({
             <span className="roster-demand-heatmap-total">
               {calendarDemandTotal} event{calendarDemandTotal === 1 ? '' : 's'}
             </span>
+          </div>
+          <div className="roster-demand-legend">
+            {ROSTER_DEMAND_BUCKETS.map((bucket) => (
+              <span key={bucket.key} className="roster-demand-legend-item">
+                <span
+                  className={`roster-demand-legend-dot roster-demand-bar-${bucket.key}`}
+                  aria-hidden="true"
+                />
+                {bucket.name}
+              </span>
+            ))}
           </div>
           <div className="roster-demand-heatmap-scroll">
             {calendarDemandItems.map((item) => (
