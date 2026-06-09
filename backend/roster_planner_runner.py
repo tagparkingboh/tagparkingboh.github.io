@@ -253,7 +253,11 @@ def _shift_linked_bookings(shift: RosterShift) -> list[Booking]:
     """Return real linked bookings when the relationship is loaded/iterable."""
     linked = getattr(shift, "bookings", None)
     if isinstance(linked, (list, tuple, set)):
-        return list(linked)
+        return [
+            booking
+            for booking in linked
+            if getattr(booking, "status", None) != BookingStatus.CANCELLED
+        ]
     return []
 
 
@@ -351,6 +355,11 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
     if booking is None or booking.id is None:
         return []
     if getattr(booking, "service_type", None) == ServiceType.PARK_RIDE:
+        return []
+    if getattr(booking, "status", None) not in (
+        BookingStatus.CONFIRMED,
+        BookingStatus.REFUNDED,
+    ):
         return []
     try:
         # Use the same event extraction as the rebuild — one helper, one
