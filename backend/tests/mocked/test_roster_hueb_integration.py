@@ -27,6 +27,7 @@ from main import app
 from database import get_db
 from routers.roster import get_current_user as roster_get_current_user, require_admin as roster_require_admin
 from db_models import AuditLogEvent, ShiftStatus, ShiftType, HolidayType
+from roster_planner import UK_TZ
 
 
 # ============================================================================
@@ -63,6 +64,7 @@ def _mock_shift(
     status=None,
     booking_id=None,
     intended_driver_type="jockey",
+    created_source="manual",
 ):
     s = MagicMock()
     s.id = id
@@ -76,7 +78,37 @@ def _mock_shift(
     s.status = status or ShiftStatus.SCHEDULED
     s.notes = None
     s.intended_driver_type = intended_driver_type
+    s.created_source = created_source
+    s.planner_run_id = None
+    s.admin_shaped_at = None
+    s.suppressed_at = None
+    s.suppressed_by_user_id = None
+    s.suppression_reason = None
+    s.bookings = []
+    s.staff = None
     return s
+
+
+def _mock_booking(
+    id=99,
+    reference="TAG-WARN999",
+    dropoff_date=None,
+    dropoff_time=None,
+    pickup_date=None,
+    pickup_time=None,
+    flight_arrival_date=None,
+    flight_arrival_time=None,
+):
+    b = MagicMock()
+    b.id = id
+    b.reference = reference
+    b.dropoff_date = dropoff_date
+    b.dropoff_time = dropoff_time
+    b.pickup_date = pickup_date
+    b.pickup_time = pickup_time
+    b.flight_arrival_date = flight_arrival_date
+    b.flight_arrival_time = flight_arrival_time
+    return b
 
 
 def _mock_staff(id=2, driver_type="jockey", is_active=True, is_admin=False):
@@ -275,10 +307,11 @@ class TestDeleteShift:
     def teardown_method(self):
         app.dependency_overrides.clear()
 
-    def _wire(self, shift):
+    def _wire(self, shift, other_shifts=None):
         db = MagicMock()
         q = MagicMock()
         q.filter.return_value.first.return_value = shift
+        q.filter.return_value.all.return_value = list(other_shifts or [])
         q.filter.return_value.delete.return_value = 0
         db.query.return_value = q
         db.commit = MagicMock()
@@ -299,9 +332,136 @@ class TestDeleteShift:
         assert '"deleted_by_email": "admin@tag.test"' in audit.event_data
         db.delete.assert_called_once_with(s)
 
+    def test_H_delete_auto_unassigned_shift_soft_suppresses(self):
+        s = _mock_shift(staff_id=None, created_source="auto")
+        db = self._wire(s)
+        _override_db(db)
+        resp = TestClient(app).delete(f"/api/roster/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["suppressed"] is True
+        assert body["message"] == "Shift suppressed"
+        assert s.status == ShiftStatus.CANCELLED
+        assert s.suppressed_by_user_id == 1
+        assert s.suppression_reason == "admin_delete"
+        assert s.suppressed_at is not None
+        db.delete.assert_not_called()
+
+    def test_H_delete_auto_assigned_shift_hard_deletes(self):
+        """Auto shifts with a staff owner are not suppression candidates."""
+        s = _mock_shift(staff_id=44, created_source="auto")
+        db = self._wire(s)
+        _override_db(db)
+        resp = TestClient(app).delete(f"/api/roster/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["suppressed"] is False
+        assert body["message"] == "Shift deleted"
+        assert s.status == ShiftStatus.SCHEDULED
+        assert s.suppressed_at is None
+        db.delete.assert_called_once_with(s)
+
+    def test_H_delete_auto_confirmed_unassigned_shift_hard_deletes(self):
+        """Only scheduled unowned auto shifts can be suppressed; confirmed
+        shifts are treated as owned operational records."""
+        s = _mock_shift(staff_id=None, created_source="auto", status=ShiftStatus.CONFIRMED)
+        db = self._wire(s)
+        _override_db(db)
+        resp = TestClient(app).delete(f"/api/roster/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["suppressed"] is False
+        assert s.status == ShiftStatus.CONFIRMED
+        assert s.suppressed_at is None
+        db.delete.assert_called_once_with(s)
+
+    def test_H_delete_preview_warns_for_orphaned_booking_within_96h(self):
+        soon = datetime.now(UK_TZ).date() + timedelta(days=1)
+        s = _mock_shift(date_=soon, start_time=time(9, 0), end_time=time(10, 0))
+        b = _mock_booking(dropoff_date=soon, dropoff_time=time(9, 30))
+        s.bookings = [b]
+
+        db = self._wire(s)
+        _override_db(db)
+
+        resp = TestClient(app).get(f"/api/roster/{s.id}/delete-preview")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["warning"] is True
+        assert body["within_96h"] is True
+        assert body["orphaned_booking_event_count"] == 1
+        assert body["orphaned_booking_events"][0]["booking_reference"] == "TAG-WARN999"
+
+    def test_H_delete_preview_no_warning_when_no_linked_bookings(self):
+        soon = datetime.now(UK_TZ).date() + timedelta(days=1)
+        s = _mock_shift(date_=soon, start_time=time(9, 0), end_time=time(10, 0))
+        db = self._wire(s)
+        _override_db(db)
+
+        resp = TestClient(app).get(f"/api/roster/{s.id}/delete-preview")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["linked_booking_count"] == 0
+        assert body["orphaned_booking_event_count"] == 0
+        assert body["within_96h"] is True
+        assert body["warning"] is False
+
+    def test_H_delete_preview_no_warning_when_other_live_shift_covers_booking(self):
+        soon = datetime.now(UK_TZ).date() + timedelta(days=1)
+        s = _mock_shift(id=10, date_=soon, start_time=time(9, 0), end_time=time(10, 0))
+        s.bookings = [_mock_booking(dropoff_date=soon, dropoff_time=time(9, 30))]
+        cover = _mock_shift(id=11, date_=soon, start_time=time(9, 0), end_time=time(10, 0))
+        db = self._wire(s, other_shifts=[cover])
+        _override_db(db)
+
+        resp = TestClient(app).get(f"/api/roster/{s.id}/delete-preview")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["linked_booking_count"] == 1
+        assert body["orphaned_booking_event_count"] == 0
+        assert body["within_96h"] is True
+        assert body["warning"] is False
+
+    def test_E_delete_preview_orphan_outside_96h_does_not_warn(self):
+        later = datetime.now(UK_TZ).date() + timedelta(days=5)
+        s = _mock_shift(date_=later, start_time=time(9, 0), end_time=time(10, 0))
+        s.bookings = [_mock_booking(dropoff_date=later, dropoff_time=time(9, 30))]
+        db = self._wire(s)
+        _override_db(db)
+
+        resp = TestClient(app).get(f"/api/roster/{s.id}/delete-preview")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["orphaned_booking_event_count"] == 1
+        assert body["within_96h"] is False
+        assert body["warning"] is False
+
+    def test_H_delete_response_and_audit_include_preview_payload(self):
+        soon = datetime.now(UK_TZ).date() + timedelta(days=1)
+        s = _mock_shift(staff_id=None, created_source="auto", date_=soon, start_time=time(9, 0), end_time=time(10, 0))
+        s.bookings = [_mock_booking(dropoff_date=soon, dropoff_time=time(9, 30))]
+        db = self._wire(s)
+        _override_db(db)
+
+        resp = TestClient(app).delete(f"/api/roster/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["delete_preview"]["warning"] is True
+        assert body["delete_preview"]["orphaned_booking_event_count"] == 1
+
+        audit = db.add.call_args.args[0]
+        assert '"delete_preview"' in audit.event_data
+        assert '"orphaned_booking_event_count": 1' in audit.event_data
+        assert '"warning": true' in audit.event_data
+
     def test_U_delete_nonexistent_returns_404(self):
         _override_db(self._wire(None))
         resp = TestClient(app).delete("/api/roster/9999")
+        assert resp.status_code == 404
+
+    def test_U_delete_preview_nonexistent_returns_404(self):
+        _override_db(self._wire(None))
+        resp = TestClient(app).get("/api/roster/9999/delete-preview")
         assert resp.status_code == 404
 
 

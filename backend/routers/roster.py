@@ -395,7 +395,22 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
             else None
         ),
         created_at=shift.created_at,
-        updated_at=shift.updated_at
+        updated_at=shift.updated_at,
+        suppressed_at=(
+            shift.suppressed_at
+            if isinstance(getattr(shift, "suppressed_at", None), datetime)
+            else None
+        ),
+        suppressed_by_user_id=(
+            shift.suppressed_by_user_id
+            if isinstance(getattr(shift, "suppressed_by_user_id", None), int)
+            else None
+        ),
+        suppression_reason=(
+            shift.suppression_reason
+            if isinstance(getattr(shift, "suppression_reason", None), str)
+            else None
+        ),
     )
 
 
@@ -704,7 +719,7 @@ async def list_shifts(
     - week_start: Filter by week (Mon-Sun starting from this date)
     - source: 'auto' to scope to auto-created shifts; default excludes them
     """
-    query = db.query(RosterShift)
+    query = db.query(RosterShift).filter(RosterShift.status != ShiftStatus.CANCELLED)
 
     # Sever auto-shifts from the regular admin Roster Calendar by default.
     # The new Calendar embedded on the Planner page passes source='auto' to
@@ -1707,12 +1722,18 @@ async def delete_shift(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Delete a roster shift (hard delete)."""
+    """Delete a roster shift.
+
+    Untouched auto shifts are soft-suppressed so auto-roster remembers the
+    admin's intent and does not quietly recreate the same coverage later.
+    Other shift types keep the historic hard-delete behaviour.
+    """
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
 
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
 
+    delete_preview = _delete_shift_preview(db, shift)
     linked_bookings = []
     for booking in getattr(shift, "bookings", []) or []:
         linked_bookings.append({
@@ -1755,15 +1776,33 @@ async def delete_shift(
             "staff_id": shift.staff_id,
             "staff_name": staff_name,
             "linked_bookings": linked_bookings,
+            "delete_preview": delete_preview,
             "deleted_by_user_id": current_user.id,
             "deleted_by_email": current_user.email,
         }, default=str),
     )
     db.add(delete_audit)
-    db.delete(shift)
+
+    soft_suppressed = (
+        getattr(shift, "created_source", None) == "auto"
+        and shift.staff_id is None
+        and shift.status == ShiftStatus.SCHEDULED
+    )
+    if soft_suppressed:
+        shift.status = ShiftStatus.CANCELLED
+        shift.suppressed_at = datetime.now(timezone.utc)
+        shift.suppressed_by_user_id = current_user.id
+        shift.suppression_reason = "admin_delete"
+    else:
+        db.delete(shift)
     db.commit()
 
-    return {"success": True, "message": "Shift deleted"}
+    return {
+        "success": True,
+        "message": "Shift suppressed" if soft_suppressed else "Shift deleted",
+        "suppressed": soft_suppressed,
+        "delete_preview": delete_preview,
+    }
 
 
 # ============================================================================
@@ -1785,6 +1824,119 @@ def _shift_window_dt(shift: RosterShift) -> tuple[datetime, datetime]:
     if end_dt <= start_dt:
         end_dt = end_dt + timedelta(days=1)
     return start_dt, end_dt
+
+
+def _booking_event_anchors_for_shift(booking: Booking, shift: RosterShift) -> list[dict]:
+    """Booking event anchors that this shift appears to cover."""
+    shift_start, shift_end = _shift_window_dt(shift)
+    events = []
+
+    if booking.dropoff_date and booking.dropoff_time:
+        dropoff_dt = datetime.combine(booking.dropoff_date, booking.dropoff_time)
+        if shift_start <= dropoff_dt <= shift_end:
+            events.append({
+                "booking_id": booking.id,
+                "booking_reference": booking.reference,
+                "event_type": "drop_off",
+                "event_time": dropoff_dt,
+            })
+
+    if booking.pickup_date:
+        arrival_t = getattr(booking, "flight_arrival_time", None)
+        pickup_anchor = None
+        if arrival_t:
+            arrival_date = getattr(booking, "flight_arrival_date", None)
+            if arrival_date is None:
+                arrival_date = booking.pickup_date
+                if booking.pickup_time and arrival_t > booking.pickup_time:
+                    arrival_date = booking.pickup_date - timedelta(days=1)
+            pickup_anchor = datetime.combine(arrival_date, arrival_t)
+        elif booking.pickup_time:
+            pickup_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
+
+        if pickup_anchor and shift_start <= pickup_anchor <= shift_end:
+            events.append({
+                "booking_id": booking.id,
+                "booking_reference": booking.reference,
+                "event_type": "pick_up",
+                "event_time": pickup_anchor,
+            })
+
+    return events
+
+
+def _shift_covers_event(shift: RosterShift, event_time: datetime) -> bool:
+    start, end = _shift_window_dt(shift)
+    return start <= event_time <= end
+
+
+def _delete_shift_preview(db: Session, shift: RosterShift) -> dict:
+    """Return orphan-risk metadata for deleting/suppressing a shift."""
+    linked_bookings = list(getattr(shift, "bookings", []) or [])
+    events = []
+    for booking in linked_bookings:
+        events.extend(_booking_event_anchors_for_shift(booking, shift))
+
+    live_statuses = [ShiftStatus.SCHEDULED, ShiftStatus.CONFIRMED, ShiftStatus.IN_PROGRESS]
+    other_shifts = []
+    if events:
+        event_dates = {e["event_time"].date() for e in events}
+        neighbour_dates = set(event_dates)
+        for d in event_dates:
+            neighbour_dates.add(d - timedelta(days=1))
+            neighbour_dates.add(d + timedelta(days=1))
+        other_shifts = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.id != shift.id,
+                RosterShift.status.in_(live_statuses),
+                RosterShift.suppressed_at.is_(None),
+                or_(
+                    RosterShift.date.in_(neighbour_dates),
+                    RosterShift.end_date.in_(neighbour_dates),
+                ),
+            )
+            .all()
+        )
+
+    orphaned_events = []
+    for event in events:
+        covered_elsewhere = any(_shift_covers_event(s, event["event_time"]) for s in other_shifts)
+        if not covered_elsewhere:
+            orphaned_events.append({
+                "booking_id": event["booking_id"],
+                "booking_reference": event["booking_reference"],
+                "event_type": event["event_type"],
+                "event_time": event["event_time"].isoformat(),
+            })
+
+    shift_start, _ = _shift_window_dt(shift)
+    now_uk_naive = datetime.now(UK_TZ).replace(tzinfo=None)
+    hours_until_start = (shift_start - now_uk_naive).total_seconds() / 3600
+    within_96h = 0 <= hours_until_start <= 96
+
+    return {
+        "shift_id": shift.id,
+        "linked_booking_count": len(linked_bookings),
+        "orphaned_booking_event_count": len(orphaned_events),
+        "orphaned_booking_events": orphaned_events,
+        "within_96h": within_96h,
+        "hours_until_start": round(hours_until_start, 1),
+        "warning": within_96h and bool(orphaned_events),
+    }
+
+
+@router.get("/roster/{shift_id}/delete-preview")
+async def preview_delete_shift(
+    shift_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Preview whether deleting a shift would orphan linked bookings."""
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    return _delete_shift_preview(db, shift)
 
 
 @router.post("/roster/{shift_id}/duplicate", response_model=List[RosterShiftResponse])

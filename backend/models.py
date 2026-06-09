@@ -656,6 +656,9 @@ class RosterShiftResponse(BaseModel):
     created_source: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    suppressed_at: Optional[datetime] = None
+    suppressed_by_user_id: Optional[int] = None
+    suppression_reason: Optional[str] = None
 
     class Config:
         from_attributes = True

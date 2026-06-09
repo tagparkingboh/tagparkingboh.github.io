@@ -127,6 +127,24 @@ def _shift_window(shift: RosterShift) -> tuple[datetime, datetime]:
     )
 
 
+def _windows_overlap(a: tuple[datetime, datetime], b: tuple[datetime, datetime]) -> bool:
+    """True when two wall-clock windows overlap or touch."""
+    return a[0] <= b[1] and b[0] <= a[1]
+
+
+def _shift_linked_booking_ids(shift: RosterShift) -> set[int]:
+    """Best-effort booking ids already attached to a shift."""
+    ids: set[int] = set()
+    booking_id = getattr(shift, "booking_id", None)
+    if booking_id is not None:
+        ids.add(booking_id)
+    for booking in getattr(shift, "bookings", []) or []:
+        bid = getattr(booking, "id", None)
+        if bid is not None:
+            ids.add(bid)
+    return ids
+
+
 def _is_auto_shift_eligible_for_rebuild(shift: RosterShift) -> bool:
     """Untouched auto-shift = created_source='auto', staff_id NULL,
     admin_shaped_at NULL, SCHEDULED. Anything else is admin territory —
@@ -157,6 +175,7 @@ def rebuild_auto_for_dates(
     db: Session,
     target_dates: Iterable[date_type],
     settings: PlannerSettings,
+    focus_booking_id: Optional[int] = None,
 ) -> dict:
     """Wipe + recreate every auto-shift whose start date is in `target_dates`.
 
@@ -173,11 +192,18 @@ def rebuild_auto_for_dates(
          end_buffer], floored to `min_shift_minutes`. Link every booking
          in the cluster to it.
 
+    When `focus_booking_id` is supplied (the booking-confirmation/edit path),
+    only clusters containing that booking are materialised, and only existing
+    untouched auto-shifts overlapping/linked to those clusters are deleted.
+    This keeps a late booking from resurrecting unrelated auto-shifts that an
+    admin already deleted on the same date. Operator-triggered regenerate
+    leaves `focus_booking_id=None` and keeps full force-rebuild semantics.
+
     Returns a counts dict so callers can log / surface a banner.
     """
     summary = {
         "deleted": 0, "created": 0, "skipped_covered": 0,
-        "bookings_in_scope": 0, "events": 0,
+        "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
     }
     target_set = set(target_dates)
     if not target_set:
@@ -222,22 +248,44 @@ def rebuild_auto_for_dates(
     #   - admin_shaped_at IS NOT NULL       (split / merged / duplicated / time-edited)
     #   - created_source != 'auto'          (manual / planner)
     # The filter below is the only-eligible-for-wipe predicate.
-    existing = (
-        db.query(RosterShift)
-        .filter(
-            RosterShift.created_source == "auto",
-            RosterShift.staff_id.is_(None),
-            RosterShift.admin_shaped_at.is_(None),
-            RosterShift.status == ShiftStatus.SCHEDULED,
-            RosterShift.date.in_(target_set),
+    focus_delete_candidates: list[RosterShift] = []
+    deleted_shift_ids: set[int] = set()
+    if focus_booking_id is None:
+        existing = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.created_source == "auto",
+                RosterShift.staff_id.is_(None),
+                RosterShift.admin_shaped_at.is_(None),
+                RosterShift.status == ShiftStatus.SCHEDULED,
+                RosterShift.date.in_(target_set),
+            )
+            .all()
         )
-        .all()
-    )
-    for s in existing:
-        db.delete(s)
-        summary["deleted"] += 1
-    if summary["deleted"]:
-        db.flush()
+        for s in existing:
+            db.delete(s)
+            summary["deleted"] += 1
+        if summary["deleted"]:
+            db.flush()
+    else:
+        focus_delete_scope_dates = set(target_set)
+        for d in target_set:
+            focus_delete_scope_dates.add(d - timedelta(days=1))
+            focus_delete_scope_dates.add(d + timedelta(days=1))
+        focus_delete_candidates = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.created_source == "auto",
+                RosterShift.staff_id.is_(None),
+                RosterShift.admin_shaped_at.is_(None),
+                RosterShift.status == ShiftStatus.SCHEDULED,
+                or_(
+                    RosterShift.date.in_(focus_delete_scope_dates),
+                    RosterShift.end_date.in_(focus_delete_scope_dates),
+                ),
+            )
+            .all()
+        )
 
     # 2. Pull bookings whose events MAY land in scope (±1 day for overnight).
     expanded = set()
@@ -328,6 +376,19 @@ def rebuild_auto_for_dates(
         )
         .all()
     )
+    suppressed_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.created_source == "auto",
+            RosterShift.status == ShiftStatus.CANCELLED,
+            RosterShift.suppressed_at.isnot(None),
+            or_(
+                RosterShift.date.in_(frozen_scope_dates),
+                RosterShift.end_date.in_(frozen_scope_dates),
+            ),
+        )
+        .all()
+    )
 
     def _cluster_fully_covered(cluster_events, required_start: datetime, required_end: datetime) -> bool:
         """All-or-nothing skip rule (partial-overlap pivot 2026-05-28):
@@ -357,11 +418,32 @@ def rebuild_auto_for_dates(
                 return False
         return True
 
+    def _cluster_suppressed(booking_ids: set[int], required_start: datetime, required_end: datetime) -> bool:
+        """A cancelled/suppressed auto shift means "do not recreate this
+        generated coverage". Match by fully covered window or by retained
+        linked bookings."""
+        if not suppressed_shifts:
+            return False
+        required_window = (required_start, required_end)
+        for s in suppressed_shifts:
+            suppressed_start, suppressed_end = _shift_window(s)
+            if suppressed_start <= required_window[0] and required_window[1] <= suppressed_end:
+                return True
+            if _shift_linked_booking_ids(s) & booking_ids:
+                return True
+        return False
+
     # 4. Materialise shifts for clusters whose owner lands in target_set.
     # Usually that owner is the event anchor date. For arrivals before the
     # 02:00 operational cutoff, the owner is the prior operational day, so a
     # 26 Jun rebuild must recreate a 27 Jun 00:35 pickup shift dated 26 Jun.
     for cluster in clusters:
+        if (
+            focus_booking_id is not None
+            and all(e.booking_id != focus_booking_id for e in cluster.events)
+        ):
+            continue
+
         cluster_start = cluster.events[0].event_time
         # Compute each event type's requirement independently, then use the
         # outer bounds. Tight pickups can pull the start earlier from the
@@ -400,11 +482,37 @@ def rebuild_auto_for_dates(
                 shift_end.date() if shift_end.date() != shift_start.date() else None
             )
 
-        if cluster_start.date() not in target_set and shift_date_val not in target_set:
+        if (
+            focus_booking_id is None
+            and cluster_start.date() not in target_set
+            and shift_date_val not in target_set
+        ):
             # Adjacent-day rebuilds will own this cluster — don't double-write.
             continue
 
         booking_ids = sorted({e.booking_id for e in cluster.events})
+        booking_id_set = set(booking_ids)
+
+        if _cluster_suppressed(booking_id_set, shift_start, shift_end):
+            summary["skipped_suppressed"] += 1
+            continue
+
+        if focus_booking_id is not None:
+            cluster_window = (shift_start, shift_end)
+            for s in focus_delete_candidates:
+                sid = getattr(s, "id", None)
+                if sid is not None and sid in deleted_shift_ids:
+                    continue
+                if (
+                    _windows_overlap(_shift_window(s), cluster_window)
+                    or bool(_shift_linked_booking_ids(s) & booking_id_set)
+                ):
+                    db.delete(s)
+                    if sid is not None:
+                        deleted_shift_ids.add(sid)
+                    summary["deleted"] += 1
+            if summary["deleted"]:
+                db.flush()
 
         # Skip-if-covered: when every event in this cluster falls inside
         # an existing frozen shift's window, do NOT materialise a new
@@ -475,7 +583,7 @@ def auto_create_or_extend_for_booking(
         summary["skipped"] = 1
         return summary
 
-    result = rebuild_auto_for_dates(db, dates, settings)
+    result = rebuild_auto_for_dates(db, dates, settings, focus_booking_id=booking.id)
     summary.update(result)
     return summary
 

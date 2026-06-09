@@ -1611,8 +1611,17 @@ class RosterShift(Base):
     # staff_id check; this column is reserved for explicit shape actions.
     admin_shaped_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Auto-roster suppression lifecycle. When an admin "deletes" an
+    # unowned auto shift, we keep the row as status=cancelled with these
+    # fields populated so future auto-roster runs know not to recreate the
+    # same coverage silently.
+    suppressed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    suppressed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    suppression_reason = Column(Text, nullable=True)
+
     # Relationships
     staff = relationship("User", foreign_keys=[staff_id])
+    suppressed_by = relationship("User", foreign_keys=[suppressed_by_user_id])
     booking = relationship("Booking", foreign_keys=[booking_id])  # DEPRECATED - use bookings
 
     # Many-to-many relationship with bookings

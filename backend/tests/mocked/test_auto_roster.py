@@ -89,8 +89,8 @@ def mk_settings(
     )
 
 
-def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, bookings=None,
-            existing_links_by_shift=None):
+def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shifts=None,
+            bookings=None, existing_links_by_shift=None):
     """A MagicMock db that:
       - returns `untouched_auto_shifts` for the rebuild's delete-candidate query
         (filtered by `staff_id IS NULL`)
@@ -104,6 +104,7 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, bookings=None,
     db = MagicMock()
     untouched_auto_shifts = list(untouched_auto_shifts or [])
     assigned_shifts = list(assigned_shifts or [])
+    suppressed_shifts = list(suppressed_shifts or [])
     bookings = list(bookings or [])
     existing_links_by_shift = dict(existing_links_by_shift or {})
     added = []
@@ -183,8 +184,28 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, bookings=None,
                         return True
             return False
 
+        def _status_equals(captured, expected_status) -> bool:
+            try:
+                from sqlalchemy.sql import operators as sqla_ops
+            except Exception:
+                return False
+            for args in captured:
+                for arg in args:
+                    op = getattr(arg, "operator", None)
+                    if op is not getattr(sqla_ops, "eq", None):
+                        continue
+                    left = getattr(arg, "left", None)
+                    if getattr(left, "key", None) != "status":
+                        continue
+                    right = getattr(arg, "right", None)
+                    if getattr(right, "value", None) == expected_status:
+                        return True
+            return False
+
         def shift_all():
             blob = " ".join(_filter_str(a) for a in captured_filters)
+            if _status_equals(captured_filters, ShiftStatus.CANCELLED):
+                return list(suppressed_shifts)
             if "IS NOT NULL" in blob:
                 # Driver-trust pivot 2026-05-28: the rebuild's "frozen
                 # shifts" query (skip-if-covered) intentionally includes
@@ -555,6 +576,39 @@ class TestRebuildAutoForDates:
         assert result["deleted"] == 1
         assert result["created"] == 0
 
+    def test_rebuild_respects_suppressed_auto_shift_window(self):
+        """A soft-deleted auto shift is a durable admin suppression: even
+        explicit regenerate should not recreate the same generated coverage."""
+        b = mk_booking(
+            booking_id=77,
+            reference="TAG-SUPPRESS",
+            dropoff_dt=datetime(2026, 6, 10, 8, 30),
+            pickup_dt=datetime(2026, 6, 17, 14, 0),
+        )
+        suppressed = SimpleNamespace(
+            id=7700,
+            created_source="auto",
+            staff_id=None,
+            status=ShiftStatus.CANCELLED,
+            suppressed_at=datetime(2026, 6, 9, 12, 0),
+            admin_shaped_at=None,
+            date=date(2026, 6, 10),
+            end_date=None,
+            start_time=time(8, 0),
+            end_time=time(9, 30),
+            booking_id=None,
+            bookings=[b],
+        )
+        db = make_db(bookings=[b], suppressed_shifts=[suppressed])
+
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == []
+        assert result["created"] == 0
+        assert result["skipped_suppressed"] == 1
+
     def test_boundary_rebuild_expands_to_existing_cross_midnight_shift(self):
         """Regression: a booking whose pickup lands D 02:00 (no rollover since
         arrival_time 01:30 < pickup_time 02:00) should join the existing
@@ -757,6 +811,98 @@ class TestRebuildAutoForDates:
         assert s.end_date == date(2026, 6, 27)
         assert s.start_time == time(23, 55)
         assert s.end_time == time(1, 10)
+
+    @pytest.mark.parametrize(
+        "arrival_time, expected_shift_date",
+        [
+            (time(0, 0), date(2026, 6, 24)),
+            (time(0, 1), date(2026, 6, 24)),
+            (time(1, 59), date(2026, 6, 24)),
+            (time(2, 0), date(2026, 6, 25)),
+            (time(2, 1), date(2026, 6, 25)),
+        ],
+    )
+    def test_arrival_0200_cutoff_boundaries_for_standalone_pickups(
+        self, arrival_time, expected_shift_date
+    ):
+        """Standalone after-midnight arrivals before 02:00 belong to the
+        previous operational day; 02:00 exactly and later belong to the
+        arrival calendar day."""
+        arrival_dt = datetime.combine(date(2026, 6, 25), arrival_time)
+        b = mk_booking(
+            booking_id=700 + arrival_time.hour * 60 + arrival_time.minute,
+            reference=f"TAG-CUT{arrival_time.strftime('%H%M')}",
+            dropoff_dt=datetime(2026, 6, 19, 12, 15),
+            pickup_dt=arrival_dt + timedelta(minutes=30),
+            flight_arrival_time=arrival_time,
+        )
+        b.flight_arrival_date = arrival_dt.date()
+
+        db = make_db(bookings=[b])
+        rebuild_auto_for_dates(db, {expected_shift_date}, mk_settings())
+
+        from db_models import RosterShift
+        pickup_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date in {
+                date(2026, 6, 24), date(2026, 6, 25)
+            }
+        ]
+        assert len(pickup_shifts) == 1
+        assert pickup_shifts[0].date == expected_shift_date
+
+    def test_late_night_and_following_day_arrivals_stay_in_one_shift(self):
+        """Boundary sweep: arrivals at 23:29, 23:30, 23:31, 23:59 and then
+        00:00, 00:01, 01:59, 02:00, 02:01 are all within the live 190-minute
+        pickup gap and should materialise as one cross-midnight shift."""
+        arrival_dts = [
+            datetime(2026, 6, 24, 23, 29),
+            datetime(2026, 6, 24, 23, 30),
+            datetime(2026, 6, 24, 23, 31),
+            datetime(2026, 6, 24, 23, 59),
+            datetime(2026, 6, 25, 0, 0),
+            datetime(2026, 6, 25, 0, 1),
+            datetime(2026, 6, 25, 1, 59),
+            datetime(2026, 6, 25, 2, 0),
+            datetime(2026, 6, 25, 2, 1),
+        ]
+        bookings = []
+        for i, arrival_dt in enumerate(arrival_dts, start=1):
+            b = mk_booking(
+                booking_id=800 + i,
+                reference=f"TAG-OVN{i:03d}",
+                dropoff_dt=datetime(2026, 6, 19, 12, 15),
+                pickup_dt=arrival_dt + timedelta(minutes=30),
+                flight_arrival_time=arrival_dt.time(),
+            )
+            b.flight_arrival_date = arrival_dt.date()
+            bookings.append(b)
+
+        db = make_db(bookings=bookings)
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 6, 24), date(2026, 6, 25)}, mk_settings()
+        )
+
+        from db_models import RosterShift, ShiftBookingLink
+        pickup_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date == date(2026, 6, 24)
+        ]
+        pickup_links = [
+            a for a in db._added
+            if isinstance(a, ShiftBookingLink)
+            and a.booking_id in {b.id for b in bookings}
+        ]
+
+        assert result["created"] == 1
+        assert len(pickup_shifts) == 1
+        shift = pickup_shifts[0]
+        assert shift.end_date == date(2026, 6, 25)
+        # Seven tight pickup pairs (<30 min apart) add 7 * 30 minutes to
+        # the pickup-led 15-minute start buffer: 23:29 - 225m = 19:44.
+        assert shift.start_time == time(19, 44)
+        assert shift.end_time == time(3, 1)
+        assert {l.booking_id for l in pickup_links} == {b.id for b in bookings}
 
     @pytest.mark.parametrize(
         (
@@ -1558,6 +1704,37 @@ class TestAutoCreateOrExtendForBooking:
         from db_models import RosterShift
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
         assert len(new_shifts) == 2
+
+    def test_late_booking_does_not_recreate_unrelated_deleted_auto_cluster(self):
+        """Booking-triggered auto-roster is focused on the new booking's
+        clusters. If an unrelated auto shift on the same date was manually
+        deleted earlier, a late booking must not recreate that old cluster."""
+        old = mk_booking(
+            booking_id=20, reference="TAG-OLD0800",
+            dropoff_dt=datetime(2026, 6, 15, 8, 0),
+            pickup_dt=datetime(2026, 6, 25, 8, 0),
+        )
+        late = mk_booking(
+            booking_id=21, reference="TAG-LATE1600",
+            dropoff_dt=datetime(2026, 6, 15, 16, 0),
+            pickup_dt=datetime(2026, 6, 25, 17, 30),
+            flight_arrival_time=time(17, 0),
+        )
+        db = make_db(bookings=[old, late])
+
+        result = auto_create_or_extend_for_booking(db, late, mk_settings())
+
+        from db_models import RosterShift, ShiftBookingLink
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
+
+        assert result["created"] == 2
+        assert len(new_shifts) == 2
+        assert {(s.date, s.start_time) for s in new_shifts} == {
+            (date(2026, 6, 15), time(15, 40)),
+            (date(2026, 6, 25), time(16, 45)),
+        }
+        assert {l.booking_id for l in new_links} == {late.id}
 
 
 # ===========================================================================
