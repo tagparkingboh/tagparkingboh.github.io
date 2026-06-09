@@ -533,6 +533,8 @@ function RosterCalendar({
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [shiftToDelete, setShiftToDelete] = useState(null)
   const [deletingShift, setDeletingShift] = useState(false)
+  const [deletePreview, setDeletePreview] = useState(null)
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false)
 
   // Bulk edit state
   const [selectedShiftIds, setSelectedShiftIds] = useState([])
@@ -1553,9 +1555,27 @@ function RosterCalendar({
     }
   }
 
+  const loadDeletePreview = async (shiftId) => {
+    setDeletePreview(null)
+    setDeletePreviewLoading(true)
+    try {
+      const r = await authFetch(`${API_URL}/api/roster/${shiftId}/delete-preview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (r.ok) {
+        setDeletePreview(await r.json())
+      }
+    } catch {
+      setDeletePreview(null)
+    } finally {
+      setDeletePreviewLoading(false)
+    }
+  }
+
   const confirmDeleteShift = (shift) => {
     setShiftToDelete(shift)
     setShowDeleteModal(true)
+    loadDeletePreview(shift.id)
   }
 
   // Bulk edit functions
@@ -1925,6 +1945,7 @@ function RosterCalendar({
   const openV3DeleteModal = (shift) => {
     setActionError('')
     setV3DeleteModal({ shift })
+    loadDeletePreview(shift.id)
   }
 
   const submitV3Delete = async () => {
@@ -1940,9 +1961,11 @@ function RosterCalendar({
         setActionError(err.detail || `Failed (status ${r.status})`)
         return
       }
-      setSuccessMessage('Shift deleted')
+      const body = await r.json().catch(() => ({}))
+      setSuccessMessage(body.message || 'Shift deleted')
       setTimeout(() => setSuccessMessage(''), 3000)
       setV3DeleteModal(null)
+      setDeletePreview(null)
       refreshAfterAction()
     } catch (err) {
       setActionError('Network error')
@@ -2125,10 +2148,12 @@ function RosterCalendar({
       })
 
       if (response.ok) {
-        setSuccessMessage('Shift deleted')
+        const body = await response.json().catch(() => ({}))
+        setSuccessMessage(body.message || 'Shift deleted')
         setTimeout(() => setSuccessMessage(''), 3000)
         setShowDeleteModal(false)
         setShiftToDelete(null)
+        setDeletePreview(null)
         fetchShifts()
         fetchMonthlyHours()
       } else {
@@ -4090,7 +4115,10 @@ function RosterCalendar({
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && shiftToDelete && (
-        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          setShowDeleteModal(false)
+          setDeletePreview(null)
+        }}>
           <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Delete Shift</h3>
             <p>
@@ -4098,10 +4126,19 @@ function RosterCalendar({
               <strong>{formatDateUK(shiftToDelete.date)}</strong> at{' '}
               <strong>{formatTime(shiftToDelete.start_time)}</strong>?
             </p>
+            {deletePreviewLoading && <p>Checking booking coverage...</p>}
+            {deletePreview?.shift_id === shiftToDelete.id && deletePreview.warning && (
+              <div className="rc-action-error">
+                This shift covers {deletePreview.orphaned_booking_event_count} booking event{deletePreview.orphaned_booking_event_count === 1 ? '' : 's'} within 96 hours with no other live shift covering them. Auto-roster will suppress recreation after delete.
+              </div>
+            )}
             <div className="modal-actions">
               <button
                 className="modal-cancel-btn"
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => {
+                  setShowDeleteModal(false)
+                  setDeletePreview(null)
+                }}
                 disabled={deletingShift}
               >
                 Cancel
@@ -5150,16 +5187,30 @@ function RosterCalendar({
       )}
 
       {v3DeleteModal && isAdmin && (
-        <div className="modal-overlay" onClick={() => !actionSubmitting && setV3DeleteModal(null)}>
+        <div className="modal-overlay" onClick={() => {
+          if (!actionSubmitting) {
+            setV3DeleteModal(null)
+            setDeletePreview(null)
+          }
+        }}>
           <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Delete Shift</h3>
             <p>
               Delete the shift <strong>{formatTime(v3DeleteModal.shift.start_time)}–{formatTime(v3DeleteModal.shift.end_time)}</strong>?
               This cannot be undone.
             </p>
+            {deletePreviewLoading && <p>Checking booking coverage...</p>}
+            {deletePreview?.shift_id === v3DeleteModal.shift.id && deletePreview.warning && (
+              <div className="rc-action-error">
+                This shift covers {deletePreview.orphaned_booking_event_count} booking event{deletePreview.orphaned_booking_event_count === 1 ? '' : 's'} within 96 hours with no other live shift covering them. Auto-roster will suppress recreation after delete.
+              </div>
+            )}
             {actionError && <div className="rc-action-error">{actionError}</div>}
             <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={() => setV3DeleteModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-secondary" onClick={() => {
+                setV3DeleteModal(null)
+                setDeletePreview(null)
+              }} disabled={actionSubmitting}>Cancel</button>
               <button className="modal-btn modal-btn-danger" onClick={submitV3Delete} disabled={actionSubmitting}>
                 {actionSubmitting ? 'Deleting…' : 'Delete'}
               </button>
