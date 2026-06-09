@@ -1531,11 +1531,11 @@ class TestTripInsightsEdgeCasesIntegration:
 
 
 # =============================================================================
-# Top 3 Busiest Hours AM/PM Integration Tests
+# Top Busiest Hours AM/PM Integration Tests
 # =============================================================================
 
 class TestTopBusiestHoursIntegration:
-    """Integration tests for top 3 busiest hours AM/PM calculation using fixed hourly buckets."""
+    """Integration tests for busiest hours AM/PM calculation using fixed hourly buckets."""
 
     def _find_top_busiest_hours(self, times_minutes, top_n=3):
         """
@@ -1754,6 +1754,19 @@ class TestTopBusiestHoursIntegration:
         assert bucket_07["count"] == 1
         assert bucket_08["count"] == 1
 
+    def test_top_6_busiest_hours_contract(self):
+        """Trip insights should be able to display six AM/PM hourly buckets."""
+        times = [
+            0, 60, 120, 180, 240, 300, 360,
+        ]
+
+        result = self._find_top_busiest_hours(times, 6)
+
+        assert len(result) == 6
+        assert [item["start"] for item in result] == [
+            "00:00", "01:00", "02:00", "03:00", "04:00", "05:00",
+        ]
+
     def test_response_includes_am_pm_busiest_arrays(self):
         """Test that API response includes am_busiest and pm_busiest arrays with fixed hourly buckets."""
         # Fixed hourly buckets use :00 end times (e.g., 06:00-07:00, not 06:15-07:15)
@@ -1768,6 +1781,9 @@ class TestTopBusiestHoursIntegration:
                     {"start": "06:00", "end": "07:00", "count": 18},
                     {"start": "08:00", "end": "09:00", "count": 12},
                     {"start": "10:00", "end": "11:00", "count": 8},
+                    {"start": "05:00", "end": "06:00", "count": 6},
+                    {"start": "07:00", "end": "08:00", "count": 5},
+                    {"start": "11:00", "end": "12:00", "count": 3},
                 ],
                 "pm_busiest": [
                     {"start": "14:00", "end": "15:00", "count": 10},
@@ -1784,6 +1800,9 @@ class TestTopBusiestHoursIntegration:
                     {"start": "15:00", "end": "16:00", "count": 25},
                     {"start": "17:00", "end": "18:00", "count": 18},
                     {"start": "19:00", "end": "20:00", "count": 12},
+                    {"start": "20:00", "end": "21:00", "count": 9},
+                    {"start": "21:00", "end": "22:00", "count": 6},
+                    {"start": "22:00", "end": "23:00", "count": 4},
                 ]
             },
         }
@@ -1792,8 +1811,8 @@ class TestTopBusiestHoursIntegration:
         assert "pm_busiest" in response["dropoff_range"]
         assert "am_busiest" in response["pickup_range"]
         assert "pm_busiest" in response["pickup_range"]
-        assert len(response["dropoff_range"]["am_busiest"]) == 3
-        assert len(response["pickup_range"]["pm_busiest"]) == 3
+        assert len(response["dropoff_range"]["am_busiest"]) == 6
+        assert len(response["pickup_range"]["pm_busiest"]) == 6
         assert response["dropoff_range"]["am_busiest"][0]["count"] == 18
         # Verify fixed hourly bucket format (always :00 boundaries)
         assert response["dropoff_range"]["am_busiest"][0]["start"].endswith(":00")

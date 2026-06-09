@@ -2066,12 +2066,12 @@ async def get_booking_stats(
     # Calculate averages
     avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
 
-    # Calculate top 5 most common trip durations with percentages
+    # Calculate top 10 most common trip durations with percentages
     duration_counts = {}
     for d in trip_durations:
         duration_counts[d] = duration_counts.get(d, 0) + 1
     total_trips = len(trip_durations)
-    top_durations = sorted(duration_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_durations = sorted(duration_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     top_durations = [
         {"days": d, "count": c, "percent": round(c / total_trips * 100, 1) if total_trips > 0 else 0}
         for d, c in top_durations
@@ -2110,8 +2110,8 @@ async def get_booking_stats(
         dropoff_range = {
             "am": len(am_dropoffs),
             "pm": len(pm_dropoffs),
-            "am_busiest": find_top_busiest_hours(am_dropoffs, 3),
-            "pm_busiest": find_top_busiest_hours(pm_dropoffs, 3),
+            "am_busiest": find_top_busiest_hours(am_dropoffs, 6),
+            "pm_busiest": find_top_busiest_hours(pm_dropoffs, 6),
         }
     else:
         dropoff_range = {"am": 0, "pm": 0, "am_busiest": [], "pm_busiest": []}
@@ -2123,8 +2123,8 @@ async def get_booking_stats(
         pickup_range = {
             "am": len(am_pickups),
             "pm": len(pm_pickups),
-            "am_busiest": find_top_busiest_hours(am_pickups, 3),
-            "pm_busiest": find_top_busiest_hours(pm_pickups, 3),
+            "am_busiest": find_top_busiest_hours(am_pickups, 6),
+            "pm_busiest": find_top_busiest_hours(pm_pickups, 6),
         }
     else:
         pickup_range = {"am": 0, "pm": 0, "am_busiest": [], "pm_busiest": []}

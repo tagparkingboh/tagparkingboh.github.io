@@ -1297,6 +1297,36 @@ class TestTripDurationCalculation:
 
         assert avg_duration == 0
 
+    def test_top_duration_contract_returns_ten_items(self):
+        """Trip insights should surface the top 10 duration buckets."""
+        trip_durations = [
+            7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            4, 4, 4, 4, 4, 4, 4, 4, 4,
+            3, 3, 3, 3, 3, 3, 3, 3,
+            5, 5, 5, 5, 5, 5, 5,
+            10, 10, 10, 10, 10, 10,
+            6, 6, 6, 6, 6,
+            8, 8, 8, 8,
+            9, 9, 9,
+            11, 11,
+            12,
+            13,
+        ]
+        duration_counts = {}
+        for duration in trip_durations:
+            duration_counts[duration] = duration_counts.get(duration, 0) + 1
+
+        top_durations = sorted(
+            duration_counts.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:10]
+
+        assert len(top_durations) == 10
+        assert [duration for duration, _count in top_durations] == [
+            7, 4, 3, 5, 10, 6, 8, 9, 11, 12,
+        ]
+
     def test_long_trip_duration(self):
         """Test handling of long trip durations."""
         bookings = [
