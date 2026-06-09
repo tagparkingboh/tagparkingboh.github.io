@@ -17,6 +17,7 @@ import {
   sourceParamFor,
   calculateHoursTotal,
   calculateShiftTotal,
+  getRosterDemandByDate,
   getRosterCoverageReviewItems,
   getRosterCoverageReviewItemsByDate,
   groupAutoOverlapReviewItems,
@@ -379,6 +380,146 @@ describe('computeBookingsByDate', () => {
     ])
     expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([1])
     expect(grouped['2026-07-05']?.pickups ?? []).toHaveLength(0)
+  })
+})
+
+describe('getRosterDemandByDate', () => {
+  const demandFor = (bookingsByDate, dateKey = '2026-06-21') => (
+    getRosterDemandByDate(bookingsByDate, [dateKey])[0]
+  )
+
+  it('H: counts demand into the four calendar heatmap buckets', () => {
+    const row = demandFor({
+      '2026-06-21': {
+        dropoffs: [
+          { id: 1, dropoff_time: '04:55' },
+          { id: 2, dropoff_time: '08:00' },
+        ],
+        pickups: [
+          { id: 3, flight_arrival_time: '01:59' },
+          { id: 4, flight_arrival_time: '02:00' },
+          { id: 5, flight_arrival_time: '16:59' },
+          { id: 6, flight_arrival_time: '17:00' },
+        ],
+      },
+    })
+
+    expect(row).toMatchObject({
+      date: '2026-06-21',
+      dayLabel: '21/06',
+      early_dropoffs: 1,
+      day_dropoffs: 1,
+      day_returns: 2,
+      late_returns: 2,
+      total: 6,
+      maxBucket: 2,
+      level: 4,
+    })
+  })
+
+  it('U: returns a zeroed row for a visible calendar day without bookings', () => {
+    const row = demandFor({}, '2026-06-22')
+
+    expect(row).toMatchObject({
+      date: '2026-06-22',
+      dayLabel: '22/06',
+      early_dropoffs: 0,
+      day_dropoffs: 0,
+      day_returns: 0,
+      late_returns: 0,
+      total: 0,
+      maxBucket: 1,
+      level: 0,
+    })
+  })
+
+  it('E: keeps following-day overnight arrivals on the prior operational-day late-return bucket', () => {
+    const grouped = computeBookingsByDate([
+      {
+        id: 1,
+        status: 'confirmed',
+        flight_arrival_date: '2026-06-22',
+        flight_arrival_time: '00:00',
+        pickup_date: '2026-06-22',
+        pickup_time: '00:30',
+      },
+      {
+        id: 2,
+        status: 'confirmed',
+        flight_arrival_date: '2026-06-22',
+        flight_arrival_time: '00:01',
+        pickup_date: '2026-06-22',
+        pickup_time: '00:31',
+      },
+      {
+        id: 3,
+        status: 'confirmed',
+        flight_arrival_date: '2026-06-22',
+        flight_arrival_time: '01:59',
+        pickup_date: '2026-06-22',
+        pickup_time: '02:29',
+      },
+    ])
+
+    expect(grouped['2026-06-21']?.pickups.map((booking) => booking.id)).toEqual([1, 2, 3])
+    expect(demandFor(grouped, '2026-06-21')).toMatchObject({
+      day_returns: 0,
+      late_returns: 3,
+      total: 3,
+    })
+  })
+
+  it('B: pins heatmap boundaries at 08:00, 02:00, and 17:00', () => {
+    const row = demandFor({
+      '2026-06-21': {
+        dropoffs: [
+          { id: 1, dropoff_time: '07:59' },
+          { id: 2, dropoff_time: '08:00' },
+        ],
+        pickups: [
+          { id: 3, flight_arrival_time: '23:29' },
+          { id: 4, flight_arrival_time: '23:30' },
+          { id: 5, flight_arrival_time: '23:31' },
+          { id: 6, flight_arrival_time: '23:59' },
+          { id: 7, flight_arrival_time: '00:00' },
+          { id: 8, flight_arrival_time: '00:01' },
+          { id: 9, flight_arrival_time: '01:59' },
+          { id: 10, flight_arrival_time: '02:00' },
+          { id: 11, flight_arrival_time: '02:01' },
+          { id: 12, flight_arrival_time: '16:59' },
+          { id: 13, flight_arrival_time: '17:00' },
+        ],
+      },
+    })
+
+    expect(row.early_dropoffs).toBe(1)
+    expect(row.day_dropoffs).toBe(1)
+    expect(row.day_returns).toBe(3)
+    expect(row.late_returns).toBe(8)
+    expect(row.total).toBe(13)
+  })
+
+  it('B: scales demand levels against the busiest visible day', () => {
+    const rows = getRosterDemandByDate({
+      '2026-06-21': {
+        dropoffs: [],
+        pickups: [],
+      },
+      '2026-06-22': {
+        dropoffs: [{ id: 1, dropoff_time: '08:00' }, { id: 2, dropoff_time: '09:00' }],
+        pickups: [],
+      },
+      '2026-06-23': {
+        dropoffs: [{ id: 3, dropoff_time: '08:00' }, { id: 4, dropoff_time: '09:00' }],
+        pickups: [{ id: 5, flight_arrival_time: '17:00' }, { id: 6, flight_arrival_time: '18:00' }],
+      },
+    }, ['2026-06-21', '2026-06-22', '2026-06-23'])
+
+    expect(rows.map((row) => ({ date: row.date, total: row.total, level: row.level }))).toEqual([
+      { date: '2026-06-21', total: 0, level: 0 },
+      { date: '2026-06-22', total: 2, level: 2 },
+      { date: '2026-06-23', total: 4, level: 4 },
+    ])
   })
 })
 

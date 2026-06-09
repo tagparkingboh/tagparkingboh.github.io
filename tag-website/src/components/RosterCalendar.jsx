@@ -314,6 +314,72 @@ const timeToMinutes = (time) => {
   return (hours || 0) * 60 + (minutes || 0)
 }
 
+const DEMAND_DROPOFF_DAY_START = 8 * 60
+const DEMAND_RETURN_DAY_START = timeToMinutes(ARRIVAL_OVERNIGHT_CUTOFF)
+const DEMAND_RETURN_LATE_START = 17 * 60
+
+const demandLevelFor = (total, maxTotal) => {
+  if (!total || !maxTotal) return 0
+  return Math.max(1, Math.ceil((total / maxTotal) * 4))
+}
+
+export const ROSTER_DEMAND_BUCKETS = [
+  { key: 'early_dropoffs', label: 'ED', name: 'Early drop-offs' },
+  { key: 'day_dropoffs', label: 'DD', name: 'Day drop-offs' },
+  { key: 'day_returns', label: 'DR', name: 'Day returns' },
+  { key: 'late_returns', label: 'LR', name: 'Late returns' },
+]
+
+export const getRosterDemandByDate = (bookingsByDate = {}, dateKeys = []) => {
+  const keys = (dateKeys.length > 0 ? dateKeys : Object.keys(bookingsByDate).sort())
+    .filter(Boolean)
+
+  const rows = keys.map((dateKey) => {
+    const day = bookingsByDate[dateKey] || { dropoffs: [], pickups: [] }
+    const demand = {
+      date: dateKey,
+      dayLabel: formatDateUK(dateKey).slice(0, 5),
+      early_dropoffs: 0,
+      day_dropoffs: 0,
+      day_returns: 0,
+      late_returns: 0,
+    }
+
+    ;(day.dropoffs || []).forEach((booking) => {
+      const minutes = timeToMinutes(booking?.dropoff_time)
+      if (minutes < DEMAND_DROPOFF_DAY_START) {
+        demand.early_dropoffs += 1
+      } else {
+        demand.day_dropoffs += 1
+      }
+    })
+
+    ;(day.pickups || []).forEach((booking) => {
+      const minutes = timeToMinutes(bookingEventTime(booking, 'pickup'))
+      if (minutes < DEMAND_RETURN_DAY_START || minutes >= DEMAND_RETURN_LATE_START) {
+        demand.late_returns += 1
+      } else {
+        demand.day_returns += 1
+      }
+    })
+
+    const bucketValues = ROSTER_DEMAND_BUCKETS.map((bucket) => demand[bucket.key])
+    const total = bucketValues.reduce((sum, count) => sum + count, 0)
+
+    return {
+      ...demand,
+      total,
+      maxBucket: Math.max(1, ...bucketValues),
+    }
+  })
+
+  const maxTotal = Math.max(0, ...rows.map((row) => row.total))
+  return rows.map((row) => ({
+    ...row,
+    level: demandLevelFor(row.total, maxTotal),
+  }))
+}
+
 const shiftTimeRange = (shift) => {
   if (!shift) return { start: 0, end: 0 }
   let start = timeToMinutes(shift.displayStartTime || shift.start_time)
@@ -1345,6 +1411,12 @@ function RosterCalendar({
       setSelectedDate(dateKey)
       setShowDetailModal(true)
     }
+  }
+
+  const openDetailForDate = (dateKey) => {
+    if (!dateKey) return
+    setSelectedDate(dateKey)
+    setShowDetailModal(true)
   }
 
   // Close detail modal handler
@@ -2744,6 +2816,8 @@ function RosterCalendar({
     .flat()
     .filter(Boolean)
     .map((day) => getDateKey(day))
+  const calendarDemandItems = getRosterDemandByDate(bookingsByDate, visibleDateKeys)
+  const calendarDemandTotal = calendarDemandItems.reduce((total, item) => total + item.total, 0)
   const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
   const autoOverlapReviewItems = calendarReviewItems.filter((item) => item.kind === 'unassigned-linked-shift')
@@ -2875,6 +2949,51 @@ function RosterCalendar({
             )}
           </div>
         </div>
+      )}
+
+      {isAdmin && calendarDemandTotal > 0 && (
+        <section className="roster-demand-heatmap" aria-label="Roster demand heatmap">
+          <div className="roster-demand-heatmap-header">
+            <h3>Demand</h3>
+            <span className="roster-demand-heatmap-total">
+              {calendarDemandTotal} event{calendarDemandTotal === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="roster-demand-heatmap-scroll">
+            {calendarDemandItems.map((item) => (
+              <button
+                type="button"
+                key={item.date}
+                className={`roster-demand-day demand-level-${item.level}`}
+                onClick={() => openDetailForDate(item.date)}
+                title={`${formatDateUK(item.date)} - ${item.total} booking event${item.total === 1 ? '' : 's'}`}
+              >
+                <span className="roster-demand-day-top">
+                  <span className="roster-demand-date">{item.dayLabel}</span>
+                  <span className="roster-demand-total">{item.total}</span>
+                </span>
+                <span className="roster-demand-bars" aria-hidden="true">
+                  {ROSTER_DEMAND_BUCKETS.map((bucket) => (
+                    <span
+                      key={bucket.key}
+                      className={`roster-demand-bar roster-demand-bar-${bucket.key}`}
+                      style={{
+                        '--demand-height': `${Math.round(((item[bucket.key] || 0) / item.maxBucket) * 22) + 2}px`,
+                      }}
+                    />
+                  ))}
+                </span>
+                <span className="roster-demand-breakdown">
+                  {ROSTER_DEMAND_BUCKETS.map((bucket) => (
+                    <span key={bucket.key}>
+                      {bucket.label} {item[bucket.key] || 0}
+                    </span>
+                  ))}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Calendar Grid */}
