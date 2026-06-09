@@ -2951,7 +2951,7 @@ function RosterCalendar({
         </div>
       )}
 
-      {isAdmin && calendarDemandTotal > 0 && (
+      {isAdmin && calendarDemandItems.length > 0 && (
         <section className="roster-demand-heatmap" aria-label="Roster demand heatmap">
           <div className="roster-demand-heatmap-header">
             <h3>Demand</h3>
