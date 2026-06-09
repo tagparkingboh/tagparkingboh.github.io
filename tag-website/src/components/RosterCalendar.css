@@ -1558,6 +1558,15 @@
   border: none;
 }
 
+.roster-calendar .delete-modal .modal-btn,
+.roster-calendar .delete-modal .modal-delete-btn {
+  min-width: 128px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .roster-calendar .modal-btn-secondary {
   background: #fff;
   border: 1px solid #ddd;
@@ -1629,6 +1638,10 @@
 
 .roster-calendar .delete-modal strong {
   color: #333;
+}
+
+.roster-calendar .delete-modal .modal-actions {
+  align-items: center;
 }
 
 /* Responsive - Tablet (iPad) */
@@ -1752,7 +1765,8 @@
     gap: 10px;
   }
 
-  .roster-calendar .modal-btn {
+  .roster-calendar .modal-btn,
+  .roster-calendar .modal-delete-btn {
     padding: 14px 20px;
     font-size: 16px;
   }
@@ -1790,7 +1804,8 @@
     flex-direction: column;
   }
 
-  .roster-calendar .modal-btn {
+  .roster-calendar .modal-btn,
+  .roster-calendar .modal-delete-btn {
     width: 100%;
     justify-content: center;
   }

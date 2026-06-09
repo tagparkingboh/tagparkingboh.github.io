@@ -4134,7 +4134,7 @@ function RosterCalendar({
             )}
             <div className="modal-actions">
               <button
-                className="modal-cancel-btn"
+                className="modal-btn modal-btn-secondary"
                 onClick={() => {
                   setShowDeleteModal(false)
                   setDeletePreview(null)
