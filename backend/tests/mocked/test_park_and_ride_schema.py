@@ -26,7 +26,7 @@ from auto_roster import (  # noqa: E402
     auto_create_or_extend_for_booking,
     handle_booking_cancelled,
 )
-from db_models import BookingStatus, ServiceType  # noqa: E402
+from db_models import BookingStatus, ServiceType, ShiftBookingLink  # noqa: E402
 from roster_planner import PlannerSettings  # noqa: E402
 from roster_planner_runner import auto_link_booking_to_shifts  # noqa: E402
 
@@ -171,6 +171,29 @@ class TestHandleCancelledGuard:
 
         assert db.query.called
 
+    def test_happy_meet_greet_unlinks_shift_booking_rows(self):
+        """Cancelled M&G booking is detached from any assigned/frozen shifts
+        before the affected dates are rebuilt."""
+        db = MagicMock()
+        chain = db.query.return_value
+        chain.filter.return_value = chain
+        chain.all.return_value = []
+        booking = _booking(
+            service_type=ServiceType.MEET_GREET,
+            status=BookingStatus.CANCELLED,
+            booking_id=42,
+        )
+
+        handle_booking_cancelled(db, booking)
+
+        assert any(
+            call.args and call.args[0] is ShiftBookingLink
+            for call in db.query.call_args_list
+        )
+        chain.filter.return_value.delete.assert_called_with(
+            synchronize_session=False
+        )
+
     def test_edge_park_ride_status_not_cancelled(self):
         """P&R + non-CANCELLED status — status guard fires first regardless."""
         db = MagicMock()
@@ -220,6 +243,17 @@ class TestAutoLinkGuard:
         """Pre-existing None guard still fires before the new P&R guard."""
         db = MagicMock()
         result = auto_link_booking_to_shifts(db, None)
+        assert result == []
+        db.query.assert_not_called()
+
+    def test_unhappy_cancelled_booking_returns_empty(self):
+        """Cancelled bookings must never be reattached to frozen/assigned
+        shifts by the auto-link safety net."""
+        db = MagicMock()
+        booking = _booking(status=BookingStatus.CANCELLED)
+
+        result = auto_link_booking_to_shifts(db, booking)
+
         assert result == []
         db.query.assert_not_called()
 

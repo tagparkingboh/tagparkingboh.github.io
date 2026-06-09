@@ -601,6 +601,10 @@ def handle_booking_cancelled(db: Session, booking: Booking) -> dict:
     if getattr(booking, "service_type", None) == ServiceType.PARK_RIDE:
         return summary
 
+    db.query(ShiftBookingLink).filter(
+        ShiftBookingLink.booking_id == booking.id
+    ).delete(synchronize_session=False)
+
     dates = _affected_dates_for_booking(booking)
     if not dates:
         return summary

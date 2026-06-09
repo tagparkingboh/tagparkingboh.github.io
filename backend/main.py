@@ -3330,7 +3330,7 @@ async def cancel_booking_admin(
     Note: This does NOT automatically refund the payment -
     use the Stripe dashboard for refunds.
     """
-    from db_models import Booking, BookingStatus, Payment
+    from db_models import Booking, BookingStatus, Payment, ShiftBookingLink
 
     booking = db.query(Booking).options(joinedload(Booking.payment)).filter(Booking.id == booking_id).first()
 
@@ -3361,8 +3361,13 @@ async def cancel_booking_admin(
             cancel_result = cancel_payment_intent(booking.payment.stripe_payment_intent_id)
             stripe_cancelled = cancel_result.get("success", False)
 
-    # Update booking status
+    # Update booking status and detach it from roster shifts immediately.
+    # Daily booking lists already exclude CANCELLED rows; removing the
+    # join rows keeps shift cards aligned with that same operational truth.
     booking.status = BookingStatus.CANCELLED
+    db.query(ShiftBookingLink).filter(
+        ShiftBookingLink.booking_id == booking.id
+    ).delete(synchronize_session=False)
     try:
         from referral_service import disqualify_referral_for_booking
 

@@ -292,6 +292,8 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
 
     # Get bookings from many-to-many relationship
     for booking in shift.bookings:
+        if booking.status == BookingStatus.CANCELLED:
+            continue
         # Determine if this is a dropoff or pickup based on shift dates.
         # Pickup-side match keys off the CANONICAL pickup-event date, not
         # the (possibly rolled) pickup_date — so an admin who edits only
@@ -330,6 +332,9 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     # Also check legacy single booking_id (for backwards compatibility)
     if shift.booking_id and not any(b.id == shift.booking_id for b in shift.bookings):
         booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
+        if booking:
+            if booking.status == BookingStatus.CANCELLED:
+                booking = None
         if booking:
             pickup_event = _pickup_event_date(booking)
             if booking.dropoff_date in shift_dates:

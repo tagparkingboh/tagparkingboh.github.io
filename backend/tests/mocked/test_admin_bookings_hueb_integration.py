@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 
 from main import app, require_admin
 from database import get_db
-from db_models import BookingStatus, PaymentStatus
+from db_models import BookingStatus, PaymentStatus, ShiftBookingLink
 
 
 # ============================================================================
@@ -315,6 +315,23 @@ class TestAdminCancelBooking:
         assert body["success"] is True
         assert body["reference"] == "TAG-HUEB001"
         assert b.status == BookingStatus.CANCELLED
+
+    @patch("db_service.release_departure_slot", return_value={"success": True})
+    def test_H_cancel_unlinks_booking_from_roster_shifts(self, mock_release):
+        b = _make_booking(status=BookingStatus.CONFIRMED, departure_id=99, dropoff_slot="early", with_payment=False)
+        db = self._wire(b)
+        _override_db(db)
+
+        resp = TestClient(app).post(f"/api/admin/bookings/{b.id}/cancel")
+
+        assert resp.status_code == 200, resp.text
+        assert any(
+            call.args and call.args[0] is ShiftBookingLink
+            for call in db.query.call_args_list
+        )
+        db.query.return_value.filter.return_value.delete.assert_called_with(
+            synchronize_session=False
+        )
 
     @patch("db_service.release_departure_slot", return_value={"success": True})
     def test_H_cancel_pending_booking_succeeds(self, mock_release):

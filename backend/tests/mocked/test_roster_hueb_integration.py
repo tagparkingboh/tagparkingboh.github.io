@@ -25,8 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi.testclient import TestClient
 from main import app
 from database import get_db
-from routers.roster import get_current_user as roster_get_current_user, require_admin as roster_require_admin
-from db_models import AuditLogEvent, ShiftStatus, ShiftType, HolidayType
+from routers.roster import get_current_user as roster_get_current_user, require_admin as roster_require_admin, shift_to_response
+from db_models import AuditLogEvent, ShiftStatus, ShiftType, HolidayType, BookingStatus
 from roster_planner import UK_TZ
 
 
@@ -84,6 +84,8 @@ def _mock_shift(
     s.suppressed_at = None
     s.suppressed_by_user_id = None
     s.suppression_reason = None
+    s.created_at = datetime(2026, 5, 1, 9, 0, 0)
+    s.updated_at = None
     s.bookings = []
     s.staff = None
     return s
@@ -98,16 +100,24 @@ def _mock_booking(
     pickup_time=None,
     flight_arrival_date=None,
     flight_arrival_time=None,
+    status=BookingStatus.CONFIRMED,
 ):
     b = MagicMock()
     b.id = id
     b.reference = reference
+    b.status = status
     b.dropoff_date = dropoff_date
     b.dropoff_time = dropoff_time
     b.pickup_date = pickup_date
     b.pickup_time = pickup_time
     b.flight_arrival_date = flight_arrival_date
     b.flight_arrival_time = flight_arrival_time
+    b.customer_first_name = "Test"
+    b.customer_last_name = "Customer"
+    b.dropoff_flight_number = None
+    b.dropoff_destination = None
+    b.pickup_flight_number = None
+    b.pickup_origin = None
     return b
 
 
@@ -157,6 +167,64 @@ def _mock_holiday(id=1, staff_id=2, start=None, end=None, hol_type=None, start_t
     h.created_at = datetime(2026, 5, 1, 9, 0, 0)
     h.updated_at = None
     return h
+
+
+# ============================================================================
+# shift_to_response — HUEB
+# ============================================================================
+
+class TestShiftToResponseBookingStatus:
+    def test_happy_cancelled_many_to_many_booking_is_hidden(self):
+        active = _mock_booking(
+            id=10,
+            reference="TAG-ACTIVE",
+            dropoff_date=date_type(2026, 6, 15),
+            dropoff_time=time(9, 30),
+            status=BookingStatus.CONFIRMED,
+        )
+        cancelled = _mock_booking(
+            id=11,
+            reference="TAG-CANCELLED",
+            dropoff_date=date_type(2026, 6, 15),
+            dropoff_time=time(10, 30),
+            status=BookingStatus.CANCELLED,
+        )
+        shift = _mock_shift(
+            id=99,
+            date_=date_type(2026, 6, 15),
+            start_time=time(8, 0),
+            end_time=time(12, 0),
+        )
+        shift.bookings = [active, cancelled]
+
+        response = shift_to_response(shift, MagicMock())
+
+        assert [booking.reference for booking in response.bookings] == ["TAG-ACTIVE"]
+        assert response.booking_reference == "TAG-ACTIVE"
+
+    def test_unhappy_cancelled_legacy_booking_id_is_hidden(self):
+        cancelled = _mock_booking(
+            id=11,
+            reference="TAG-CANCELLED",
+            dropoff_date=date_type(2026, 6, 15),
+            dropoff_time=time(10, 30),
+            status=BookingStatus.CANCELLED,
+        )
+        shift = _mock_shift(
+            id=99,
+            booking_id=cancelled.id,
+            date_=date_type(2026, 6, 15),
+            start_time=time(8, 0),
+            end_time=time(12, 0),
+        )
+        shift.bookings = []
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = cancelled
+
+        response = shift_to_response(shift, db)
+
+        assert response.bookings == []
+        assert response.booking_reference is None
 
 
 # ============================================================================
