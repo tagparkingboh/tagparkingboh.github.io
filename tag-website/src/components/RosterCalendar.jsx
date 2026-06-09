@@ -2754,61 +2754,65 @@ function RosterCalendar({
     0,
   )
 
+  const renderCalendarHeader = (position = 'top') => (
+    <div className={`roster-calendar-header roster-calendar-header-${position}`}>
+      <div className="calendar-nav">
+        <button className="calendar-nav-btn" onClick={goToPrevMonth}>
+          ‹
+        </button>
+        <h2 className="calendar-title">
+          {monthNames[calendarData.month]} {calendarData.year}
+        </h2>
+        <button className="calendar-nav-btn" onClick={goToNextMonth}>
+          ›
+        </button>
+      </div>
+
+      <div className="calendar-actions">
+        {isAdmin && (
+          <div className="rc-source-toggle" role="group" aria-label={`Filter shifts by source (${position})`}>
+            {['all', 'auto', 'manual'].map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                className={`rc-source-toggle-btn ${sourceFilter === opt ? 'active' : ''}`}
+                onClick={() => updateSourceFilter(opt)}
+                aria-pressed={sourceFilter === opt}
+              >
+                {opt[0].toUpperCase() + opt.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
+        <button className="calendar-today-btn" onClick={goToToday}>
+          Today
+        </button>
+        <button className="calendar-refresh-btn" onClick={fetchData} disabled={loading}>
+          {loading ? 'Loading...' : 'Refresh'}
+        </button>
+        {isAdmin && (
+          <>
+            <button className="roster-add-btn" onClick={() => openNewShiftModal()}>
+              + Add Shift
+            </button>
+            <button className="roster-add-holiday-btn" onClick={() => openNewHolidayModal()}>
+              + Add Holiday
+            </button>
+          </>
+        )}
+        {!isAdmin && (
+          <button className="roster-unavail-btn" onClick={() => openNewUnavailModal()}>
+            + Mark Unavailable
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="roster-calendar">
       {/* Header */}
-      <div className="roster-calendar-header">
-        <div className="calendar-nav">
-          <button className="calendar-nav-btn" onClick={goToPrevMonth}>
-            ‹
-          </button>
-          <h2 className="calendar-title">
-            {monthNames[calendarData.month]} {calendarData.year}
-          </h2>
-          <button className="calendar-nav-btn" onClick={goToNextMonth}>
-            ›
-          </button>
-        </div>
-
-        <div className="calendar-actions">
-          {isAdmin && (
-            <div className="rc-source-toggle" role="group" aria-label="Filter shifts by source">
-              {['all', 'auto', 'manual'].map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  className={`rc-source-toggle-btn ${sourceFilter === opt ? 'active' : ''}`}
-                  onClick={() => updateSourceFilter(opt)}
-                  aria-pressed={sourceFilter === opt}
-                >
-                  {opt[0].toUpperCase() + opt.slice(1)}
-                </button>
-              ))}
-            </div>
-          )}
-          <button className="calendar-today-btn" onClick={goToToday}>
-            Today
-          </button>
-          <button className="calendar-refresh-btn" onClick={fetchData} disabled={loading}>
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
-          {isAdmin && (
-            <>
-              <button className="roster-add-btn" onClick={() => openNewShiftModal()}>
-                + Add Shift
-              </button>
-              <button className="roster-add-holiday-btn" onClick={() => openNewHolidayModal()}>
-                + Add Holiday
-              </button>
-            </>
-          )}
-          {!isAdmin && (
-            <button className="roster-unavail-btn" onClick={() => openNewUnavailModal()}>
-              + Mark Unavailable
-            </button>
-          )}
-        </div>
-      </div>
+      {renderCalendarHeader('top')}
 
       {/* Messages */}
       {error && <div className="roster-error">{error}</div>}
@@ -3008,6 +3012,8 @@ function RosterCalendar({
           ))}
         </div>
       </div>
+
+      {renderCalendarHeader('bottom')}
 
       {/* Monthly Hours Summary (for payroll) - with weekly breakdown */}
       {monthlyHours && (
