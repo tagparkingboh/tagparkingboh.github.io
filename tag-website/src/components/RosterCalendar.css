@@ -567,6 +567,141 @@
   line-height: 1.35;
 }
 
+.roster-demand-heatmap {
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin: 0 0 16px;
+  padding: 12px;
+}
+
+.roster-demand-heatmap-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.roster-demand-heatmap-header h3 {
+  color: #D9FF00;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.roster-demand-heatmap-total {
+  color: #aaa;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.roster-demand-heatmap-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.roster-demand-day {
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 118px;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 92px;
+  padding: 8px;
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.roster-demand-day:hover,
+.roster-demand-day:focus-visible {
+  background: #2a2a2a;
+  border-color: #D9FF00;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.roster-demand-day.demand-level-0 {
+  opacity: 0.58;
+}
+
+.roster-demand-day.demand-level-3,
+.roster-demand-day.demand-level-4 {
+  border-color: rgba(217, 255, 0, 0.65);
+}
+
+.roster-demand-day-top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.roster-demand-date {
+  color: #aaa;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.roster-demand-total {
+  color: #D9FF00;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.roster-demand-bars {
+  align-items: end;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(4, 1fr);
+  height: 24px;
+}
+
+.roster-demand-bar {
+  background: #555;
+  border-radius: 3px 3px 0 0;
+  height: var(--demand-height);
+  min-height: 2px;
+}
+
+.roster-demand-bar-early_dropoffs {
+  background: #74c0fc;
+}
+
+.roster-demand-bar-day_dropoffs {
+  background: #ffd43b;
+}
+
+.roster-demand-bar-day_returns {
+  background: #69db7c;
+}
+
+.roster-demand-bar-late_returns {
+  background: #b197fc;
+}
+
+.roster-demand-breakdown {
+  color: #cfcfcf;
+  display: grid;
+  font-size: 0.68rem;
+  gap: 3px 6px;
+  grid-template-columns: repeat(2, 1fr);
+  line-height: 1.2;
+}
+
+.roster-demand-breakdown span {
+  white-space: nowrap;
+}
+
 .roster-review-meta {
   color: #f6d27b;
   display: block;
@@ -1734,6 +1869,19 @@
     flex-wrap: wrap;
   }
 
+  .roster-demand-heatmap {
+    padding: 10px;
+  }
+
+  .roster-demand-day {
+    flex-basis: 112px;
+    min-height: 88px;
+  }
+
+  .roster-demand-breakdown {
+    font-size: 0.65rem;
+  }
+
   .roster-calendar .calendar-day {
     min-height: 90px;
     padding: 5px;
@@ -1845,6 +1993,10 @@
   .roster-calendar .calendar-day {
     min-height: 80px;
     min-width: 125px;
+  }
+
+  .roster-demand-day {
+    flex-basis: 106px;
   }
 
   .roster-calendar .calendar-weekdays,
