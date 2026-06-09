@@ -598,6 +598,30 @@
   font-weight: 600;
 }
 
+.roster-demand-legend {
+  align-items: center;
+  color: #cfcfcf;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  gap: 6px 12px;
+  margin: -2px 0 10px;
+}
+
+.roster-demand-legend-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.roster-demand-legend-dot {
+  border-radius: 999px;
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
 .roster-demand-heatmap-scroll {
   display: flex;
   gap: 8px;
