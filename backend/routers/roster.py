@@ -397,6 +397,11 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
             if isinstance(getattr(shift, "created_source", None), str)
             else None
         ),
+        admin_shaped_at=(
+            shift.admin_shaped_at
+            if isinstance(getattr(shift, "admin_shaped_at", None), datetime)
+            else None
+        ),
         created_at=shift.created_at,
         updated_at=shift.updated_at,
         suppressed_at=(

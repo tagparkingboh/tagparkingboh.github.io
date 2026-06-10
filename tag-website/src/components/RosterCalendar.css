@@ -2133,18 +2133,37 @@
   padding-left: 4px;
   opacity: 0.85;
 }
+.day-shift-badge.source-auto.auto-shaped {
+  border-left-color: #d9ff00;
+  border-left-style: solid;
+  opacity: 1;
+}
 .day-shift-badge.source-auto.overnight,
 .day-shift-badge.source-auto.overnight-end {
   border-left: 3px dashed #4ea1ff;
+}
+.day-shift-badge.source-auto.auto-shaped.overnight,
+.day-shift-badge.source-auto.auto-shaped.overnight-end {
+  border-left: 3px solid #d9ff00;
 }
 .day-shift-badge.source-manual {
   border-left: 3px solid transparent;
   padding-left: 4px;
 }
+.shift-auto-shape-tick {
+  color: #d9ff00;
+  font-weight: 800;
+  line-height: 1;
+  margin-left: auto;
+}
 
 /* Day-detail modal: same auto/manual visual cue on the larger shift cards. */
 .shift-card.source-auto {
   border-left: 4px dashed #4ea1ff;
+}
+.shift-card.source-auto.auto-shaped {
+  border-left-color: #d9ff00;
+  border-left-style: solid;
 }
 .shift-card.source-manual {
   border-left: 4px solid transparent;
@@ -2158,6 +2177,12 @@
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+.shift-source-badge.source-auto.auto-shaped {
+  background: rgba(217, 255, 0, 0.12);
+  border-color: #d9ff00;
+  border-style: solid;
+  color: #d9ff00;
 }
 
 /* Teammates' shifts (employee mode, view-only): muted, dashed border, clickable */

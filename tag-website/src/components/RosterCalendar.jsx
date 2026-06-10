@@ -72,6 +72,21 @@ export const currentAndFutureDateKeysForUK = (dateKeys = [], date = new Date()) 
   return (dateKeys || []).filter((dateKey) => dateKey && dateKey >= todayKey)
 }
 
+export const getAutoShiftShapeState = (shift) => {
+  if (!shift || shift.created_source !== 'auto') return null
+
+  const isAdminShaped = Boolean(shift.admin_shaped_at)
+  return {
+    isAdminShaped,
+    className: isAdminShaped ? 'auto-shaped' : 'auto-original',
+    detailLabel: isAdminShaped ? 'Auto ✓ Edited' : 'Auto',
+    chipLabel: isAdminShaped ? '✓' : '',
+    title: isAdminShaped
+      ? 'Auto shift edited, duplicated, split, or merged by admin'
+      : 'Original auto shift',
+  }
+}
+
 // Previous day as ISO string. UTC math avoids any DST drift.
 export const prevIsoDate = (isoDate) => {
   if (!isoDate) return ''
@@ -3120,19 +3135,27 @@ function RosterCalendar({
                             ) : null
                           })()}
                           {/* Shift indicators with details */}
-                          {hasShifts && dayShifts.map((shift, idx) => (
-                            <div
-                              key={`${shift.id}-${shift.shiftPart || 'full'}`}
-                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'}`}
-                              title={`${shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'} · ${shift.created_source === 'auto' ? 'Auto' : 'Manual'}`}
-                            >
-                              <span className="shift-time-mini">
-                                {formatTime(shift.displayStartTime)}-{formatTime(shift.displayEndTime)}
-                              </span>
-                              {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
-                              {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
-                            </div>
-                          ))}
+                          {hasShifts && dayShifts.map((shift, idx) => {
+                            const autoShapeState = getAutoShiftShapeState(shift)
+                            return (
+                              <div
+                                key={`${shift.id}-${shift.shiftPart || 'full'}`}
+                                className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'} ${autoShapeState?.className || ''}`}
+                                title={`${shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'} · ${autoShapeState?.title || (shift.created_source === 'auto' ? 'Auto' : 'Manual')}`}
+                              >
+                                <span className="shift-time-mini">
+                                  {formatTime(shift.displayStartTime)}-{formatTime(shift.displayEndTime)}
+                                </span>
+                                {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
+                                {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
+                                {autoShapeState?.chipLabel && (
+                                  <span className="shift-auto-shape-tick" aria-label={autoShapeState.title}>
+                                    {autoShapeState.chipLabel}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
                           {/* Teammates' shifts (employee mode, view-only) */}
                           {hasTeamShifts && dayTeamShifts.map((tShift, idx) => (
                             <div
@@ -3693,9 +3716,10 @@ function RosterCalendar({
                   {selectedDateShifts.map((shift) => {
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
                     const isShiftExpanded = expandedShiftIds.has(shift.id)
+                    const autoShapeState = getAutoShiftShapeState(shift)
 
                     return (
-                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'} ${isShiftExpanded ? 'expanded' : 'collapsed'}`}>
+                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'} ${autoShapeState?.className || ''} ${isShiftExpanded ? 'expanded' : 'collapsed'}`}>
                         {isAdmin && (
                           <div className="shift-select-checkbox">
                             <input
@@ -3736,9 +3760,9 @@ function RosterCalendar({
                               🌙 {new Date(shift.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(shift.end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                             </div>
                           )}
-                          {shift.created_source === 'auto' && (
-                            <div className="shift-source-badge source-auto" title="Auto-rostered (engine output, not yet committed)">
-                              🤖 Auto
+                          {autoShapeState && (
+                            <div className={`shift-source-badge source-auto ${autoShapeState.className}`} title={autoShapeState.title}>
+                              🤖 {autoShapeState.detailLabel}
                             </div>
                           )}
                         </div>

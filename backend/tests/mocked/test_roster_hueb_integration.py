@@ -226,6 +226,22 @@ class TestShiftToResponseBookingStatus:
         assert response.bookings == []
         assert response.booking_reference is None
 
+    def test_boundary_admin_shaped_timestamp_is_exposed_for_auto_shift_ui(self):
+        shaped_at = datetime(2026, 6, 9, 10, 15, 0)
+        shift = _mock_shift(
+            id=100,
+            date_=date_type(2026, 6, 15),
+            start_time=time(8, 0),
+            end_time=time(12, 0),
+            created_source="auto",
+        )
+        shift.admin_shaped_at = shaped_at
+
+        response = shift_to_response(shift, MagicMock())
+
+        assert response.created_source == "auto"
+        assert response.admin_shaped_at == shaped_at
+
 
 # ============================================================================
 # PUT /api/roster/{shift_id} — HUEB
