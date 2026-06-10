@@ -1,0 +1,30 @@
+[run]
+omit =
+    # Manual data repair/import/debug scripts, not API runtime modules.
+    create_test_bookings.py
+    fix_overnight_arrivals.py
+    import_departures_capacity.py
+    import_flights.py
+    investigate_booking.py
+    list_destinations.py
+    migrate_pickup_times.py
+    run_5_staging_tests.py
+    run_5_tests.py
+    run_5_tests_correct.py
+    run_migration.py
+    run_staging_batches.py
+    send_free_reminders.py
+    send_missed_confirmation_emails.py
+
+    # Local browser/negative-flow harnesses that are not part of the pytest API suite.
+    test_booking_network_capture.py
+    test_booking_persistence_e2e.py
+    test_negative_bookings.py
+
+    # Test module helpers should not be reported as low-coverage API code.
+    tests/conftest.py
+    tests/mocked/test_dvla.py
+
+[report]
+skip_empty = True
+show_missing = True

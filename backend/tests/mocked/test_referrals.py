@@ -1455,6 +1455,119 @@ class TestReferralAdminActions:
         with pytest.raises(ValueError, match="cancelled or expired"):
             referral_service.resend_referral_code(db, program, now=now)
 
+    def test_resend_referral_code_requires_existing_code(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.referral_code_id = 5
+
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=None)]})
+        with pytest.raises(ValueError, match="does not have a referral code"):
+            referral_service.resend_referral_code(db, program)
+
+    def test_resend_referral_code_requires_valid_customer_email(self):
+        program = make_program(
+            status=referral_service.PROGRAM_STATUS_OPTED_IN,
+            customer=make_customer(email="not-an-email"),
+        )
+        program.referral_code_id = 5
+        code = SimpleNamespace(id=5, code="REF-ABCD-EFGH", expires_at=None)
+
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=code)]})
+        with pytest.raises(ValueError, match="valid email"):
+            referral_service.resend_referral_code(db, program)
+
+    def test_resend_referral_code_raises_when_email_send_fails(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.referral_code_id = 5
+        code = SimpleNamespace(id=5, code="REF-ABCD-EFGH", expires_at=None)
+
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=code)]})
+        with patch("email_service.send_referral_code_email", return_value=False):
+            with pytest.raises(ValueError, match="Failed to send referral code email"):
+                referral_service.resend_referral_code(db, program)
+
+    def test_get_or_create_promotion_creates_missing_reward_promotion(self):
+        db = SequenceDb({Promotion: [FakeQuery(first_row=None)]})
+
+        promotion = referral_service._get_or_create_promotion(
+            db,
+            referral_service.REWARD_PROMOTION_NAME,
+            100,
+            "free_week",
+            "RWD",
+        )
+
+        assert promotion in db.added
+        assert promotion.id == 101
+        assert promotion.description == "Referral program promotion"
+        assert promotion.discount_percent == 100
+        assert promotion.discount_type == "free_week"
+        assert promotion.code_prefix == "RWD"
+        assert promotion.total_codes == 0
+        assert promotion.codes_sent == 0
+        assert promotion.created_by == "system"
+
+    def test_ensure_reward_code_reuses_existing_reward_code(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.reward_code_id = 9
+        reward_code = SimpleNamespace(id=9, code="RWD-ABCD-EFGH")
+        db = SequenceDb({PromoCode: [FakeQuery(first_row=reward_code)]})
+
+        assert referral_service.ensure_reward_code(db, program) is reward_code
+
+    def test_ensure_reward_code_returns_none_when_rewards_disabled(self, monkeypatch):
+        monkeypatch.setenv("REFERRAL_REWARDS_ENABLED", "false")
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+
+        assert referral_service.ensure_reward_code(FakeReferralDb(), program) is None
+        assert referral_service.referral_rewards_enabled() is False
+
+    def test_ensure_reward_code_requires_customer(self):
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN)
+        program.customer = None
+        program.customer_id = 123
+        db = SequenceDb({Customer: [FakeQuery(first_row=None)]})
+
+        with pytest.raises(ValueError, match="customer not found"):
+            referral_service.ensure_reward_code(db, program)
+
+    def test_ensure_reward_code_creates_and_emails_reward_code(self):
+        now = datetime(2026, 6, 2, 12, 0, tzinfo=timezone.utc)
+        customer = make_customer(email="winner@example.com")
+        program = make_program(status=referral_service.PROGRAM_STATUS_OPTED_IN, customer=customer)
+        promotion = SimpleNamespace(id=7, total_codes=2, codes_sent=1)
+        db = FakeReferralDb()
+
+        with patch("referral_service._get_or_create_promotion", return_value=promotion), \
+             patch("referral_service._unique_code", return_value="RWD-ABCD-EFGH"), \
+             patch("email_service.send_referral_reward_email", return_value=True) as send:
+            code = referral_service.ensure_reward_code(db, program, now=now)
+
+        assert code in db.added
+        assert code.id == 101
+        assert code.promotion_id == promotion.id
+        assert code.code == "RWD-ABCD-EFGH"
+        assert code.customer_id == customer.id
+        assert code.recipient_email == customer.email
+        assert code.max_uses is None
+        assert code.email_sent is True
+        assert code.email_sent_at == now
+        assert code.email_subject == "You earned a TAG referral reward"
+        assert program.reward_code_id == code.id
+        assert program.reward_earned_at == now
+        assert program.reward_email_sent_at == now
+        assert promotion.total_codes == 3
+        assert promotion.codes_sent == 2
+        send.assert_called_once_with(customer.first_name, customer.email, code.code)
+
+    def test_token_secret_requires_config_outside_development(self, monkeypatch):
+        monkeypatch.delenv("REFERRAL_TOKEN_SECRET", raising=False)
+        monkeypatch.delenv("SECRET_KEY", raising=False)
+        monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+
+        with pytest.raises(RuntimeError, match="REFERRAL_TOKEN_SECRET"):
+            referral_service._token_secret()
+
 
 class TestReferralAdminEndpointProtection:
     def test_referral_code_actions_require_authentication(self):

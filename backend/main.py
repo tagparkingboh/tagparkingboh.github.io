@@ -3819,6 +3819,8 @@ async def fix_customer_names_endpoint(
     Use dry_run=true (default) to see what would be fixed.
     Use dry_run=false to actually apply the fixes.
     """
+    from db_models import Customer, Booking as DbBookingModel
+
     results = {
         "dry_run": dry_run,
         "customers_checked": 0,
@@ -3853,8 +3855,8 @@ async def fix_customer_names_endpoint(
             results["customers_fixed"] += 1
 
     # Fix bookings
-    bookings = db.query(Booking).filter(
-        (Booking.customer_first_name.isnot(None)) | (Booking.customer_last_name.isnot(None))
+    bookings = db.query(DbBookingModel).filter(
+        (DbBookingModel.customer_first_name.isnot(None)) | (DbBookingModel.customer_last_name.isnot(None))
     ).all()
     results["bookings_checked"] = len(bookings)
 
@@ -13516,6 +13518,7 @@ async def stripe_webhook(
     elif event_type in ("refund.updated", "refund.created"):
         # Handle refund events directly (alternative to charge.refunded)
         # Stripe returns StripeObject - use bracket notation
+        from db_models import Payment
         refund_id = data["id"]
         refund_amount = data["amount"] if "amount" in data else 0
         refund_status = data["status"] if "status" in data else None
@@ -18329,7 +18332,7 @@ async def check_blocked_date(
 # SMS MESSAGING ENDPOINTS
 # =============================================================================
 
-from db_models import SMSTemplate, SMSMessage, SMSDirection, SMSStatus
+from db_models import SMSTemplate, SMSMessage, SMSDirection, SMSStatus, Booking as DbBookingModel
 import sms_service
 
 
@@ -18928,7 +18931,7 @@ async def send_sms_message(
     # If template_id provided, render template with booking data
     if template_id and booking_id:
         template = db.query(SMSTemplate).filter(SMSTemplate.id == template_id).first()
-        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        booking = db.query(DbBookingModel).filter(DbBookingModel.id == booking_id).first()
         if template and booking:
             variables = sms_service.get_booking_variables(booking)
             content = sms_service.render_template(template.content, variables)
@@ -18976,7 +18979,7 @@ async def send_bulk_sms(
     # Build messages list
     messages = []
     for booking_id in booking_ids:
-        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        booking = db.query(DbBookingModel).filter(DbBookingModel.id == booking_id).first()
         if not booking or not booking.customer or not booking.customer.phone:
             continue
 
