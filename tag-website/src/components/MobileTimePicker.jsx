@@ -9,7 +9,7 @@ const isMobileOrTablet = () => {
     ('ontouchstart' in window)
 }
 
-function MobileTimePicker({ value, onChange, id, placeholder, label, onAmbiguousTime }) {
+function MobileTimePicker({ value, onChange, id, placeholder, label, onAmbiguousTime, onStartEntry }) {
   const [showPicker, setShowPicker] = useState(false)
   const [hours, setHours] = useState('00')
   const [minutes, setMinutes] = useState('00')
@@ -140,6 +140,7 @@ function MobileTimePicker({ value, onChange, id, placeholder, label, onAmbiguous
         maxLength={5}
         inputMode="numeric"
         value={value}
+        onFocus={onStartEntry}
         onChange={handleDesktopChange}
       />
     )
@@ -154,7 +155,10 @@ function MobileTimePicker({ value, onChange, id, placeholder, label, onAmbiguous
         placeholder={placeholder || "Tap to select time"}
         value={value}
         readOnly
-        onClick={() => setShowPicker(true)}
+        onClick={() => {
+          onStartEntry?.()
+          setShowPicker(true)
+        }}
         className="mobile-time-input"
       />
 
