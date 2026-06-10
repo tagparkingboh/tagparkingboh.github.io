@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import RosterCalendar from '../components/RosterCalendar'
+import RosterCalendar, { isPastDateKeyUK } from '../components/RosterCalendar'
 
 const mockAuthFetch = vi.hoisted(() => vi.fn())
 
@@ -8,11 +8,13 @@ vi.mock('../AuthContext', () => ({
   useAuth: () => ({ authFetch: mockAuthFetch }),
 }))
 
-const jsonResponse = (body, ok = true, status = 200) => Promise.resolve({
+const makeJsonResponse = (body, ok = true, status = 200) => ({
   ok,
   status,
   json: async () => body,
 })
+
+const jsonResponse = (body, ok = true, status = 200) => Promise.resolve(makeJsonResponse(body, ok, status))
 
 const missingBooking = {
   id: 2401,
@@ -57,8 +59,46 @@ const blockedGate = {
   can_generate_roster: false,
 }
 
-const setupApi = ({ gate = allowedGate, bookings = [missingBooking] } = {}) => {
+const pastBooking = {
+  ...missingBooking,
+  id: 2402,
+  reference: 'TAG-PAST2402',
+  customer_first_name: 'Past',
+  customer_last_name: 'Case',
+  dropoff_date: '2026-06-01',
+  dropoff_time: '03:45',
+  dropoff_flight_number: 'FR456',
+  dropoff_destination: 'Alicante Airport',
+}
+
+const pastGate = {
+  ...allowedGate,
+  date: '2026-06-01',
+  missing_events: [{
+    booking_id: 2402,
+    booking_reference: 'TAG-PAST2402',
+    event_type: 'drop_off',
+    event_time: '03:45',
+    customer_name: 'Past Case',
+    flight_number: 'FR456',
+    destination: 'Alicante Airport',
+  }],
+}
+
+const gateRangeResponse = (gates) => ({
+  date_from: '2026-06-01',
+  date_to: '2026-06-30',
+  gates,
+})
+
+const setupApi = ({
+  gate = allowedGate,
+  gates,
+  bookings = [missingBooking],
+  reviewGatesResponse = null,
+} = {}) => {
   const generateCalls = []
+  const monthGates = gates || [gate]
   mockAuthFetch.mockImplementation((url, options = {}) => {
     const requestUrl = String(url)
 
@@ -69,11 +109,7 @@ const setupApi = ({ gate = allowedGate, bookings = [missingBooking] } = {}) => {
       return jsonResponse([])
     }
     if (requestUrl.includes('/api/admin/roster/review-generate-gates')) {
-      return jsonResponse({
-        date_from: gate.date.slice(0, 8) + '01',
-        date_to: gate.date.slice(0, 8) + '30',
-        gates: [gate],
-      })
+      return reviewGatesResponse || jsonResponse(gateRangeResponse(monthGates))
     }
     if (requestUrl.includes('/api/admin/roster/review-generate-gate')) {
       return jsonResponse(gate)
@@ -110,6 +146,9 @@ const setupApi = ({ gate = allowedGate, bookings = [missingBooking] } = {}) => {
   })
   return { generateCalls }
 }
+
+const getCalendarDayCell = (dayNumber) => Array.from(document.querySelectorAll('.calendar-day:not(.empty)'))
+  .find((cell) => cell.querySelector('.day-number')?.textContent === String(dayNumber))
 
 const openJune24Modal = async () => {
   render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
@@ -188,5 +227,79 @@ describe('RosterCalendar generate roster CTA gate', () => {
     render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
 
     expect(await screen.findByText(/Pick-up TAG-WLJ80128 is not linked to a shift/)).toBeInTheDocument()
+  })
+
+  it('H: hides the calendar review banner until backend month gates finish loading', async () => {
+    let resolveReviewGates
+    const reviewGatesResponse = new Promise((resolve) => {
+      resolveReviewGates = resolve
+    })
+    setupApi({ reviewGatesResponse })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/admin/roster/review-generate-gates?date_from=2026-06-01&date_to=2026-06-30'),
+        expect.any(Object),
+      )
+    })
+    expect(screen.queryByText('Roster review needed')).not.toBeInTheDocument()
+
+    resolveReviewGates(makeJsonResponse(gateRangeResponse([allowedGate])))
+
+    expect(await screen.findByText(/Drop-off TAG-GATE2401 is not linked to a shift/)).toBeInTheDocument()
+  })
+
+  it('B: compacts UK-past days until Show past days is enabled', async () => {
+    setupApi({ bookings: [pastBooking], gates: [] })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/admin/bookings'),
+        expect.any(Object),
+      )
+    })
+    const dayOne = getCalendarDayCell(1)
+    expect(dayOne).toHaveClass('past-day', 'past-day-compact')
+    expect(dayOne.querySelector('.badge-past')).toHaveTextContent('Past')
+    expect(dayOne.querySelector('.badge-dropoff')).toBeNull()
+
+    const toggle = screen.getAllByRole('button', { name: 'Show past days' })[0]
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(getCalendarDayCell(1).querySelector('.badge-dropoff')).toHaveTextContent('1'))
+    expect(screen.getAllByRole('button', { name: 'Hide past days' })[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(getCalendarDayCell(1)).toHaveClass('past-day')
+    expect(getCalendarDayCell(1)).not.toHaveClass('past-day-compact')
+    expect(getCalendarDayCell(1).querySelector('.badge-past')).toBeNull()
+  })
+
+  it('U: excludes UK-past review issues from the banner until past days are shown', async () => {
+    setupApi({ bookings: [], gates: [pastGate] })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/admin/roster/review-generate-gates?date_from=2026-06-01&date_to=2026-06-30'),
+        expect.any(Object),
+      )
+    })
+    await waitFor(() => expect(screen.queryByText('Roster review needed')).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show past days' })[0])
+
+    expect(await screen.findByText(/Drop-off TAG-PAST2402 is not linked to a shift/)).toBeInTheDocument()
+  })
+
+  it('E: uses the UK date boundary when deciding which days are past', () => {
+    const ukJustAfterMidnight = new Date('2026-06-09T23:30:00Z')
+
+    expect(isPastDateKeyUK('2026-06-09', ukJustAfterMidnight)).toBe(true)
+    expect(isPastDateKeyUK('2026-06-10', ukJustAfterMidnight)).toBe(false)
   })
 })

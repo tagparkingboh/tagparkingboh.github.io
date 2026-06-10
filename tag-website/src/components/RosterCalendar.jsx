@@ -76,6 +76,10 @@ export const currentAndFutureDateKeysForUK = (dateKeys = [], date = new Date()) 
   return (dateKeys || []).filter((dateKey) => dateKey && dateKey >= todayKey)
 }
 
+export const isPastDateKeyUK = (dateKey, date = new Date()) => Boolean(
+  dateKey && dateKey < getUKDateKey(date)
+)
+
 export const getAutoShiftShapeState = (shift) => {
   if (!shift || shift.created_source !== 'auto') return null
 
@@ -637,6 +641,18 @@ function RosterCalendar({
     setSourceFilter(next)
     try { window.localStorage.setItem(storageKey, next) } catch {}
   }, [storageKey])
+  const pastDaysStorageKey = `${storageKey}.showPastDays`
+  const [showPastDays, setShowPastDays] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && window.localStorage.getItem(pastDaysStorageKey) === 'true'
+    } catch {
+      return false
+    }
+  })
+  const updateShowPastDays = useCallback((next) => {
+    setShowPastDays(next)
+    try { window.localStorage.setItem(pastDaysStorageKey, next ? 'true' : 'false') } catch {}
+  }, [pastDaysStorageKey])
   // Teammates' shifts (view-only, employee mode only). Stripped shape from
   // /api/employee/team-shifts — no id, no staff_id, no shift_type.
   const [teamShifts, setTeamShifts] = useState([])
@@ -1577,12 +1593,7 @@ function RosterCalendar({
   // Is today?
   const isToday = (day) => {
     if (!day) return false
-    const today = new Date()
-    return (
-      day === today.getDate() &&
-      calendarData.month === today.getMonth() &&
-      calendarData.year === today.getFullYear()
-    )
+    return getDateKey(day) === getUKDateKey()
   }
 
   // Handle date selection - close modal if open, otherwise open modal
@@ -2992,15 +3003,12 @@ function RosterCalendar({
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
-  const selectedDateReviewItemsFromClient = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
   const selectedDateReviewItemsFromBackend = (
     backendReviewGatesLoaded && selectedDate
       ? getRosterCoverageReviewItemsFromGates(reviewGenerateGateByDate, [selectedDate])
       : []
   )
-  const selectedDateReviewItems = backendReviewGatesLoaded
-    ? selectedDateReviewItemsFromBackend
-    : selectedDateReviewItemsFromClient
+  const selectedDateReviewItems = selectedDateReviewItemsFromBackend
   const selectedMissingShiftReviewItems = selectedDateReviewItems.filter((item) => item.kind === 'missing-shift')
   const selectedReviewIssueCount = selectedMissingShiftReviewItems.length
   const selectedAffectedBookingEventCount = selectedMissingShiftReviewItems.length
@@ -3016,14 +3024,14 @@ function RosterCalendar({
     .flat()
     .filter(Boolean)
     .map((day) => getDateKey(day))
+  const currentAndFutureVisibleDateKeys = currentAndFutureDateKeysForUK(visibleDateKeys)
+  const reviewDateKeys = showPastDays ? visibleDateKeys : currentAndFutureVisibleDateKeys
   const heatmapDateKeys = currentAndFutureDateKeysForUK(visibleDateKeys)
   const calendarDemandItems = getRosterDemandByDate(bookingsByDate, heatmapDateKeys)
   const calendarDemandTotal = calendarDemandItems.reduce((total, item) => total + item.total, 0)
-  const calendarReviewItemsFromClient = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
-  const calendarReviewItemsFromBackend = getRosterCoverageReviewItemsFromGates(reviewGenerateGateByDate, visibleDateKeys)
   const calendarReviewItems = backendReviewGatesLoaded
-    ? calendarReviewItemsFromBackend
-    : calendarReviewItemsFromClient
+    ? getRosterCoverageReviewItemsFromGates(reviewGenerateGateByDate, reviewDateKeys)
+    : []
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
   const calendarReviewIssueCount = missingShiftReviewItems.length
   const calendarAffectedBookingEventCount = missingShiftReviewItems.length
@@ -3065,6 +3073,14 @@ function RosterCalendar({
         )}
         <button className="calendar-today-btn" onClick={goToToday}>
           Today
+        </button>
+        <button
+          type="button"
+          className={`calendar-past-toggle ${showPastDays ? 'active' : ''}`}
+          onClick={() => updateShowPastDays(!showPastDays)}
+          aria-pressed={showPastDays}
+        >
+          {showPastDays ? 'Hide past days' : 'Show past days'}
         </button>
         <button className="calendar-refresh-btn" onClick={fetchData} disabled={loading}>
           {loading ? 'Loading...' : 'Refresh'}
@@ -3202,6 +3218,8 @@ function RosterCalendar({
                 const dayShifts = getShiftsForDay(day)
                 const dayTeamShifts = !isAdmin ? getTeamShiftsForDay(day) : []
                 const dateKey = getDateKey(day)
+                const isPastDay = isPastDateKeyUK(dateKey)
+                const showDayContent = showPastDays || !isPastDay
                 const blockedInfo = getBlockedInfoForDay(day)
                 const dayOccupancy = getOccupancyForDay(day)
                 const isAtCap = dayOccupancy >= SOFT_CAP
@@ -3218,12 +3236,18 @@ function RosterCalendar({
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${isPastDay ? 'past-day' : ''} ${isPastDay && !showPastDays ? 'past-day-compact' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
+                        {isPastDay && !showPastDays && (
+                          <div className="day-content day-content-compact">
+                            <div className="day-badge badge-past">Past</div>
+                          </div>
+                        )}
+                        {showDayContent && (
                         <div className="day-content">
                           {/* Blocked date indicator (manual) */}
                           {blockedInfo && (
@@ -3318,6 +3342,7 @@ function RosterCalendar({
                             </div>
                           ))}
                         </div>
+                        )}
                       </>
                     )}
                   </div>
