@@ -25,7 +25,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from routers.roster import _pickup_event_date, shift_to_response
+from db_models import BookingStatus
+from routers.roster import _booking_vehicle_registration, _pickup_event_date, shift_to_response
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,9 @@ def _booking(**overrides):
         pickup_origin="Palma de Mallorca Airport",
         pickup_airline_name="easyJet",
         pickup_flight_number="EZY4041",
+        status=BookingStatus.CONFIRMED,
+        vehicle=None,
+        vehicle_registration=None,
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -200,6 +204,45 @@ class TestPickupEventDate:
             pickup_time=time(0, 0),
         )
         assert _pickup_event_date(b) == date(2026, 7, 31)
+
+
+# ===========================================================================
+# vehicle_registration in roster API payloads — unit HUEB
+# ===========================================================================
+
+class TestBookingVehicleRegistration:
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_vehicle_relationship_registration_wins(self):
+        b = _booking(
+            vehicle=SimpleNamespace(registration="AB12CDE"),
+            vehicle_registration="ZZ99ZZZ",
+        )
+        assert _booking_vehicle_registration(b) == "AB12CDE"
+
+    # --- UNHAPPY -------------------------------------------------------------
+
+    def test_U_missing_registration_returns_none(self):
+        b = _booking(vehicle=None, vehicle_registration=None)
+        assert _booking_vehicle_registration(b) is None
+
+    # --- EDGE ----------------------------------------------------------------
+
+    def test_E_empty_vehicle_registration_falls_back_to_booking_column(self):
+        b = _booking(
+            vehicle=SimpleNamespace(registration=""),
+            vehicle_registration="EF34GHI",
+        )
+        assert _booking_vehicle_registration(b) == "EF34GHI"
+
+    # --- BOUNDARY ------------------------------------------------------------
+
+    def test_B_magicmock_attributes_are_not_serialized_as_registrations(self):
+        """Mocked API tests often use bare MagicMock bookings. The helper must
+        ignore non-string placeholder attrs so Pydantic gets None, not a mock."""
+        b = MagicMock()
+        assert _booking_vehicle_registration(b) is None
 
 
 # ===========================================================================
@@ -353,3 +396,141 @@ class TestShiftToResponsePickupLinkMatch:
         assert len(out.bookings) == 1
         # dropoff branch matches first
         assert out.bookings[0].type == "dropoff"
+
+
+# ===========================================================================
+# vehicle_registration in roster API payloads — integration HUEB
+# ===========================================================================
+
+class TestShiftToResponseVehicleRegistration:
+
+    def _db_mock(self, booking=None):
+        db = MagicMock()
+        chain = MagicMock()
+        chain.filter.return_value = chain
+        chain.first.return_value = booking
+        db.query.return_value = chain
+        return db
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_many_to_many_dropoff_includes_vehicle_registration_and_legacy_field(self):
+        b = _booking(
+            id=77,
+            reference="TAG-REGHAPPY",
+            dropoff_date=date(2026, 7, 2),
+            vehicle=SimpleNamespace(registration="HX24TAG"),
+        )
+        s = _shift(date=date(2026, 7, 2), bookings=[b])
+
+        out = shift_to_response(s, self._db_mock())
+
+        assert out.bookings[0].vehicle_registration == "HX24TAG"
+        assert out.booking_vehicle_registration == "HX24TAG"
+
+    # --- UNHAPPY -------------------------------------------------------------
+
+    def test_U_cancelled_booking_registration_is_not_returned(self):
+        b = _booking(
+            reference="TAG-CANCELLED",
+            dropoff_date=date(2026, 7, 2),
+            status=BookingStatus.CANCELLED,
+            vehicle=SimpleNamespace(registration="NO00SHOW"),
+        )
+        s = _shift(date=date(2026, 7, 2), bookings=[b])
+
+        out = shift_to_response(s, self._db_mock())
+
+        assert out.bookings == []
+        assert out.booking_vehicle_registration is None
+
+    # --- EDGE ----------------------------------------------------------------
+
+    def test_E_legacy_booking_id_path_uses_booking_vehicle_registration_column(self):
+        b = _booking(
+            id=88,
+            reference="TAG-LEGACYREG",
+            dropoff_date=date(2026, 7, 2),
+            vehicle=None,
+            vehicle_registration="LG55ACY",
+        )
+        s = _shift(date=date(2026, 7, 2), booking_id=88, bookings=[])
+
+        out = shift_to_response(s, self._db_mock(booking=b))
+
+        assert out.bookings[0].vehicle_registration == "LG55ACY"
+        assert out.booking_vehicle_registration == "LG55ACY"
+
+    # --- BOUNDARY ------------------------------------------------------------
+
+    def test_B_pickup_link_on_arrival_date_carries_vehicle_registration(self):
+        b = _booking(
+            id=99,
+            reference="TAG-PICKUPREG",
+            dropoff_date=date(2026, 7, 1),
+            flight_arrival_date=date(2026, 7, 3),
+            pickup_date=date(2026, 7, 3),
+            flight_arrival_time=time(0, 0),
+            pickup_time=time(0, 30),
+            vehicle=SimpleNamespace(registration="PX00MID"),
+        )
+        s = _shift(
+            date=date(2026, 7, 3),
+            start_time=time(0, 0),
+            end_time=time(1, 0),
+            bookings=[b],
+        )
+
+        out = shift_to_response(s, self._db_mock())
+
+        assert out.bookings[0].type == "pickup"
+        assert out.bookings[0].vehicle_registration == "PX00MID"
+        assert out.booking_vehicle_registration == "PX00MID"
+
+
+# ===========================================================================
+# GET /api/roster JSON payload — integration HUEB target for this API update
+# ===========================================================================
+
+class TestRosterVehicleRegistrationApi:
+
+    def test_H_get_roster_serializes_vehicle_registration_fields(self):
+        """Real FastAPI route + response serialization: the shift detail payload
+        includes both `bookings[].vehicle_registration` and the legacy
+        `booking_vehicle_registration` field used by older calendar clients."""
+        from fastapi.testclient import TestClient
+        from database import get_db
+        from main import app
+        from routers.roster import require_admin
+
+        b = _booking(
+            id=515,
+            reference="TAG-APIREG",
+            dropoff_date=date(2026, 7, 2),
+            vehicle=SimpleNamespace(registration="AP24REG"),
+        )
+        shift = _shift(id=404, date=date(2026, 7, 2), bookings=[b])
+
+        query = MagicMock()
+        query.filter.return_value = query
+        query.order_by.return_value = query
+        query.all.return_value = [shift]
+
+        db = MagicMock()
+        db.query.return_value = query
+
+        def db_override():
+            yield db
+
+        admin = SimpleNamespace(id=1, is_admin=True, email="admin@tag.test")
+        app.dependency_overrides[require_admin] = lambda: admin
+        app.dependency_overrides[get_db] = db_override
+        try:
+            response = TestClient(app).get("/api/roster?source=all&date=2026-07-02")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload[0]["bookings"][0]["vehicle_registration"] == "AP24REG"
+        assert payload[0]["booking_vehicle_registration"] == "AP24REG"

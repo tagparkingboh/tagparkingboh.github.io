@@ -2626,6 +2626,14 @@
   text-decoration: underline;
 }
 
+.time-format-hint {
+  margin: 0.45rem 0 0;
+  color: #D9FF00;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 /* 24-hour time format warning - inline below time input */
 .time-format-warning {
   margin: 0.5rem 0 0 0;
