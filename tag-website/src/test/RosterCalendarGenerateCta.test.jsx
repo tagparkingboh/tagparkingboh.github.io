@@ -37,7 +37,15 @@ const allowedGate = {
   suppressed_shift_ids: [],
   suppressed_booking_references: [],
   can_generate_roster: true,
-  missing_events: [],
+  missing_events: [{
+    booking_id: 2401,
+    booking_reference: 'TAG-GATE2401',
+    event_type: 'drop_off',
+    event_time: '10:40',
+    customer_name: 'Gate Case',
+    flight_number: 'FR123',
+    destination: 'Murcia Airport',
+  }],
 }
 
 const blockedGate = {
@@ -65,6 +73,7 @@ const unresolvedShiftException = {
 
 const setupApi = ({
   gate = allowedGate,
+  bookings = [missingBooking],
   shiftExceptionsBeforeGenerate = [],
   shiftExceptionsAfterGenerate = [],
 } = {}) => {
@@ -75,7 +84,7 @@ const setupApi = ({
     const requestUrl = String(url)
 
     if (requestUrl.includes('/api/admin/bookings')) {
-      return jsonResponse({ bookings: [missingBooking] })
+      return jsonResponse({ bookings })
     }
     if (requestUrl.includes('/api/roster/shift-exceptions')) {
       shiftExceptionCalls.push({ url: requestUrl, options })
@@ -83,6 +92,13 @@ const setupApi = ({
     }
     if (requestUrl.includes('/api/roster?')) {
       return jsonResponse([])
+    }
+    if (requestUrl.includes('/api/admin/roster/review-generate-gates')) {
+      return jsonResponse({
+        date_from: gate.date.slice(0, 8) + '01',
+        date_to: gate.date.slice(0, 8) + '30',
+        gates: [gate],
+      })
     }
     if (requestUrl.includes('/api/admin/roster/review-generate-gate')) {
       return jsonResponse(gate)
@@ -192,5 +208,29 @@ describe('RosterCalendar generate roster CTA gate', () => {
     await waitFor(() => {
       expect(screen.queryByText('No covering shift')).not.toBeInTheDocument()
     })
+  })
+
+  it('H: surfaces backend-only missing pickup events in the calendar review', async () => {
+    vi.setSystemTime(new Date('2026-07-01T12:00:00Z'))
+    setupApi({
+      bookings: [],
+      gate: {
+        ...allowedGate,
+        date: '2026-07-14',
+        missing_events: [{
+          booking_id: 804,
+          booking_reference: 'TAG-WLJ80128',
+          event_type: 'pick_up',
+          event_time: '18:00',
+          customer_name: 'Daniel Beaumont',
+          flight_number: 'TOM6222',
+          destination: 'Bournemouth',
+        }],
+      },
+    })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    expect(await screen.findByText(/Pick-up TAG-WLJ80128 is not linked to a shift/)).toBeInTheDocument()
   })
 })
