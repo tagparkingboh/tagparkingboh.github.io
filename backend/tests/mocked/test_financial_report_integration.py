@@ -5,7 +5,7 @@ These tests verify the full workflow from bookings data to API response.
 All tests use mocked data to avoid database dependencies.
 """
 import pytest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from collections import defaultdict
 
@@ -106,6 +106,7 @@ def simulate_financial_report_endpoint(
 ):
     """Simulate the financial report endpoint logic."""
     from db_models import BookingStatus, PaymentStatus
+    from main import to_uk_datetime
 
     if promo_codes is None:
         promo_codes = {}
@@ -152,7 +153,7 @@ def simulate_financial_report_endpoint(
     for booking in bookings:
         if not booking.payment or not booking.payment.paid_at:
             continue
-        paid_date = booking.payment.paid_at.date()
+        paid_date = to_uk_datetime(booking.payment.paid_at).date()
         amount = booking.payment.amount_pence or 0
         refund = booking.payment.refund_amount_pence or 0
         net = amount - refund
@@ -173,7 +174,11 @@ def simulate_financial_report_endpoint(
 
     if revenue_by_day:
         top_day = max(revenue_by_day.items(), key=lambda x: x[1])
-        bookings_on_day = sum(1 for b in bookings if b.payment and b.payment.paid_at and b.payment.paid_at.date() == top_day[0])
+        bookings_on_day = sum(
+            1
+            for b in bookings
+            if b.payment and b.payment.paid_at and to_uk_datetime(b.payment.paid_at).date() == top_day[0]
+        )
         fun_facts["topRevenueDay"] = {
             "date": top_day[0].strftime("%a %d %b %Y"),
             "amount": f"£{top_day[1] / 100:.2f}",
@@ -200,7 +205,8 @@ def simulate_financial_report_endpoint(
     for booking in bookings:
         if not booking.payment or not booking.payment.paid_at:
             continue
-        month_key = booking.payment.paid_at.strftime("%Y-%m")
+        paid_at_uk = to_uk_datetime(booking.payment.paid_at)
+        month_key = paid_at_uk.strftime("%Y-%m")
 
         gross_pence = booking.payment.amount_pence or 0
         refund_pence = booking.payment.refund_amount_pence or 0
@@ -222,8 +228,8 @@ def simulate_financial_report_endpoint(
         bookings_by_month[month_key].append({
             "id": booking.id,
             "reference": booking.reference,
-            "paidDate": booking.payment.paid_at.strftime("%d/%m/%Y"),
-            "paidDateSort": booking.payment.paid_at.date().isoformat(),
+            "paidDate": paid_at_uk.strftime("%d/%m/%Y"),
+            "paidDateSort": paid_at_uk.date().isoformat(),
             "customerName": f"{booking.customer.first_name} {booking.customer.last_name}",
             "tripDays": trip_days,
             "grossPrice": f"£{gross_pence / 100:.2f}",
@@ -864,6 +870,206 @@ class TestDataIntegrity:
 
         booking = response["monthlyData"][0]["bookings"][0]
         assert booking["paidDate"] == "15/01/2024"
+
+    @pytest.mark.parametrize(
+        "paid_at_utc, expected_uk_display, expected_in_10_june_filter",
+        [
+            (datetime(2026, 6, 9, 22, 59, tzinfo=timezone.utc), "09/06/2026 23:59", False),
+            (datetime(2026, 6, 9, 23, 0, tzinfo=timezone.utc), "10/06/2026 00:00", True),
+            (datetime(2026, 6, 9, 23, 59, tzinfo=timezone.utc), "10/06/2026 00:59", True),
+            (datetime(2026, 6, 10, 0, 0, tzinfo=timezone.utc), "10/06/2026 01:00", True),
+            (datetime(2026, 6, 10, 0, 1, tzinfo=timezone.utc), "10/06/2026 01:01", True),
+        ],
+    )
+    def test_payment_date_uses_uk_boundary_for_bst_midnight(
+        self,
+        paid_at_utc,
+        expected_uk_display,
+        expected_in_10_june_filter,
+    ):
+        """Financial reports should display and filter paid_at by UK local date."""
+        from main import parse_uk_date_end, parse_uk_date_start, to_uk_datetime
+
+        paid_at_uk = to_uk_datetime(paid_at_utc)
+        assert paid_at_uk.strftime("%d/%m/%Y %H:%M") == expected_uk_display
+
+        filter_start = parse_uk_date_start("10/06/2026")
+        filter_end = parse_uk_date_end("10/06/2026")
+        assert (filter_start <= paid_at_utc <= filter_end) is expected_in_10_june_filter
+
+    def test_financial_report_groups_late_utc_payment_under_next_uk_day(self):
+        """A 23:00+ UTC payment during BST should appear on the following UK date."""
+        bookings = [
+            create_mock_booking(
+                id=1,
+                reference="TAG-LGG16579",
+                payment=create_mock_payment(
+                    amount_pence=6300,
+                    paid_at=datetime(2026, 6, 9, 23, 32, tzinfo=timezone.utc),
+                ),
+            ),
+        ]
+
+        response = simulate_financial_report_endpoint(bookings)
+
+        booking = response["monthlyData"][0]["bookings"][0]
+        assert booking["reference"] == "TAG-LGG16579"
+        assert booking["paidDate"] == "10/06/2026"
+        assert booking["paidDateSort"] == "2026-06-10"
+
+    @pytest.mark.parametrize(
+        "paid_at_utc, expected_uk_display",
+        [
+            # Winter: UK is GMT, so UTC midnight boundaries do not shift.
+            (datetime(2026, 1, 9, 22, 59, tzinfo=timezone.utc), "09/01/2026 22:59"),
+            (datetime(2026, 1, 9, 23, 0, tzinfo=timezone.utc), "09/01/2026 23:00"),
+            (datetime(2026, 1, 9, 23, 59, tzinfo=timezone.utc), "09/01/2026 23:59"),
+            (datetime(2026, 1, 10, 0, 0, tzinfo=timezone.utc), "10/01/2026 00:00"),
+            (datetime(2026, 1, 10, 0, 1, tzinfo=timezone.utc), "10/01/2026 00:01"),
+            # Spring forward: 01:00 UTC skips to 02:00 UK local time.
+            (datetime(2026, 3, 29, 0, 59, tzinfo=timezone.utc), "29/03/2026 00:59"),
+            (datetime(2026, 3, 29, 1, 0, tzinfo=timezone.utc), "29/03/2026 02:00"),
+            # Autumn back: 01:00 UTC returns to 01:00 UK local time.
+            (datetime(2026, 10, 25, 0, 59, tzinfo=timezone.utc), "25/10/2026 01:59"),
+            (datetime(2026, 10, 25, 1, 0, tzinfo=timezone.utc), "25/10/2026 01:00"),
+        ],
+    )
+    def test_payment_date_uses_uk_clock_changes(self, paid_at_utc, expected_uk_display):
+        """UK display should follow GMT/BST clock changes from timezone data."""
+        from main import to_uk_datetime
+
+        assert to_uk_datetime(paid_at_utc).strftime("%d/%m/%Y %H:%M") == expected_uk_display
+
+    def test_uk_date_filter_bounds_change_with_gmt_and_bst(self):
+        """A DD/MM/YYYY filter should map to the correct UTC span for that UK day."""
+        from main import parse_uk_date_end, parse_uk_date_start
+
+        winter_start = parse_uk_date_start("10/01/2026").astimezone(timezone.utc)
+        winter_end = parse_uk_date_end("10/01/2026").astimezone(timezone.utc)
+        assert winter_start == datetime(2026, 1, 10, 0, 0, tzinfo=timezone.utc)
+        assert winter_end == datetime(2026, 1, 10, 23, 59, 59, 999999, tzinfo=timezone.utc)
+
+        summer_start = parse_uk_date_start("10/06/2026").astimezone(timezone.utc)
+        summer_end = parse_uk_date_end("10/06/2026").astimezone(timezone.utc)
+        assert summer_start == datetime(2026, 6, 9, 23, 0, tzinfo=timezone.utc)
+        assert summer_end == datetime(2026, 6, 10, 22, 59, 59, 999999, tzinfo=timezone.utc)
+
+    @pytest.mark.parametrize(
+        "paid_at_utc, expected_uk_display",
+        [
+            # BST month end: the last UTC hour of June is already July in the UK.
+            (datetime(2026, 6, 30, 22, 59, tzinfo=timezone.utc), "30/06/2026 23:59"),
+            (datetime(2026, 6, 30, 23, 0, tzinfo=timezone.utc), "01/07/2026 00:00"),
+            (datetime(2026, 6, 30, 23, 59, tzinfo=timezone.utc), "01/07/2026 00:59"),
+            (datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc), "01/07/2026 01:00"),
+            # GMT month end: UTC and UK dates roll together.
+            (datetime(2026, 1, 31, 23, 59, tzinfo=timezone.utc), "31/01/2026 23:59"),
+            (datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc), "01/02/2026 00:00"),
+            # GMT year end: 31 December rolls to 1 January at the UTC/UK boundary.
+            (datetime(2026, 12, 31, 22, 59, tzinfo=timezone.utc), "31/12/2026 22:59"),
+            (datetime(2026, 12, 31, 23, 0, tzinfo=timezone.utc), "31/12/2026 23:00"),
+            (datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc), "31/12/2026 23:59"),
+            (datetime(2027, 1, 1, 0, 0, tzinfo=timezone.utc), "01/01/2027 00:00"),
+            (datetime(2027, 1, 1, 0, 1, tzinfo=timezone.utc), "01/01/2027 00:01"),
+        ],
+    )
+    def test_payment_date_uses_uk_end_of_month_boundaries(self, paid_at_utc, expected_uk_display):
+        """Financial date display should roll month boundaries in UK local time."""
+        from main import to_uk_datetime
+
+        assert to_uk_datetime(paid_at_utc).strftime("%d/%m/%Y %H:%M") == expected_uk_display
+
+    def test_financial_report_groups_late_utc_month_end_payment_under_next_uk_month(self):
+        """A BST month-end payment after 23:00 UTC should group under the next UK month."""
+        bookings = [
+            create_mock_booking(
+                id=1,
+                reference="TAG-MONTHEND",
+                payment=create_mock_payment(
+                    amount_pence=6300,
+                    paid_at=datetime(2026, 6, 30, 23, 15, tzinfo=timezone.utc),
+                ),
+            ),
+        ]
+
+        response = simulate_financial_report_endpoint(bookings)
+
+        month = response["monthlyData"][0]
+        booking = month["bookings"][0]
+        assert month["monthKey"] == "2026-07"
+        assert month["monthLabel"] == "July 2026"
+        assert booking["paidDate"] == "01/07/2026"
+        assert booking["paidDateSort"] == "2026-07-01"
+
+    def test_financial_report_groups_year_end_payment_under_next_uk_year(self):
+        """A payment at 00:00 UTC on 1 January should group under the new UK year."""
+        bookings = [
+            create_mock_booking(
+                id=1,
+                reference="TAG-YEAREND",
+                payment=create_mock_payment(
+                    amount_pence=6300,
+                    paid_at=datetime(2027, 1, 1, 0, 0, tzinfo=timezone.utc),
+                ),
+            ),
+        ]
+
+        response = simulate_financial_report_endpoint(bookings)
+
+        month = response["monthlyData"][0]
+        booking = month["bookings"][0]
+        assert month["monthKey"] == "2027-01"
+        assert month["monthLabel"] == "January 2027"
+        assert booking["paidDate"] == "01/01/2027"
+        assert booking["paidDateSort"] == "2027-01-01"
+
+    @pytest.mark.parametrize(
+        "paid_at_utc, expected_uk_display",
+        [
+            (datetime(2024, 2, 28, 23, 59, tzinfo=timezone.utc), "28/02/2024 23:59"),
+            (datetime(2024, 2, 29, 0, 0, tzinfo=timezone.utc), "29/02/2024 00:00"),
+            (datetime(2024, 2, 29, 0, 1, tzinfo=timezone.utc), "29/02/2024 00:01"),
+            (datetime(2024, 2, 29, 23, 59, tzinfo=timezone.utc), "29/02/2024 23:59"),
+            (datetime(2024, 3, 1, 0, 0, tzinfo=timezone.utc), "01/03/2024 00:00"),
+        ],
+    )
+    def test_payment_date_uses_uk_leap_year_boundaries(self, paid_at_utc, expected_uk_display):
+        """Leap day should be represented and grouped as a real UK calendar day."""
+        from main import to_uk_datetime
+
+        assert to_uk_datetime(paid_at_utc).strftime("%d/%m/%Y %H:%M") == expected_uk_display
+
+    def test_uk_date_filter_bounds_include_full_leap_day(self):
+        """A 29/02/YYYY filter should include the whole leap day and exclude neighbours."""
+        from main import parse_uk_date_end, parse_uk_date_start
+
+        leap_start = parse_uk_date_start("29/02/2024")
+        leap_end = parse_uk_date_end("29/02/2024")
+        assert leap_start.astimezone(timezone.utc) == datetime(2024, 2, 29, 0, 0, tzinfo=timezone.utc)
+        assert leap_end.astimezone(timezone.utc) == datetime(
+            2024, 2, 29, 23, 59, 59, 999999, tzinfo=timezone.utc
+        )
+
+        assert datetime(2024, 2, 28, 23, 59, 59, 999999, tzinfo=timezone.utc) < leap_start
+        assert leap_start <= datetime(2024, 2, 29, 0, 0, tzinfo=timezone.utc) <= leap_end
+        assert leap_start <= datetime(2024, 2, 29, 23, 59, 59, tzinfo=timezone.utc) <= leap_end
+        assert datetime(2024, 3, 1, 0, 0, tzinfo=timezone.utc) > leap_end
+
+    def test_uk_date_filter_bounds_include_full_year_end_day(self):
+        """A 31/12/YYYY filter should include the full UK calendar day and exclude New Year."""
+        from main import parse_uk_date_end, parse_uk_date_start
+
+        year_end_start = parse_uk_date_start("31/12/2026")
+        year_end_end = parse_uk_date_end("31/12/2026")
+        assert year_end_start.astimezone(timezone.utc) == datetime(2026, 12, 31, 0, 0, tzinfo=timezone.utc)
+        assert year_end_end.astimezone(timezone.utc) == datetime(
+            2026, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc
+        )
+
+        assert datetime(2026, 12, 30, 23, 59, 59, 999999, tzinfo=timezone.utc) < year_end_start
+        assert year_end_start <= datetime(2026, 12, 31, 0, 0, tzinfo=timezone.utc) <= year_end_end
+        assert year_end_start <= datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc) <= year_end_end
+        assert datetime(2027, 1, 1, 0, 0, tzinfo=timezone.utc) > year_end_end
 
     def test_status_value_preserved(self):
         """Booking and payment status should be preserved."""

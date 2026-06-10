@@ -24,6 +24,26 @@ def get_uk_now() -> datetime:
     return datetime.now(ZoneInfo("Europe/London"))
 
 
+UK_TIMEZONE = ZoneInfo("Europe/London")
+
+
+def to_uk_datetime(dt: datetime) -> datetime:
+    """Convert a stored timestamp to UK local time before date/time display."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(UK_TIMEZONE)
+
+
+def parse_uk_date_start(date_str: str) -> datetime:
+    """Parse a DD/MM/YYYY date as the start of that UK local day."""
+    return datetime.strptime(date_str, "%d/%m/%Y").replace(tzinfo=UK_TIMEZONE)
+
+
+def parse_uk_date_end(date_str: str) -> datetime:
+    """Parse a DD/MM/YYYY date as the end of that UK local day."""
+    return parse_uk_date_start(date_str).replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
 def title_case_name(name: str) -> str:
     """Convert name to title case (e.g., 'JOHN DOE' -> 'John Doe', 'jane doe' -> 'Jane Doe')."""
     if not name:
@@ -6094,8 +6114,7 @@ async def get_fun_facts(
     for booking in bookings:
         # Use payment.paid_at for the confirmation/transaction date
         if booking.payment and booking.payment.paid_at:
-            # Extract just the date from the datetime
-            paid_date = booking.payment.paid_at.date()
+            paid_date = to_uk_datetime(booking.payment.paid_at).date()
             day_counter[paid_date] += 1
 
     if day_counter:
@@ -6503,16 +6522,14 @@ async def get_financial_report(
     # Date filters (based on payment date)
     if from_date:
         try:
-            from_dt = datetime.strptime(from_date, "%d/%m/%Y")
+            from_dt = parse_uk_date_start(from_date)
             query = query.filter(Payment.paid_at >= from_dt)
         except ValueError:
             pass
 
     if to_date:
         try:
-            to_dt = datetime.strptime(to_date, "%d/%m/%Y")
-            # Include the entire end date
-            to_dt = to_dt.replace(hour=23, minute=59, second=59)
+            to_dt = parse_uk_date_end(to_date)
             query = query.filter(Payment.paid_at <= to_dt)
         except ValueError:
             pass
@@ -6614,7 +6631,7 @@ async def get_financial_report(
 
     for booking in bookings:
         if booking.payment and booking.payment.paid_at and booking.payment.amount_pence:
-            paid_date = booking.payment.paid_at.date()
+            paid_date = to_uk_datetime(booking.payment.paid_at).date()
             amount = booking.payment.amount_pence
 
             # Subtract refunds for net revenue
@@ -6643,7 +6660,7 @@ async def get_financial_report(
     }
 
     # Get current date info
-    today = date.today()
+    today = get_uk_now().date()
     today_iso = today.isocalendar()
     current_week_key = f"{today_iso[0]}-W{today_iso[1]:02d}"
     current_month_key = today.strftime("%Y-%m")
@@ -6736,7 +6753,7 @@ async def get_financial_report(
         if not booking.payment or not booking.payment.paid_at:
             continue
 
-        paid_date = booking.payment.paid_at.date()
+        paid_date = to_uk_datetime(booking.payment.paid_at).date()
         month_key = paid_date.strftime("%Y-%m")
 
         # Net = what customer actually paid
@@ -6999,15 +7016,14 @@ async def export_financial_report(
 
     if from_date:
         try:
-            from_dt = datetime.strptime(from_date, "%d/%m/%Y")
+            from_dt = parse_uk_date_start(from_date)
             query = query.filter(Payment.paid_at >= from_dt)
         except ValueError:
             pass
 
     if to_date:
         try:
-            to_dt = datetime.strptime(to_date, "%d/%m/%Y")
-            to_dt = to_dt.replace(hour=23, minute=59, second=59)
+            to_dt = parse_uk_date_end(to_date)
             query = query.filter(Payment.paid_at <= to_dt)
         except ValueError:
             pass
@@ -7114,7 +7130,7 @@ async def export_financial_report(
         if not booking.payment or not booking.payment.paid_at:
             continue
 
-        paid_date = booking.payment.paid_at.strftime("%d/%m/%Y")
+        paid_date = to_uk_datetime(booking.payment.paid_at).strftime("%d/%m/%Y")
         # Net = what customer actually paid
         net_pence = booking.payment.amount_pence or 0
         refund_pence = booking.payment.refund_amount_pence or 0
