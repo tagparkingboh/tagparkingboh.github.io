@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import RosterCalendar, { isPastDateKeyUK } from '../components/RosterCalendar'
+import RosterCalendar, { isPastDateKeyUK, shiftKeepsPastDayVisible } from '../components/RosterCalendar'
 
 const mockAuthFetch = vi.hoisted(() => vi.fn())
 
@@ -85,6 +85,20 @@ const pastGate = {
   }],
 }
 
+const overnightShift = {
+  id: 9001,
+  date: '2026-06-08',
+  end_date: '2026-06-09',
+  start_time: '23:00',
+  end_time: '01:20',
+  staff_id: 14,
+  staff_first_name: 'Night',
+  staff_last_name: 'Driver',
+  staff_initials: 'ND',
+  created_source: 'manual',
+  status: 'scheduled',
+}
+
 const gateRangeResponse = (gates) => ({
   date_from: '2026-06-01',
   date_to: '2026-06-30',
@@ -95,6 +109,7 @@ const setupApi = ({
   gate = allowedGate,
   gates,
   bookings = [missingBooking],
+  shifts = [],
   reviewGatesResponse = null,
 } = {}) => {
   const generateCalls = []
@@ -106,7 +121,7 @@ const setupApi = ({
       return jsonResponse({ bookings })
     }
     if (requestUrl.includes('/api/roster?')) {
-      return jsonResponse([])
+      return jsonResponse(shifts)
     }
     if (requestUrl.includes('/api/admin/roster/review-generate-gates')) {
       return reviewGatesResponse || jsonResponse(gateRangeResponse(monthGates))
@@ -290,6 +305,43 @@ describe('RosterCalendar generate roster CTA gate', () => {
     expect(screen.queryByRole('button', { name: 'Show past days' })).not.toBeInTheDocument()
   })
 
+  it('H: keeps a UK-past day visible while its overnight shift is inside the grace window', async () => {
+    vi.setSystemTime(new Date('2026-06-09T00:45:00Z'))
+    setupApi({ bookings: [], gates: [], shifts: [overnightShift] })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/roster?'),
+        expect.any(Object),
+      )
+    })
+    const dayEight = getCalendarDayCell(8)
+    expect(dayEight).toHaveClass('past-day')
+    expect(dayEight).not.toHaveClass('past-day-compact')
+    expect(dayEight.querySelector('.badge-past')).toBeNull()
+    expect(dayEight.querySelector('.shift-time-mini')).toHaveTextContent('23:00-01:20')
+  })
+
+  it('U: compacts a UK-past overnight shift day after the grace window expires', async () => {
+    vi.setSystemTime(new Date('2026-06-09T00:51:00Z'))
+    setupApi({ bookings: [], gates: [], shifts: [overnightShift] })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    await waitFor(() => {
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/roster?'),
+        expect.any(Object),
+      )
+    })
+    const dayEight = getCalendarDayCell(8)
+    expect(dayEight).toHaveClass('past-day', 'past-day-compact')
+    expect(dayEight.querySelector('.badge-past')).toHaveTextContent('Past')
+    expect(dayEight.querySelector('.shift-time-mini')).toBeNull()
+  })
+
   it('U: excludes UK-past review issues from the banner until past days are shown', async () => {
     setupApi({ bookings: [], gates: [pastGate] })
 
@@ -313,5 +365,18 @@ describe('RosterCalendar generate roster CTA gate', () => {
 
     expect(isPastDateKeyUK('2026-06-09', ukJustAfterMidnight)).toBe(true)
     expect(isPastDateKeyUK('2026-06-10', ukJustAfterMidnight)).toBe(false)
+  })
+
+  it('E: keeps overnight past days open until 30 minutes after shift end in UK time', () => {
+    expect(shiftKeepsPastDayVisible(
+      overnightShift,
+      '2026-06-08',
+      new Date('2026-06-09T00:45:00Z'),
+    )).toBe(true)
+    expect(shiftKeepsPastDayVisible(
+      overnightShift,
+      '2026-06-08',
+      new Date('2026-06-09T00:50:00Z'),
+    )).toBe(false)
   })
 })
