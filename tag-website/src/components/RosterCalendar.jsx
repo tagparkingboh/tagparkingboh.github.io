@@ -1371,7 +1371,7 @@ function RosterCalendar({
             [dateKey]: data.after_gate,
           }))
         }
-        await Promise.all([fetchBookings(), fetchShifts()])
+        await Promise.all([fetchBookings(), fetchShifts(), fetchShiftExceptions()])
         setSuccessMessage(`Roster generated for ${formatDateUK(dateKey)}`)
         setTimeout(() => setSuccessMessage(''), 3000)
       } else {

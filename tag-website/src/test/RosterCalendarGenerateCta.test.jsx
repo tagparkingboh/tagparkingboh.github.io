@@ -49,13 +49,37 @@ const blockedGate = {
   can_generate_roster: false,
 }
 
-const setupApi = ({ gate = allowedGate } = {}) => {
+const unresolvedShiftException = {
+  date: '2026-06-24',
+  issue: 'no_shift',
+  booking_id: 2401,
+  booking_reference: 'TAG-GATE2401',
+  booking_customer_name: 'Gate Case',
+  event_type: 'dropoff',
+  event_time: '10:40',
+  flight_number: 'FR123',
+  destination: 'Murcia Airport',
+  linked_shift_ids: [],
+  suggested_shift: null,
+}
+
+const setupApi = ({
+  gate = allowedGate,
+  shiftExceptionsBeforeGenerate = [],
+  shiftExceptionsAfterGenerate = [],
+} = {}) => {
   const generateCalls = []
+  const shiftExceptionCalls = []
+  let generated = false
   mockAuthFetch.mockImplementation((url, options = {}) => {
     const requestUrl = String(url)
 
     if (requestUrl.includes('/api/admin/bookings')) {
       return jsonResponse({ bookings: [missingBooking] })
+    }
+    if (requestUrl.includes('/api/roster/shift-exceptions')) {
+      shiftExceptionCalls.push({ url: requestUrl, options })
+      return jsonResponse(generated ? shiftExceptionsAfterGenerate : shiftExceptionsBeforeGenerate)
     }
     if (requestUrl.includes('/api/roster?')) {
       return jsonResponse([])
@@ -65,6 +89,7 @@ const setupApi = ({ gate = allowedGate } = {}) => {
     }
     if (requestUrl.includes('/api/admin/roster/generate-date')) {
       generateCalls.push({ url: requestUrl, options })
+      generated = true
       return jsonResponse({
         date: '2026-06-24',
         deleted: 0,
@@ -93,7 +118,7 @@ const setupApi = ({ gate = allowedGate } = {}) => {
 
     return jsonResponse({})
   })
-  return { generateCalls }
+  return { generateCalls, shiftExceptionCalls }
 }
 
 const openJune24Modal = async () => {
@@ -149,5 +174,23 @@ describe('RosterCalendar generate roster CTA gate', () => {
 
     await waitFor(() => expect(generateCalls).toHaveLength(1))
     expect(JSON.parse(generateCalls[0].options.body)).toEqual({ date: '2026-06-24' })
+  })
+
+  it('B: refreshes shift exception alerts after Generate roster succeeds', async () => {
+    const { shiftExceptionCalls } = setupApi({
+      gate: allowedGate,
+      shiftExceptionsBeforeGenerate: [unresolvedShiftException],
+      shiftExceptionsAfterGenerate: [],
+    })
+
+    await openJune24Modal()
+    expect(await screen.findByText('No covering shift')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate roster for 24/06/2026' }))
+
+    await waitFor(() => expect(shiftExceptionCalls.length).toBeGreaterThanOrEqual(2))
+    await waitFor(() => {
+      expect(screen.queryByText('No covering shift')).not.toBeInTheDocument()
+    })
   })
 })
