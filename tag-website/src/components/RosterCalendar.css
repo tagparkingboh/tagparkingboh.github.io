@@ -1048,6 +1048,7 @@
   border-radius: 10px;
   padding: 15px;
   border-left: 4px solid #9b59b6;
+  overflow: hidden;
 }
 
 .shift-card.shift-card-review-focus {
@@ -1190,6 +1191,8 @@
   border-radius: 6px;
   padding: 8px 10px;
   border-left: 3px solid #444;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .shift-booking-info:nth-child(odd) {
@@ -1208,10 +1211,12 @@
 }
 
 .shift-booking-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1.15fr);
   align-items: center;
   gap: 10px;
   margin-bottom: 6px;
+  min-width: 0;
 }
 
 .shift-booking-type {
@@ -1236,6 +1241,8 @@
   color: #D9FF00;
   font-weight: 600;
   font-size: 0.9rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .shift-booking-reg {
@@ -1247,6 +1254,10 @@
   font-weight: 700;
   font-size: 0.82rem;
   letter-spacing: 0.02em;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shift-booking-details {
@@ -1261,6 +1272,8 @@
 .shift-booking-customer {
   color: #fff;
   font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .shift-booking-time {
@@ -1387,6 +1400,7 @@
   border-radius: 12px !important;
   padding: 12px !important;
   transition: all 0.2s ease;
+  overflow: hidden;
 }
 
 .available-shift-card:hover {
@@ -1415,6 +1429,23 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(39, 174, 96, 0.2);
+  min-width: 0;
+}
+
+.available-shift-card .shift-booking-header {
+  grid-template-columns: 36px minmax(0, 1fr) minmax(72px, auto);
+  align-items: center;
+  gap: 8px;
+}
+
+.available-shift-card .shift-booking-customer {
+  grid-column: 2 / -1;
+  line-height: 1.25;
+}
+
+.available-shift-card .shift-booking-reg {
+  justify-self: end;
+  max-width: 92px;
 }
 
 .available-shift-card .shift-no-bookings {
