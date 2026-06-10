@@ -4,8 +4,8 @@
  * These tests verify:
  * 1. MobileTimePicker detects ambiguous times (01:00-12:59)
  * 2. onAmbiguousTime callback is called correctly
- * 3. Warning shows once per field type per session (departure & arrival separately)
- * 4. Inline warning displays below time input
+ * 3. Departure warning and arrival date/time popup show once per session
+ * 4. Departure inline warning displays below time input
  * 5. SessionStorage persistence works correctly for each field
  *
  * Test Coverage:
@@ -259,49 +259,49 @@ describe('Time Format Warning - Departure Handler', () => {
 })
 
 // =============================================================================
-// Integration Tests: Arrival Warning Handler Logic
+// Integration Tests: Arrival Date/Time Popup Handler Logic
 // =============================================================================
 
 describe('Time Format Warning - Arrival Handler', () => {
   let arrivalWarningShownRef
-  let setShowArrivalWarning
+  let showArrivalPopup
 
   beforeEach(() => {
     sessionStorage.clear()
     arrivalWarningShownRef = { current: false }
-    setShowArrivalWarning = vi.fn()
+    showArrivalPopup = vi.fn()
   })
 
   afterEach(() => {
     sessionStorage.clear()
   })
 
-  const handleAmbiguousArrivalTime = () => {
+  const handleArrivalTimeStarted = () => {
     if (!arrivalWarningShownRef.current) {
       arrivalWarningShownRef.current = true
       sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
-      setShowArrivalWarning(true)
+      showArrivalPopup("Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day.")
     }
   }
 
   describe('Happy path', () => {
-    it('shows warning on first arrival time entry', () => {
-      handleAmbiguousArrivalTime()
+    it('shows popup on first arrival time entry', () => {
+      handleArrivalTimeStarted()
 
       expect(arrivalWarningShownRef.current).toBe(true)
-      expect(setShowArrivalWarning).toHaveBeenCalledWith(true)
+      expect(showArrivalPopup).toHaveBeenCalledWith(expect.stringContaining('arrival date and time'))
       expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBe('true')
     })
   })
 
   describe('Unhappy path', () => {
-    it('does not show warning on second arrival time entry', () => {
-      handleAmbiguousArrivalTime()
-      setShowArrivalWarning.mockClear()
+    it('does not show popup on second arrival time entry', () => {
+      handleArrivalTimeStarted()
+      showArrivalPopup.mockClear()
 
-      handleAmbiguousArrivalTime()
+      handleArrivalTimeStarted()
 
-      expect(setShowArrivalWarning).not.toHaveBeenCalled()
+      expect(showArrivalPopup).not.toHaveBeenCalled()
     })
   })
 })
@@ -314,14 +314,14 @@ describe('Time Format Warning - Independent Departure/Arrival Warnings', () => {
   let departureWarningShownRef
   let arrivalWarningShownRef
   let setShowDepartureWarning
-  let setShowArrivalWarning
+  let showArrivalPopup
 
   beforeEach(() => {
     sessionStorage.clear()
     departureWarningShownRef = { current: false }
     arrivalWarningShownRef = { current: false }
     setShowDepartureWarning = vi.fn()
-    setShowArrivalWarning = vi.fn()
+    showArrivalPopup = vi.fn()
   })
 
   afterEach(() => {
@@ -336,37 +336,37 @@ describe('Time Format Warning - Independent Departure/Arrival Warnings', () => {
     }
   }
 
-  const handleAmbiguousArrivalTime = () => {
+  const handleArrivalTimeStarted = () => {
     if (!arrivalWarningShownRef.current) {
       arrivalWarningShownRef.current = true
       sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
-      setShowArrivalWarning(true)
+      showArrivalPopup("Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day.")
     }
   }
 
   describe('Happy path - Both warnings show independently', () => {
-    it('departure warning shows even after arrival warning was shown', () => {
-      handleAmbiguousArrivalTime()
-      expect(setShowArrivalWarning).toHaveBeenCalledWith(true)
+    it('departure warning shows even after arrival popup was shown', () => {
+      handleArrivalTimeStarted()
+      expect(showArrivalPopup).toHaveBeenCalledTimes(1)
 
       handleAmbiguousDepartureTime()
       expect(setShowDepartureWarning).toHaveBeenCalledWith(true)
     })
 
-    it('arrival warning shows even after departure warning was shown', () => {
+    it('arrival popup shows even after departure warning was shown', () => {
       handleAmbiguousDepartureTime()
       expect(setShowDepartureWarning).toHaveBeenCalledWith(true)
 
-      handleAmbiguousArrivalTime()
-      expect(setShowArrivalWarning).toHaveBeenCalledWith(true)
+      handleArrivalTimeStarted()
+      expect(showArrivalPopup).toHaveBeenCalledTimes(1)
     })
 
-    it('both warnings can be shown in same session', () => {
+    it('both notices can be shown in same session', () => {
       handleAmbiguousDepartureTime()
-      handleAmbiguousArrivalTime()
+      handleArrivalTimeStarted()
 
       expect(setShowDepartureWarning).toHaveBeenCalledTimes(1)
-      expect(setShowArrivalWarning).toHaveBeenCalledTimes(1)
+      expect(showArrivalPopup).toHaveBeenCalledTimes(1)
       expect(sessionStorage.getItem('booking_departureTimeWarningShown')).toBe('true')
       expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBe('true')
     })
@@ -381,23 +381,23 @@ describe('Time Format Warning - Independent Departure/Arrival Warnings', () => {
       expect(setShowDepartureWarning).toHaveBeenCalledTimes(1)
     })
 
-    it('arrival warning shows once even with multiple ambiguous entries', () => {
-      handleAmbiguousArrivalTime()
-      handleAmbiguousArrivalTime()
-      handleAmbiguousArrivalTime()
+    it('arrival popup shows once even with multiple entries', () => {
+      handleArrivalTimeStarted()
+      handleArrivalTimeStarted()
+      handleArrivalTimeStarted()
 
-      expect(setShowArrivalWarning).toHaveBeenCalledTimes(1)
+      expect(showArrivalPopup).toHaveBeenCalledTimes(1)
     })
   })
 })
 
 // =============================================================================
-// Integration Tests: Inline Warning Display
+// Integration Tests: Warning Content
 // =============================================================================
 
-describe('Time Format Warning - Inline Display', () => {
-  describe('Happy path - Warning content', () => {
-    it('warning message includes 24-hour format explanation', () => {
+describe('Time Format Warning - Warning Content', () => {
+  describe('Happy path - Departure warning content', () => {
+    it('departure warning message includes 24-hour format explanation', () => {
       const warningMessage = 'Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.'
 
       expect(warningMessage).toContain('24-hour format')
@@ -405,11 +405,19 @@ describe('Time Format Warning - Inline Display', () => {
       expect(warningMessage).toContain('23:00')
     })
 
-    it('warning message asks about morning or evening', () => {
+    it('departure warning message asks about morning or evening', () => {
       const warningMessage = 'Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.'
 
       expect(warningMessage).toContain('morning')
       expect(warningMessage).toContain('evening')
+    })
+
+    it('arrival popup message mentions following-day landings', () => {
+      const warningMessage = "Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day."
+
+      expect(warningMessage).toContain('arrival date and time')
+      expect(warningMessage).toContain('after midnight')
+      expect(warningMessage).toContain('following day')
     })
   })
 

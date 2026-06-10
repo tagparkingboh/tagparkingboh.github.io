@@ -291,7 +291,6 @@ function Bookings({ isModal = false, onClose }) {
   const [arrivalTimeError, setArrivalTimeError] = useState('')
   // 24-hour time format warning - shown once per field type per session
   const [showDepartureTimeWarning, setShowDepartureTimeWarning] = useState(false)
-  const [showArrivalTimeWarning, setShowArrivalTimeWarning] = useState(false)
   const departureTimeWarningShownRef = useRef(
     sessionStorage.getItem('booking_departureTimeWarningShown') === 'true'
   )
@@ -1468,12 +1467,12 @@ function Bookings({ isModal = false, onClose }) {
     }
   }
 
-  // Handle ambiguous arrival time entry (01:00-12:59) - show warning once per session
-  const handleAmbiguousArrivalTime = () => {
+  // Remind customers to use the actual landing date/time, shown once per session.
+  const handleArrivalTimeStarted = () => {
     if (!arrivalTimeWarningShownRef.current) {
       arrivalTimeWarningShownRef.current = true
       sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
-      setShowArrivalTimeWarning(true)
+      window.alert("Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day.")
     }
   }
 
@@ -2256,7 +2255,7 @@ function Bookings({ isModal = false, onClose }) {
             <ul className="welcome-modal-options">
               <li>Pick your airline and destination</li>
               <li>Enter your departure time and choose a drop-off slot</li>
-              <li>Enter your return flight time so we're ready when you land</li>
+              <li>Enter your arrival date and time for your flight, so we're ready when you land.</li>
             </ul>
             <p>
               And that's it! If you're unsure about anything, please get in touch.
@@ -3389,14 +3388,8 @@ function Bookings({ isModal = false, onClose }) {
                           ...prev,
                           flightTime: value
                         }))}
-                        onAmbiguousTime={handleAmbiguousArrivalTime}
+                        onStartEntry={handleArrivalTimeStarted}
                       />
-                      {showArrivalTimeWarning && (
-                        <p className="time-format-warning">
-                          Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.
-                        </p>
-                      )}
-                      <p className="field-hint">Time your flight lands at Bournemouth. For overnight flights, select the landing date above.</p>
                     </div>
                   </div>
 
