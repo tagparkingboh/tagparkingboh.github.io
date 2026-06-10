@@ -80,6 +80,26 @@ export const isPastDateKeyUK = (dateKey, date = new Date()) => Boolean(
   dateKey && dateKey < getUKDateKey(date)
 )
 
+export const getUKDateTimeParts = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value
+    return acc
+  }, {})
+
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: (Number(parts.hour) || 0) * 60 + (Number(parts.minute) || 0),
+  }
+}
+
 export const getAutoShiftShapeState = (shift) => {
   if (!shift || shift.created_source !== 'auto') return null
 
@@ -109,6 +129,18 @@ export const prevIsoDate = (isoDate) => {
   if (!y || !m || !d) return ''
   const dt = new Date(Date.UTC(y, m - 1, d))
   dt.setUTCDate(dt.getUTCDate() - 1)
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+const addIsoDays = (isoDate, days) => {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-').map(Number)
+  if (!y || !m || !d) return ''
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
   const yy = dt.getUTCFullYear()
   const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(dt.getUTCDate()).padStart(2, '0')
@@ -375,6 +407,43 @@ const timeToMinutes = (time) => {
 const DEMAND_DROPOFF_DAY_START = 8 * 60
 const DEMAND_RETURN_DAY_START = timeToMinutes(ARRIVAL_OVERNIGHT_CUTOFF)
 const DEMAND_RETURN_LATE_START = 17 * 60
+export const PAST_DAY_OVERNIGHT_GRACE_MINUTES = 30
+
+export const shiftKeepsPastDayVisible = (
+  shift,
+  dateKey,
+  date = new Date(),
+  graceMinutes = PAST_DAY_OVERNIGHT_GRACE_MINUTES,
+) => {
+  if (!shift || !dateKey) return false
+
+  const startDate = shift.date || dateKey
+  const endDateFromShift = shift.end_date || null
+  const startTime = shift.displayStartTime || shift.start_time
+  const endTime = shift.displayEndTime || shift.end_time
+  if (!endTime) return false
+
+  const startMinutes = timeToMinutes(startTime)
+  const endMinutes = timeToMinutes(endTime)
+  const crossesMidnight = Boolean(endDateFromShift && endDateFromShift !== startDate)
+    || Boolean(shift.isOvernight)
+    || endMinutes <= startMinutes
+  const endDate = endDateFromShift || (crossesMidnight ? addIsoDays(startDate, 1) : startDate)
+
+  if (!crossesMidnight || !endDate || endDate <= dateKey) return false
+
+  const ukNow = getUKDateTimeParts(date)
+  if (ukNow.dateKey < endDate) return true
+  if (ukNow.dateKey > endDate) return false
+  return ukNow.minutes < endMinutes + graceMinutes
+}
+
+const dayHasActiveOvernightShift = (dateKey, ...shiftGroups) => {
+  if (!dateKey) return false
+  return shiftGroups
+    .flat()
+    .some((shift) => shiftKeepsPastDayVisible(shift, dateKey))
+}
 
 const demandLevelFor = (total, maxTotal) => {
   if (!total || !maxTotal) return 0
@@ -3351,7 +3420,9 @@ function RosterCalendar({
                 const dateKey = getDateKey(day)
                 const dayShiftExceptions = dateKey ? (shiftExceptionsByDate[dateKey] || []) : []
                 const isPastDay = isPastDateKeyUK(dateKey)
-                const showDayContent = showPastDays || !isPastDay
+                const hasActiveOvernightShift = isPastDay && dayHasActiveOvernightShift(dateKey, dayShifts, dayTeamShifts)
+                const shouldCompactPastDay = isPastDay && !showPastDays && !hasActiveOvernightShift
+                const showDayContent = showPastDays || !isPastDay || hasActiveOvernightShift
                 const blockedInfo = getBlockedInfoForDay(day)
                 const dayOccupancy = getOccupancyForDay(day)
                 const isAtCap = dayOccupancy >= SOFT_CAP
@@ -3369,13 +3440,13 @@ function RosterCalendar({
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''} ${isPastDay ? 'past-day' : ''} ${isPastDay && !showPastDays ? 'past-day-compact' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''} ${hasShiftExceptions ? 'has-shift-exceptions' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${isPastDay ? 'past-day' : ''} ${shouldCompactPastDay ? 'past-day-compact' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''} ${hasShiftExceptions ? 'has-shift-exceptions' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
-                        {isPastDay && !showPastDays && (
+                        {shouldCompactPastDay && (
                           <div className="day-content day-content-compact">
                             <div className="day-badge badge-past">Past</div>
                           </div>
