@@ -96,6 +96,7 @@
 }
 
 .roster-calendar .calendar-today-btn,
+.roster-calendar .calendar-past-toggle,
 .roster-calendar .calendar-refresh-btn {
   background: #2a2a2a;
   border: 1px solid #444;
@@ -108,9 +109,16 @@
 }
 
 .roster-calendar .calendar-today-btn:hover,
+.roster-calendar .calendar-past-toggle:hover,
 .roster-calendar .calendar-refresh-btn:hover {
   background: #3a3a3a;
   border-color: #D9FF00;
+}
+
+.roster-calendar .calendar-past-toggle.active {
+  background: rgba(217, 255, 0, 0.14);
+  border-color: #D9FF00;
+  color: #D9FF00;
 }
 
 .roster-calendar .calendar-refresh-btn:disabled {
@@ -304,6 +312,39 @@
 
 .roster-calendar .calendar-day.has-content {
   background: rgba(217, 255, 0, 0.05);
+}
+
+.roster-calendar .calendar-day.past-day {
+  background: #202020;
+}
+
+.roster-calendar .calendar-day.past-day .day-number {
+  color: #9c9c9c;
+}
+
+.roster-calendar .calendar-day.past-day-compact {
+  min-height: 62px;
+  opacity: 0.72;
+}
+
+.roster-calendar .calendar-day.past-day-compact:hover:not(.empty) {
+  opacity: 1;
+}
+
+.roster-calendar .day-content-compact {
+  margin-top: auto;
+}
+
+.roster-calendar .badge-past {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  color: #c8c8c8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 7px;
 }
 
 .roster-calendar .day-number {
