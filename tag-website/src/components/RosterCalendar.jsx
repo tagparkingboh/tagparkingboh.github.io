@@ -546,6 +546,37 @@ export const getRosterCoverageReviewItemsByDate = (bookingsByDate = {}, shiftsBy
     ))
 )
 
+const normaliseGateEventType = (eventType) => {
+  if (eventType === 'drop_off') return 'dropoff'
+  if (eventType === 'pick_up') return 'pickup'
+  return eventType
+}
+
+export const getRosterCoverageReviewItemsFromGates = (gatesByDate = {}, dateKeys = []) => (
+  (dateKeys.length > 0 ? dateKeys : Object.keys(gatesByDate).sort())
+    .flatMap((dateKey) => {
+      const gate = gatesByDate[dateKey]
+      return (gate?.missing_events || []).map((event) => {
+        const type = normaliseGateEventType(event.event_type)
+        return {
+          key: `missing-${event.booking_id}:${type}`,
+          severity: 'warning',
+          kind: 'missing-shift',
+          message: `${bookingEventLabel(type)} ${event.booking_reference || `#${event.booking_id}`} is not linked to a shift.`,
+          booking_reference: event.booking_reference,
+          booking_id: event.booking_id,
+          event_type: type,
+          customer_name: event.customer_name || '',
+          time: event.event_time,
+          flight_number: event.flight_number,
+          destination: event.destination,
+          date: dateKey,
+          date_label: formatDateUK(dateKey),
+        }
+      })
+    })
+)
+
 export const groupAutoOverlapReviewItems = (items = []) => {
   const groups = new Map()
   ;(items || []).forEach((item) => {
@@ -675,6 +706,7 @@ function RosterCalendar({
   const [bulkUnassignModal, setBulkUnassignModal] = useState(null)    // { shifts }
   const [bulkDeleteModal, setBulkDeleteModal] = useState(null)        // { shifts }
   const [reviewGenerateGateByDate, setReviewGenerateGateByDate] = useState({})
+  const [reviewGateRangeKey, setReviewGateRangeKey] = useState('')
   const [loadingReviewGenerateGate, setLoadingReviewGenerateGate] = useState(false)
   const [generatingRosterDate, setGeneratingRosterDate] = useState(null)
 
@@ -844,6 +876,42 @@ function RosterCalendar({
       console.error('Failed to load shifts:', err)
     }
   }, [token, currentDate, isAdmin, sourceFilter])
+
+  const fetchReviewGenerateGatesForMonth = useCallback(async () => {
+    if (!token || !isAdmin) return
+
+    const year = currentDate.getFullYear()
+    const month = currentDate.getMonth()
+    const startDate = new Date(year, month, 1)
+    const endDate = new Date(year, month + 1, 0)
+    const dateFrom = formatDateISO(startDate)
+    const dateTo = formatDateISO(endDate)
+    const rangeKey = `${dateFrom}:${dateTo}`
+
+    try {
+      const response = await authFetch(
+        `${API_URL}/api/admin/roster/review-generate-gates?date_from=${dateFrom}&date_to=${dateTo}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+          },
+        },
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        const next = {}
+        ;(data.gates || []).forEach((gate) => {
+          if (gate?.date) next[gate.date] = gate
+        })
+        setReviewGenerateGateByDate(next)
+        setReviewGateRangeKey(rangeKey)
+      }
+    } catch (err) {
+      console.error('Failed to load roster review gates:', err)
+    }
+  }, [token, isAdmin, currentDate, authFetch])
 
   // Fetch teammates' shifts (view-only, employee mode only).
   const fetchTeamShifts = useCallback(async () => {
@@ -1120,13 +1188,13 @@ function RosterCalendar({
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchDailyOccupancy(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchReviewGenerateGatesForMonth(), fetchBlockedDates(), fetchDailyOccupancy(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchDailyOccupancy, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
+  }, [fetchBookings, fetchShifts, fetchReviewGenerateGatesForMonth, fetchBlockedDates, fetchDailyOccupancy, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -1320,7 +1388,7 @@ function RosterCalendar({
             [dateKey]: data.after_gate,
           }))
         }
-        await Promise.all([fetchBookings(), fetchShifts()])
+        await Promise.all([fetchBookings(), fetchShifts(), fetchReviewGenerateGatesForMonth()])
         setSuccessMessage(`Roster generated for ${formatDateUK(dateKey)}`)
         setTimeout(() => setSuccessMessage(''), 3000)
       } else {
@@ -2916,11 +2984,23 @@ function RosterCalendar({
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
   ]
+  const monthStartKey = formatDateISO(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1))
+  const monthEndKey = formatDateISO(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0))
+  const currentReviewGateRangeKey = `${monthStartKey}:${monthEndKey}`
+  const backendReviewGatesLoaded = reviewGateRangeKey === currentReviewGateRangeKey
 
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
-  const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
+  const selectedDateReviewItemsFromClient = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
+  const selectedDateReviewItemsFromBackend = (
+    backendReviewGatesLoaded && selectedDate
+      ? getRosterCoverageReviewItemsFromGates(reviewGenerateGateByDate, [selectedDate])
+      : []
+  )
+  const selectedDateReviewItems = backendReviewGatesLoaded
+    ? selectedDateReviewItemsFromBackend
+    : selectedDateReviewItemsFromClient
   const selectedMissingShiftReviewItems = selectedDateReviewItems.filter((item) => item.kind === 'missing-shift')
   const selectedReviewIssueCount = selectedMissingShiftReviewItems.length
   const selectedAffectedBookingEventCount = selectedMissingShiftReviewItems.length
@@ -2939,7 +3019,11 @@ function RosterCalendar({
   const heatmapDateKeys = currentAndFutureDateKeysForUK(visibleDateKeys)
   const calendarDemandItems = getRosterDemandByDate(bookingsByDate, heatmapDateKeys)
   const calendarDemandTotal = calendarDemandItems.reduce((total, item) => total + item.total, 0)
-  const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
+  const calendarReviewItemsFromClient = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
+  const calendarReviewItemsFromBackend = getRosterCoverageReviewItemsFromGates(reviewGenerateGateByDate, visibleDateKeys)
+  const calendarReviewItems = backendReviewGatesLoaded
+    ? calendarReviewItemsFromBackend
+    : calendarReviewItemsFromClient
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
   const calendarReviewIssueCount = missingShiftReviewItems.length
   const calendarAffectedBookingEventCount = missingShiftReviewItems.length

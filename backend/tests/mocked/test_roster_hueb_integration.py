@@ -469,6 +469,51 @@ class TestRosterReviewGenerateGateRoutes:
         assert resp.status_code == 200
         assert resp.json() == expected
 
+    def test_integration_get_gate_range_returns_backend_decisions(self, monkeypatch):
+        calls = []
+
+        def fake_gate(db, d):
+            calls.append(d)
+            return {
+                "date": d.isoformat(),
+                "missing_review_count": 1 if d == date_type(2026, 7, 14) else 0,
+                "blocked_by_suppressed": False,
+                "suppressed_blocker_count": 0,
+                "suppressed_shift_ids": [],
+                "suppressed_booking_references": [],
+                "can_generate_roster": d == date_type(2026, 7, 14),
+                "missing_events": [{
+                    "booking_id": 804,
+                    "booking_reference": "TAG-WLJ80128",
+                    "event_type": "pick_up",
+                    "event_time": "18:00",
+                }] if d == date_type(2026, 7, 14) else [],
+            }
+
+        monkeypatch.setattr("routers.roster._load_roster_review_generate_gate", fake_gate)
+        _override_db(MagicMock())
+
+        resp = TestClient(app).get(
+            "/api/admin/roster/review-generate-gates?date_from=2026-07-13&date_to=2026-07-14"
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["date_from"] == "2026-07-13"
+        assert body["date_to"] == "2026-07-14"
+        assert [g["date"] for g in body["gates"]] == ["2026-07-13", "2026-07-14"]
+        assert body["gates"][1]["missing_events"][0]["booking_reference"] == "TAG-WLJ80128"
+        assert calls == [date_type(2026, 7, 13), date_type(2026, 7, 14)]
+
+    def test_integration_get_gate_range_rejects_inverted_dates(self):
+        _override_db(MagicMock())
+
+        resp = TestClient(app).get(
+            "/api/admin/roster/review-generate-gates?date_from=2026-07-14&date_to=2026-07-13"
+        )
+
+        assert resp.status_code == 422
+
     def test_integration_post_generate_runs_only_when_gate_allows(self, monkeypatch):
         calls = {"gate": 0, "rebuild_dates": None}
         before = {

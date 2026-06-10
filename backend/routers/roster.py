@@ -4700,12 +4700,29 @@ def build_roster_review_generate_gate(
                     blocker_shift_ids.add(sid)
                 blocker_booking_refs.add(missing["booking_reference"])
 
-    missing_payload = [{
-        "booking_id": event["booking_id"],
-        "booking_reference": event["booking_reference"],
-        "event_type": event["event_type"],
-        "event_time": event["event_time"].strftime("%H:%M"),
-    } for event in missing_events]
+    missing_payload = []
+    for event in missing_events:
+        booking = event["booking"]
+        is_dropoff = event["event_type"] == "drop_off"
+        customer_name = " ".join([
+            getattr(booking, "customer_first_name", None) or "",
+            getattr(booking, "customer_last_name", None) or "",
+        ]).strip()
+        missing_payload.append({
+            "booking_id": event["booking_id"],
+            "booking_reference": event["booking_reference"],
+            "event_type": event["event_type"],
+            "event_time": event["event_time"].strftime("%H:%M"),
+            "customer_name": customer_name,
+            "flight_number": (
+                getattr(booking, "dropoff_flight_number", None)
+                if is_dropoff else getattr(booking, "pickup_flight_number", None)
+            ),
+            "destination": (
+                getattr(booking, "dropoff_destination", None)
+                if is_dropoff else getattr(booking, "pickup_origin", None)
+            ),
+        })
 
     return {
         "date": target_date.isoformat(),
@@ -4859,6 +4876,31 @@ async def get_roster_review_generate_gate(
     db: Session = Depends(get_db),
 ):
     return _load_roster_review_generate_gate(db, date)
+
+
+@router.get("/admin/roster/review-generate-gates")
+async def get_roster_review_generate_gates(
+    date_from: date_type = Query(..., description="First operational date to review (YYYY-MM-DD)."),
+    date_to: date_type = Query(..., description="Last operational date to review (YYYY-MM-DD)."),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if date_to < date_from:
+        raise HTTPException(status_code=422, detail="date_to must be >= date_from")
+
+    days = (date_to - date_from).days
+    if days > 62:
+        raise HTTPException(status_code=422, detail="Date range must be 63 days or fewer")
+
+    gates = [
+        _load_roster_review_generate_gate(db, date_from + timedelta(days=i))
+        for i in range(days + 1)
+    ]
+    return {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "gates": gates,
+    }
 
 
 @router.post("/admin/roster/generate-date")
