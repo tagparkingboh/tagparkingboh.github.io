@@ -25,9 +25,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi.testclient import TestClient
 from main import app
 from database import get_db
-from routers.roster import get_current_user as roster_get_current_user, require_admin as roster_require_admin, shift_to_response
-from db_models import AuditLogEvent, ShiftStatus, ShiftType, HolidayType, BookingStatus
-from roster_planner import UK_TZ
+from routers.roster import (
+    build_roster_review_generate_gate,
+    get_current_user as roster_get_current_user,
+    require_admin as roster_require_admin,
+    shift_to_response,
+)
+from db_models import AuditLogEvent, ShiftStatus, ShiftType, HolidayType, BookingStatus, ServiceType
+from roster_planner import PlannerSettings, UK_TZ
 
 
 # ============================================================================
@@ -101,11 +106,13 @@ def _mock_booking(
     flight_arrival_date=None,
     flight_arrival_time=None,
     status=BookingStatus.CONFIRMED,
+    service_type=ServiceType.MEET_GREET,
 ):
     b = MagicMock()
     b.id = id
     b.reference = reference
     b.status = status
+    b.service_type = service_type
     b.dropoff_date = dropoff_date
     b.dropoff_time = dropoff_time
     b.pickup_date = pickup_date
@@ -167,6 +174,356 @@ def _mock_holiday(id=1, staff_id=2, start=None, end=None, hol_type=None, start_t
     h.created_at = datetime(2026, 5, 1, 9, 0, 0)
     h.updated_at = None
     return h
+
+
+def _planner_settings():
+    return PlannerSettings.from_kv({
+        "gap_max_minutes": 150,
+        "mixed_gap_max_minutes": 150,
+        "start_buffer_minutes": 30,
+        "end_buffer_minutes": 15,
+        "min_shift_minutes": 60,
+    })
+
+
+# ============================================================================
+# Roster Review Generate Gate — HUEB
+# ============================================================================
+
+class TestRosterReviewGenerateGate:
+    def test_happy_review_exists_without_suppression_allows_generate(self):
+        booking = _mock_booking(
+            id=1,
+            reference="TAG-GENERATE",
+            dropoff_date=date_type(2026, 7, 5),
+            dropoff_time=time(10, 40),
+        )
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [],
+            [],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["blocked_by_suppressed"] is False
+        assert gate["can_generate_roster"] is True
+        assert gate["missing_events"][0]["booking_reference"] == "TAG-GENERATE"
+
+    def test_happy_null_service_type_booking_still_allows_generate(self):
+        booking = _mock_booking(
+            id=7,
+            reference="TAG-LEGACY",
+            dropoff_date=date_type(2026, 7, 5),
+            dropoff_time=time(10, 40),
+            service_type=None,
+        )
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [],
+            [],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["can_generate_roster"] is True
+
+    def test_edge_same_day_dropoff_link_does_not_hide_pickup_review(self):
+        booking = _mock_booking(
+            id=8,
+            reference="TAG-SAMEDAY",
+            dropoff_date=date_type(2026, 7, 5),
+            dropoff_time=time(10, 40),
+            pickup_date=date_type(2026, 7, 5),
+            pickup_time=time(18, 0),
+            flight_arrival_date=date_type(2026, 7, 5),
+            flight_arrival_time=time(17, 30),
+        )
+        dropoff_shift = _mock_shift(
+            id=7008,
+            staff_id=7,
+            date_=date_type(2026, 7, 5),
+            start_time=time(10, 10),
+            end_time=time(11, 10),
+            created_source="auto",
+        )
+        dropoff_shift.bookings = [booking]
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [dropoff_shift],
+            [],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["missing_events"][0]["event_type"] == "pick_up"
+        assert gate["can_generate_roster"] is True
+
+    def test_unhappy_suppressed_shift_retaining_missing_booking_hides_generate(self):
+        booking = _mock_booking(
+            id=2,
+            reference="TAG-SUPPRESSED",
+            pickup_date=date_type(2026, 6, 21),
+            pickup_time=time(23, 30),
+            flight_arrival_date=date_type(2026, 6, 21),
+            flight_arrival_time=time(23, 0),
+        )
+        suppressed = _mock_shift(
+            id=5408,
+            staff_id=None,
+            date_=date_type(2026, 6, 21),
+            start_time=time(22, 15),
+            end_time=time(23, 55),
+            status=ShiftStatus.CANCELLED,
+            created_source="auto",
+        )
+        suppressed.suppressed_at = datetime(2026, 6, 9, 17, 59)
+        suppressed.bookings = [booking]
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 6, 21),
+            [booking],
+            [],
+            [suppressed],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["blocked_by_suppressed"] is True
+        assert gate["suppressed_shift_ids"] == [5408]
+        assert gate["can_generate_roster"] is False
+
+    def test_edge_suppressed_window_covering_required_cluster_hides_generate(self):
+        booking = _mock_booking(
+            id=3,
+            reference="TAG-WINDOW",
+            dropoff_date=date_type(2026, 6, 17),
+            dropoff_time=time(14, 35),
+        )
+        suppressed = _mock_shift(
+            id=5422,
+            staff_id=None,
+            date_=date_type(2026, 6, 17),
+            start_time=time(14, 0),
+            end_time=time(15, 45),
+            status=ShiftStatus.CANCELLED,
+            created_source="auto",
+        )
+        suppressed.suppressed_at = datetime(2026, 6, 10, 4, 53)
+        suppressed.bookings = []
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 6, 17),
+            [booking],
+            [],
+            [suppressed],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["suppressed_shift_ids"] == [5422]
+        assert gate["can_generate_roster"] is False
+
+    def test_edge_overnight_suppressed_shift_without_end_date_hides_generate(self):
+        booking = _mock_booking(
+            id=9,
+            reference="TAG-OVERNIGHT",
+            pickup_date=date_type(2026, 7, 6),
+            pickup_time=time(0, 45),
+            flight_arrival_date=date_type(2026, 7, 6),
+            flight_arrival_time=time(0, 15),
+        )
+        suppressed = _mock_shift(
+            id=7009,
+            staff_id=None,
+            date_=date_type(2026, 7, 5),
+            start_time=time(23, 30),
+            end_time=time(1, 0),
+            status=ShiftStatus.CANCELLED,
+            created_source="auto",
+        )
+        suppressed.end_date = None
+        suppressed.suppressed_at = datetime(2026, 7, 1, 9, 0)
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [],
+            [suppressed],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["suppressed_shift_ids"] == [7009]
+        assert gate["can_generate_roster"] is False
+
+    def test_boundary_nearby_suppressed_shift_that_does_not_cover_cluster_allows_generate(self):
+        booking = _mock_booking(
+            id=4,
+            reference="TAG-NEARBY",
+            dropoff_date=date_type(2026, 7, 5),
+            dropoff_time=time(10, 40),
+        )
+        suppressed = _mock_shift(
+            id=6000,
+            staff_id=None,
+            date_=date_type(2026, 7, 5),
+            start_time=time(8, 0),
+            end_time=time(9, 0),
+            status=ShiftStatus.CANCELLED,
+            created_source="auto",
+        )
+        suppressed.suppressed_at = datetime(2026, 7, 1, 9, 0)
+        suppressed.bookings = []
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [],
+            [suppressed],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 1
+        assert gate["blocked_by_suppressed"] is False
+        assert gate["can_generate_roster"] is True
+
+    def test_boundary_no_review_means_no_generate(self):
+        booking = _mock_booking(
+            id=5,
+            reference="TAG-LINKED",
+            dropoff_date=date_type(2026, 7, 5),
+            dropoff_time=time(10, 40),
+        )
+        live_shift = _mock_shift(
+            id=7000,
+            staff_id=7,
+            date_=date_type(2026, 7, 5),
+            start_time=time(10, 10),
+            end_time=time(11, 10),
+            created_source="auto",
+        )
+        live_shift.bookings = [booking]
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [live_shift],
+            [],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 0
+        assert gate["can_generate_roster"] is False
+
+    def test_edge_park_and_ride_booking_is_not_a_review_event(self):
+        booking = _mock_booking(
+            id=6,
+            reference="TAG-PARKRIDE",
+            dropoff_date=date_type(2026, 7, 5),
+            dropoff_time=time(10, 40),
+            service_type=ServiceType.PARK_RIDE,
+        )
+
+        gate = build_roster_review_generate_gate(
+            date_type(2026, 7, 5),
+            [booking],
+            [],
+            [],
+            _planner_settings(),
+        )
+
+        assert gate["missing_review_count"] == 0
+        assert gate["can_generate_roster"] is False
+
+
+class TestRosterReviewGenerateGateRoutes:
+    def setup_method(self):
+        _override_auth()
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    def test_integration_get_gate_returns_backend_decision(self, monkeypatch):
+        expected = {
+            "date": "2026-07-05",
+            "missing_review_count": 5,
+            "blocked_by_suppressed": False,
+            "suppressed_blocker_count": 0,
+            "suppressed_shift_ids": [],
+            "suppressed_booking_references": [],
+            "can_generate_roster": True,
+            "missing_events": [],
+        }
+        monkeypatch.setattr("routers.roster._load_roster_review_generate_gate", lambda db, d: expected)
+        _override_db(MagicMock())
+
+        resp = TestClient(app).get("/api/admin/roster/review-generate-gate?date=2026-07-05")
+
+        assert resp.status_code == 200
+        assert resp.json() == expected
+
+    def test_integration_post_generate_runs_only_when_gate_allows(self, monkeypatch):
+        calls = {"gate": 0, "rebuild_dates": None}
+        before = {
+            "date": "2026-07-05",
+            "missing_review_count": 5,
+            "blocked_by_suppressed": False,
+            "suppressed_blocker_count": 0,
+            "suppressed_shift_ids": [],
+            "suppressed_booking_references": [],
+            "can_generate_roster": True,
+            "missing_events": [],
+        }
+        after = {**before, "missing_review_count": 0, "can_generate_roster": False}
+
+        def fake_gate(db, d):
+            calls["gate"] += 1
+            return before if calls["gate"] == 1 else after
+
+        def fake_rebuild(db, dates, settings):
+            calls["rebuild_dates"] = dates
+            return {"deleted": 2, "created": 3, "bookings_in_scope": 7, "skipped_suppressed": 0}
+
+        monkeypatch.setattr("routers.roster._load_roster_review_generate_gate", fake_gate)
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda db: {})
+        monkeypatch.setattr("auto_roster.rebuild_auto_for_dates", fake_rebuild)
+        _override_db(MagicMock())
+
+        resp = TestClient(app).post("/api/admin/roster/generate-date", json={"date": "2026-07-05"})
+
+        assert resp.status_code == 200
+        assert calls["rebuild_dates"] == {date_type(2026, 7, 5)}
+        assert resp.json()["created"] == 3
+        assert resp.json()["after_gate"]["missing_review_count"] == 0
+
+    def test_integration_post_generate_returns_409_when_suppressed_blocks(self, monkeypatch):
+        blocked = {
+            "date": "2026-06-21",
+            "missing_review_count": 2,
+            "blocked_by_suppressed": True,
+            "suppressed_blocker_count": 2,
+            "suppressed_shift_ids": [5408, 5423],
+            "suppressed_booking_references": ["TAG-LGG16579", "TAG-WTE58588"],
+            "can_generate_roster": False,
+            "missing_events": [],
+        }
+        rebuild = MagicMock()
+        monkeypatch.setattr("routers.roster._load_roster_review_generate_gate", lambda db, d: blocked)
+        monkeypatch.setattr("auto_roster.rebuild_auto_for_dates", rebuild)
+        _override_db(MagicMock())
+
+        resp = TestClient(app).post("/api/admin/roster/generate-date", json={"date": "2026-06-21"})
+
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["gate"]["suppressed_shift_ids"] == [5408, 5423]
+        rebuild.assert_not_called()
 
 
 # ============================================================================
