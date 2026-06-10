@@ -3024,6 +3024,7 @@ function RosterCalendar({
     .flat()
     .filter(Boolean)
     .map((day) => getDateKey(day))
+  const hasPastVisibleDays = visibleDateKeys.some((dateKey) => isPastDateKeyUK(dateKey))
   const currentAndFutureVisibleDateKeys = currentAndFutureDateKeysForUK(visibleDateKeys)
   const reviewDateKeys = showPastDays ? visibleDateKeys : currentAndFutureVisibleDateKeys
   const heatmapDateKeys = currentAndFutureDateKeysForUK(visibleDateKeys)
@@ -3074,14 +3075,16 @@ function RosterCalendar({
         <button className="calendar-today-btn" onClick={goToToday}>
           Today
         </button>
-        <button
-          type="button"
-          className={`calendar-past-toggle ${showPastDays ? 'active' : ''}`}
-          onClick={() => updateShowPastDays(!showPastDays)}
-          aria-pressed={showPastDays}
-        >
-          {showPastDays ? 'Hide past days' : 'Show past days'}
-        </button>
+        {hasPastVisibleDays && (
+          <button
+            type="button"
+            className={`calendar-past-toggle ${showPastDays ? 'active' : ''}`}
+            onClick={() => updateShowPastDays(!showPastDays)}
+            aria-pressed={showPastDays}
+          >
+            {showPastDays ? 'Hide past days' : 'Show past days'}
+          </button>
+        )}
         <button className="calendar-refresh-btn" onClick={fetchData} disabled={loading}>
           {loading ? 'Loading...' : 'Refresh'}
         </button>

@@ -278,6 +278,18 @@ describe('RosterCalendar generate roster CTA gate', () => {
     expect(getCalendarDayCell(1).querySelector('.badge-past')).toBeNull()
   })
 
+  it('B: hides the Show past days button when viewing a future month', async () => {
+    setupApi({ bookings: [pastBooking], gates: [] })
+
+    render(<RosterCalendar token="test-token" isAdmin defaultSourceFilter="all" />)
+
+    expect(await screen.findAllByRole('button', { name: 'Show past days' })).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: '›' })[0])
+
+    await waitFor(() => expect(screen.getAllByText('July 2026')).toHaveLength(2))
+    expect(screen.queryByRole('button', { name: 'Show past days' })).not.toBeInTheDocument()
+  })
+
   it('U: excludes UK-past review issues from the banner until past days are shown', async () => {
     setupApi({ bookings: [], gates: [pastGate] })
 
