@@ -25,6 +25,7 @@ import {
   getRosterCoverageReviewItemsByDate,
   groupAutoOverlapReviewItems,
   getAutoShiftShapeState,
+  canShowRosterGenerateCta,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -124,6 +125,50 @@ describe('getAutoShiftShapeState', () => {
       chipLabel: '✓',
       title: 'Auto shift edited, duplicated, split, or merged by admin',
     })
+  })
+})
+
+describe('canShowRosterGenerateCta', () => {
+  it('H: shows when admin has Review items and backend gate allows generation', () => {
+    expect(canShowRosterGenerateCta({
+      isAdmin: true,
+      selectedDate: '2026-07-05',
+      reviewIssueCount: 5,
+      gate: { can_generate_roster: true },
+    })).toBe(true)
+  })
+
+  it('U: hides when suppressed shifts block generation', () => {
+    expect(canShowRosterGenerateCta({
+      isAdmin: true,
+      selectedDate: '2026-06-21',
+      reviewIssueCount: 2,
+      gate: { can_generate_roster: false, blocked_by_suppressed: true },
+    })).toBe(false)
+  })
+
+  it('E: hides when there is no Review count even if the gate payload is stale', () => {
+    expect(canShowRosterGenerateCta({
+      isAdmin: true,
+      selectedDate: '2026-06-24',
+      reviewIssueCount: 0,
+      gate: { can_generate_roster: true },
+    })).toBe(false)
+  })
+
+  it('B: hides before a date is selected or for non-admin users', () => {
+    expect(canShowRosterGenerateCta({
+      isAdmin: true,
+      selectedDate: null,
+      reviewIssueCount: 1,
+      gate: { can_generate_roster: true },
+    })).toBe(false)
+    expect(canShowRosterGenerateCta({
+      isAdmin: false,
+      selectedDate: '2026-07-05',
+      reviewIssueCount: 1,
+      gate: { can_generate_roster: true },
+    })).toBe(false)
   })
 })
 

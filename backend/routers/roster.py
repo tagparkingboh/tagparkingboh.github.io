@@ -31,7 +31,15 @@ from models import (
     CommittedShiftSnapshot,
     TeamShiftResponse,
 )
-from roster_planner import propose_roster, PlannerSettings, UK_TZ, ARRIVAL_OVERNIGHT_CUTOFF
+from roster_planner import (
+    ARRIVAL_OVERNIGHT_CUTOFF,
+    Event,
+    PlannerSettings,
+    UK_TZ,
+    compute_cluster_shift_window,
+    group_events_by_gap,
+    propose_roster,
+)
 from roster_planner_runner import (
     fire_engine_async,
     record_run,
@@ -4666,6 +4674,251 @@ class RegenerateAutoRequest(BaseModel):
         return v
 
 
+class GenerateRosterForDateRequest(BaseModel):
+    date: date_type
+
+
+def _enum_value(value):
+    return value.value if hasattr(value, "value") else value
+
+
+def _review_shift_window(shift: RosterShift) -> tuple[datetime, datetime]:
+    end_date = shift.end_date or shift.date
+    if not shift.end_date and shift.end_time <= shift.start_time:
+        end_date = shift.date + timedelta(days=1)
+    return (
+        datetime.combine(shift.date, shift.start_time),
+        datetime.combine(end_date, shift.end_time),
+    )
+
+
+def _review_shift_linked_booking_ids(shift: RosterShift) -> set[int]:
+    ids: set[int] = set()
+    booking_id = getattr(shift, "booking_id", None)
+    if booking_id is not None:
+        ids.add(booking_id)
+    for booking in getattr(shift, "bookings", []) or []:
+        bid = getattr(booking, "id", None)
+        if bid is not None:
+            ids.add(bid)
+    return ids
+
+
+def _review_event_key(booking_id: int, event_type: str) -> str:
+    return f"{booking_id}:{event_type}"
+
+
+def _review_shift_linked_event_keys(shift: RosterShift, db: Optional[Session] = None) -> set[str]:
+    shift_dates = {getattr(shift, "date", None), getattr(shift, "end_date", None)}
+    shift_dates.discard(None)
+    keys: set[str] = set()
+
+    for booking in getattr(shift, "bookings", []) or []:
+        if _enum_value(getattr(booking, "status", None)) == BookingStatus.CANCELLED.value:
+            continue
+        if getattr(booking, "dropoff_date", None) in shift_dates:
+            keys.add(_review_event_key(booking.id, "drop_off"))
+        elif _pickup_event_date(booking) in shift_dates:
+            keys.add(_review_event_key(booking.id, "pick_up"))
+
+    booking_id = getattr(shift, "booking_id", None)
+    if booking_id is not None and not any(getattr(b, "id", None) == booking_id for b in getattr(shift, "bookings", []) or []):
+        booking = None
+        if db is not None:
+            booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if booking and _enum_value(getattr(booking, "status", None)) != BookingStatus.CANCELLED.value:
+            if getattr(booking, "dropoff_date", None) in shift_dates:
+                keys.add(_review_event_key(booking.id, "drop_off"))
+            elif _pickup_event_date(booking) in shift_dates:
+                keys.add(_review_event_key(booking.id, "pick_up"))
+
+    return keys
+
+
+def _review_operational_date(event_type: str, event_time: datetime) -> date_type:
+    if event_type == "pick_up" and event_time.time() < ARRIVAL_OVERNIGHT_CUTOFF:
+        return event_time.date() - timedelta(days=1)
+    return event_time.date()
+
+
+def _review_booking_in_scope(booking: Booking) -> bool:
+    if _enum_value(getattr(booking, "service_type", None)) == ServiceType.PARK_RIDE.value:
+        return False
+    return _enum_value(getattr(booking, "status", None)) in (
+        BookingStatus.CONFIRMED.value,
+        BookingStatus.REFUNDED.value,
+    )
+
+
+def build_roster_review_generate_gate(
+    target_date: date_type,
+    bookings: list[Booking],
+    live_shifts: list[RosterShift],
+    suppressed_shifts: list[RosterShift],
+    settings: PlannerSettings,
+) -> dict:
+    """Decide whether the Review warning for one operational date can expose
+    a date-only auto-roster generate CTA.
+
+    Gate rule:
+      Review missing booking events exist AND no deleted/suppressed auto shift
+      blocks those missing events. Suppression blocks by retained booking link
+      or by fully covering the generated cluster window.
+    """
+    from auto_roster import _events_for_booking
+
+    events = []
+    all_cluster_events = []
+    for booking in bookings or []:
+        if not _review_booking_in_scope(booking):
+            continue
+        for event_type, start_dt, end_dt in _events_for_booking(booking):
+            event = {
+                "booking": booking,
+                "booking_id": booking.id,
+                "booking_reference": booking.reference or "",
+                "event_type": event_type,
+                "event_time": start_dt,
+                "end_anchor_time": end_dt,
+                "operational_date": _review_operational_date(event_type, start_dt),
+            }
+            events.append(event)
+            all_cluster_events.append(Event(
+                booking_id=booking.id,
+                booking_reference=booking.reference or "",
+                event_type=event_type,
+                event_time=start_dt.replace(tzinfo=UK_TZ),
+                end_anchor_time=end_dt.replace(tzinfo=UK_TZ),
+            ))
+
+    target_events = [event for event in events if event["operational_date"] == target_date]
+
+    live_event_keys: set[str] = set()
+    for shift in live_shifts or []:
+        if _enum_value(getattr(shift, "status", None)) == ShiftStatus.CANCELLED.value:
+            continue
+        live_event_keys.update(_review_shift_linked_event_keys(shift))
+
+    missing_events = [
+        event for event in target_events
+        if _review_event_key(event["booking_id"], event["event_type"]) not in live_event_keys
+    ]
+
+    clusters = group_events_by_gap(
+        all_cluster_events,
+        gap_max_minutes=settings.gap_max_minutes,
+        mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
+    )
+    cluster_by_event_key: dict[str, object] = {}
+    for cluster in clusters:
+        for event in cluster.events:
+            cluster_by_event_key[_review_event_key(event.booking_id, event.event_type)] = cluster
+
+    blocker_shift_ids: set[int] = set()
+    blocker_booking_refs: set[str] = set()
+    for missing in missing_events:
+        missing_key = _review_event_key(missing["booking_id"], missing["event_type"])
+        cluster = cluster_by_event_key.get(missing_key)
+        if cluster is None:
+            continue
+        shift_start, shift_end = compute_cluster_shift_window(
+            cluster,
+            start_buffer_minutes=settings.start_buffer_minutes,
+            end_buffer_minutes=settings.end_buffer_minutes,
+            min_shift_minutes=settings.min_shift_minutes,
+        )
+        shift_start = shift_start.replace(tzinfo=None)
+        shift_end = shift_end.replace(tzinfo=None)
+        cluster_booking_ids = {event.booking_id for event in cluster.events}
+        for suppressed in suppressed_shifts or []:
+            if _enum_value(getattr(suppressed, "status", None)) != ShiftStatus.CANCELLED.value:
+                continue
+            if getattr(suppressed, "created_source", None) != "auto":
+                continue
+            if getattr(suppressed, "suppressed_at", None) is None:
+                continue
+            linked_ids = _review_shift_linked_booking_ids(suppressed)
+            suppressed_start, suppressed_end = _review_shift_window(suppressed)
+            linked_block = bool(linked_ids & cluster_booking_ids)
+            window_block = suppressed_start <= shift_start and shift_end <= suppressed_end
+            if linked_block or window_block:
+                sid = getattr(suppressed, "id", None)
+                if sid is not None:
+                    blocker_shift_ids.add(sid)
+                blocker_booking_refs.add(missing["booking_reference"])
+
+    missing_payload = [{
+        "booking_id": event["booking_id"],
+        "booking_reference": event["booking_reference"],
+        "event_type": event["event_type"],
+        "event_time": event["event_time"].strftime("%H:%M"),
+    } for event in missing_events]
+
+    return {
+        "date": target_date.isoformat(),
+        "missing_review_count": len(missing_events),
+        "blocked_by_suppressed": bool(blocker_shift_ids),
+        "suppressed_blocker_count": len(blocker_shift_ids),
+        "suppressed_shift_ids": sorted(blocker_shift_ids),
+        "suppressed_booking_references": sorted(blocker_booking_refs),
+        "can_generate_roster": len(missing_events) > 0 and not blocker_shift_ids,
+        "missing_events": missing_payload,
+    }
+
+
+def _load_roster_review_generate_gate(db: Session, target_date: date_type) -> dict:
+    expanded = {
+        target_date - timedelta(days=1),
+        target_date,
+        target_date + timedelta(days=1),
+    }
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.REFUNDED]),
+            or_(Booking.service_type.is_(None), Booking.service_type != ServiceType.PARK_RIDE),
+            or_(
+                Booking.dropoff_date.in_(expanded),
+                Booking.pickup_date.in_(expanded),
+                Booking.flight_arrival_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    live_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.status != ShiftStatus.CANCELLED,
+            or_(
+                RosterShift.date.in_(expanded),
+                RosterShift.end_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    suppressed_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.created_source == "auto",
+            RosterShift.status == ShiftStatus.CANCELLED,
+            RosterShift.suppressed_at.isnot(None),
+            or_(
+                RosterShift.date.in_(expanded),
+                RosterShift.end_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    settings = PlannerSettings.from_kv(_load_planner_settings_rows(db))
+    return build_roster_review_generate_gate(
+        target_date,
+        bookings,
+        live_shifts,
+        suppressed_shifts,
+        settings,
+    )
+
+
 def _resolve_dates(req: RegenerateAutoRequest, settings: PlannerSettings) -> set[date_type]:
     """Map a regenerate request to the explicit date set the run will cover."""
     today = datetime.now(UK_TZ).date()
@@ -4743,6 +4996,58 @@ async def regenerate_auto_roster(
         "skipped": 0,
         "bookings_processed": result.get("bookings_in_scope", 0),
         "dates_covered": len(target_dates),
+    }
+
+
+@router.get("/admin/roster/review-generate-gate")
+async def get_roster_review_generate_gate(
+    date: date_type = Query(..., description="Operational date to review (YYYY-MM-DD)."),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return _load_roster_review_generate_gate(db, date)
+
+
+@router.post("/admin/roster/generate-date")
+async def generate_roster_for_date(
+    req: GenerateRosterForDateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    try:
+        from auto_roster import rebuild_auto_for_dates
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Auto-roster module unavailable on the current backend deploy "
+                f"({e}). Ask an engineer to redeploy the backend service."
+            ),
+        )
+
+    before_gate = _load_roster_review_generate_gate(db, req.date)
+    if not before_gate.get("can_generate_roster"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Roster generation is not available for this date.",
+                "gate": before_gate,
+            },
+        )
+
+    settings = PlannerSettings.from_kv(_load_planner_settings_rows(db))
+    result = rebuild_auto_for_dates(db, {req.date}, settings)
+    after_gate = _load_roster_review_generate_gate(db, req.date)
+    return {
+        "date": req.date.isoformat(),
+        "deleted": result.get("deleted", 0),
+        "created": result.get("created", 0),
+        "extended": 0,
+        "skipped": result.get("skipped_suppressed", 0),
+        "bookings_processed": result.get("bookings_in_scope", 0),
+        "dates_covered": 1,
+        "before_gate": before_gate,
+        "after_gate": after_gate,
     }
 
 

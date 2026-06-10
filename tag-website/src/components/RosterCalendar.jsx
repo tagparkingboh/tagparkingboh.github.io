@@ -87,6 +87,13 @@ export const getAutoShiftShapeState = (shift) => {
   }
 }
 
+export const canShowRosterGenerateCta = ({ isAdmin, selectedDate, reviewIssueCount, gate }) => !!(
+  isAdmin &&
+  selectedDate &&
+  reviewIssueCount > 0 &&
+  gate?.can_generate_roster
+)
+
 // Previous day as ISO string. UTC math avoids any DST drift.
 export const prevIsoDate = (isoDate) => {
   if (!isoDate) return ''
@@ -674,6 +681,9 @@ function RosterCalendar({
   const [bulkDuplicateModal, setBulkDuplicateModal] = useState(null)  // { shifts, target_date }
   const [bulkUnassignModal, setBulkUnassignModal] = useState(null)    // { shifts }
   const [bulkDeleteModal, setBulkDeleteModal] = useState(null)        // { shifts }
+  const [reviewGenerateGateByDate, setReviewGenerateGateByDate] = useState({})
+  const [loadingReviewGenerateGate, setLoadingReviewGenerateGate] = useState(false)
+  const [generatingRosterDate, setGeneratingRosterDate] = useState(null)
 
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
@@ -1311,6 +1321,77 @@ function RosterCalendar({
       setLoadingDateBookings(false)
     }
   }, [token])
+
+  const fetchReviewGenerateGate = useCallback(async (dateKey) => {
+    if (!token || !isAdmin || !dateKey) return null
+
+    setLoadingReviewGenerateGate(true)
+    try {
+      const response = await authFetch(`${API_URL}/api/admin/roster/review-generate-gate?date=${dateKey}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+      if (!response.ok) return null
+      const data = await response.json()
+      setReviewGenerateGateByDate((prev) => ({
+        ...prev,
+        [dateKey]: data,
+      }))
+      return data
+    } catch (err) {
+      console.error('Failed to load roster review gate:', err)
+      return null
+    } finally {
+      setLoadingReviewGenerateGate(false)
+    }
+  }, [token, isAdmin, authFetch])
+
+  const handleGenerateRosterForSelectedDate = async () => {
+    if (!selectedDate || !token || !isAdmin) return
+
+    const dateKey = selectedDate
+    setGeneratingRosterDate(dateKey)
+    setError('')
+    try {
+      const response = await authFetch(`${API_URL}/api/admin/roster/generate-date`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ date: dateKey }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        if (data.after_gate) {
+          setReviewGenerateGateByDate((prev) => ({
+            ...prev,
+            [dateKey]: data.after_gate,
+          }))
+        }
+        await Promise.all([fetchBookings(), fetchShifts()])
+        setSuccessMessage(`Roster generated for ${formatDateUK(dateKey)}`)
+        setTimeout(() => setSuccessMessage(''), 3000)
+      } else {
+        const detail = data.detail
+        if (detail?.gate) {
+          setReviewGenerateGateByDate((prev) => ({
+            ...prev,
+            [dateKey]: detail.gate,
+          }))
+        }
+        setError(detail?.message || detail || 'Failed to generate roster')
+        setTimeout(() => setError(''), 5000)
+      }
+    } catch (err) {
+      setError('Network error generating roster')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setGeneratingRosterDate(null)
+    }
+  }
 
   // Calendar navigation
   const goToPrevMonth = () => {
@@ -2966,6 +3047,13 @@ function RosterCalendar({
   const selectedMissingShiftReviewItems = selectedDateReviewItems.filter((item) => item.kind === 'missing-shift')
   const selectedReviewIssueCount = selectedMissingShiftReviewItems.length
   const selectedAffectedBookingEventCount = selectedMissingShiftReviewItems.length
+  const selectedReviewGenerateGate = selectedDate ? reviewGenerateGateByDate[selectedDate] : null
+  const canGenerateSelectedDateRoster = canShowRosterGenerateCta({
+    isAdmin,
+    selectedDate,
+    reviewIssueCount: selectedReviewIssueCount,
+    gate: selectedReviewGenerateGate,
+  })
   const selectedDateHolidays = selectedDate ? getHolidaysForDate(selectedDate) : []
   const selectedDateShiftExceptions = selectedDate ? (shiftExceptionsByDate[selectedDate] || []) : []
   const visibleDateKeys = calendarData.weeks
@@ -2979,6 +3067,11 @@ function RosterCalendar({
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
   const calendarReviewIssueCount = missingShiftReviewItems.length
   const calendarAffectedBookingEventCount = missingShiftReviewItems.length
+
+  useEffect(() => {
+    if (!isAdmin || !selectedDate || selectedReviewIssueCount <= 0) return
+    fetchReviewGenerateGate(selectedDate)
+  }, [isAdmin, selectedDate, selectedReviewIssueCount, fetchReviewGenerateGate])
 
   const renderCalendarHeader = (position = 'top') => (
     <div className={`roster-calendar-header roster-calendar-header-${position}`}>
@@ -3524,6 +3617,20 @@ function RosterCalendar({
                     </li>
                   ))}
                 </ul>
+                {canGenerateSelectedDateRoster && (
+                  <div className="roster-review-actions">
+                    <button
+                      type="button"
+                      className="roster-review-generate-btn"
+                      onClick={handleGenerateRosterForSelectedDate}
+                      disabled={generatingRosterDate === selectedDate || loadingReviewGenerateGate}
+                    >
+                      {generatingRosterDate === selectedDate
+                        ? 'Generating...'
+                        : `Generate roster for ${formatDateUK(selectedDate)}`}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

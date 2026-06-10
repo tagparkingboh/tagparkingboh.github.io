@@ -763,6 +763,33 @@
   margin-top: 10px;
 }
 
+.roster-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.roster-review-generate-btn {
+  background: #d9ff00;
+  border: 1px solid #d9ff00;
+  border-radius: 6px;
+  color: #151515;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 800;
+  padding: 9px 14px;
+}
+
+.roster-review-generate-btn:hover:not(:disabled) {
+  background: #c7eb00;
+  border-color: #c7eb00;
+}
+
+.roster-review-generate-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .no-content {
   color: #666;
   text-align: center;
