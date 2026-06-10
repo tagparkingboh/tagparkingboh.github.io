@@ -621,6 +621,7 @@ class LinkedBookingInfo(BaseModel):
     reference: str
     type: str  # "dropoff" or "pickup"
     customer_name: str
+    vehicle_registration: Optional[str] = None
     time: Optional[str] = None  # The dropoff/pickup time
     flight_number: Optional[str] = None
     destination: Optional[str] = None  # destination for dropoff, origin for pickup
@@ -638,6 +639,7 @@ class RosterShiftResponse(BaseModel):
     booking_reference: Optional[str] = None
     booking_type: Optional[str] = None  # "dropoff" or "pickup"
     booking_customer_name: Optional[str] = None
+    booking_vehicle_registration: Optional[str] = None
     booking_time: Optional[str] = None  # The dropoff/pickup time
     booking_flight_number: Optional[str] = None
     booking_destination: Optional[str] = None  # destination for dropoff, origin for pickup

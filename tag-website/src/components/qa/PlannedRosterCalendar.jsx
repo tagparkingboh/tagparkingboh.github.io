@@ -1879,6 +1879,15 @@ function formatUkDate(yyyymmdd) {
   return `${d}/${m}/${y}`
 }
 
+function eventVehicleRegistration(event) {
+  return (
+    event?.vehicle_registration
+    || event?.booking_vehicle_registration
+    || event?.vehicle?.registration
+    || ''
+  ).toUpperCase()
+}
+
 function ShiftDetail({ shift }) {
   return (
     <div className="prp-shift-detail">
@@ -1919,6 +1928,7 @@ function AdminShiftBlock({ shift }) {
         customer_name: shift.booking_customer_name,
         time: shift.booking_time,
         flight_number: shift.booking_flight_number,
+        vehicle_registration: shift.booking_vehicle_registration,
         destination: shift.booking_destination,
       },
     ]
@@ -1944,6 +1954,9 @@ function AdminShiftBlock({ shift }) {
               <div className="prp-event-head">
                 <span className="prp-event-icon">{b.type === 'dropoff' ? '🚗' : '🛬'}</span>
                 <span className="prp-event-ref">{b.reference}</span>
+                {eventVehicleRegistration(b) && (
+                  <span className="prp-event-reg">{eventVehicleRegistration(b)}</span>
+                )}
                 {b.customer_name && (
                   <span className="prp-event-customer">{b.customer_name}</span>
                 )}
@@ -1972,6 +1985,9 @@ function EventRow({ event }) {
         <span className="prp-event-ref">{event.booking_reference}</span>
         {isRefunded && (
           <span className="prp-event-refunded-pill" title="This booking was refunded">REFUNDED</span>
+        )}
+        {eventVehicleRegistration(event) && (
+          <span className="prp-event-reg">{eventVehicleRegistration(event)}</span>
         )}
         {event.customer_name && (
           <span className="prp-event-customer">{event.customer_name}</span>

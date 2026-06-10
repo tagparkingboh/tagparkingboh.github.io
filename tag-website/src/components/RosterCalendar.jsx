@@ -53,6 +53,10 @@ const formatDateISO = (date) => {
   return `${year}-${month}-${day}`
 }
 
+const getBookingRegistration = (booking) => (
+  booking?.vehicle_registration || booking?.vehicle?.registration || ''
+).toUpperCase()
+
 export const getUKDateKey = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
@@ -4010,6 +4014,11 @@ function RosterCalendar({
                                       {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                     </span>
                                     <span className="shift-booking-ref">{booking.reference}</span>
+                                    {getBookingRegistration(booking) && (
+                                      <span className="shift-booking-reg">
+                                        {getBookingRegistration(booking)}
+                                      </span>
+                                    )}
                                     <span className="shift-booking-customer">{booking.customer_name}</span>
                                   </div>
                                   <div className="shift-booking-details">
@@ -4125,6 +4134,11 @@ function RosterCalendar({
                                         {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                       </span>
                                       <span className="shift-booking-ref">{booking.reference}</span>
+                                      {getBookingRegistration(booking) && (
+                                        <span className="shift-booking-reg">
+                                          {getBookingRegistration(booking)}
+                                        </span>
+                                      )}
                                       <span className="shift-booking-customer">{booking.customer_name}</span>
                                     </div>
                                   </div>

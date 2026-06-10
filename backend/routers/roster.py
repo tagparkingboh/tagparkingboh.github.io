@@ -288,6 +288,19 @@ def _pickup_event_date(booking):
     return booking.pickup_date
 
 
+def _booking_vehicle_registration(booking):
+    vehicle = getattr(booking, "vehicle", None)
+    registration = getattr(vehicle, "registration", None)
+    if isinstance(registration, str) and registration:
+        return registration
+
+    registration = getattr(booking, "vehicle_registration", None)
+    if isinstance(registration, str) and registration:
+        return registration
+
+    return None
+
+
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
     # Build list of linked bookings
@@ -313,6 +326,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 reference=booking.reference or "",
                 type="dropoff",
                 customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                vehicle_registration=_booking_vehicle_registration(booking),
                 time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
                 flight_number=booking.dropoff_flight_number,
                 destination=booking.dropoff_destination
@@ -332,6 +346,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 reference=booking.reference or "",
                 type="pickup",
                 customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                vehicle_registration=_booking_vehicle_registration(booking),
                 time=pickup_card_time,
                 flight_number=booking.pickup_flight_number,
                 destination=booking.pickup_origin
@@ -351,6 +366,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     reference=booking.reference or "",
                     type="dropoff",
                     customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                    vehicle_registration=_booking_vehicle_registration(booking),
                     time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
                     flight_number=booking.dropoff_flight_number,
                     destination=booking.dropoff_destination
@@ -366,6 +382,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     reference=booking.reference or "",
                     type="pickup",
                     customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                    vehicle_registration=_booking_vehicle_registration(booking),
                     time=pickup_card_time,
                     flight_number=booking.pickup_flight_number,
                     destination=booking.pickup_origin
@@ -385,6 +402,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
         booking_reference=first_booking.reference if first_booking else None,
         booking_type=first_booking.type if first_booking else None,
         booking_customer_name=first_booking.customer_name if first_booking else None,
+        booking_vehicle_registration=first_booking.vehicle_registration if first_booking else None,
         booking_time=first_booking.time if first_booking else None,
         booking_flight_number=first_booking.flight_number if first_booking else None,
         booking_destination=first_booking.destination if first_booking else None,

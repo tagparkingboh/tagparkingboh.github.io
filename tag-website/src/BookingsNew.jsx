@@ -56,7 +56,7 @@ const countryNames = {
   EG: 'Egypt'
 }
 
-const ARRIVAL_TIME_NOTICE = "Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day."
+const ARRIVAL_TIME_NOTICE = "Please enter the arrival date and time shown for your flight, using the 24-hour clock. If your flight lands after midnight, select the date it lands, even if that's the following day."
 
 // Generate a unique session ID for tracking the booking flow
 const generateSessionId = () => {
@@ -3139,6 +3139,9 @@ function Bookings({ isModal = false, onClose }) {
                         }))}
                         onAmbiguousTime={handleAmbiguousDepartureTime}
                       />
+                      <p className="time-format-hint">
+                        We use the 24-hour clock for bookings, e.g. 9pm is 21:00.
+                      </p>
                       {showDepartureTimeWarning && (
                         <p className="time-format-warning">
                           Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.
@@ -3394,6 +3397,9 @@ function Bookings({ isModal = false, onClose }) {
                           }))}
                           onStartEntry={handleArrivalTimeStarted}
                         />
+                        <p className="time-format-hint">
+                          We use the 24-hour clock for bookings, e.g. 9pm is 21:00.
+                        </p>
                         {showArrivalTimeNotice && (
                           <div className="arrival-time-notice" role="status">
                             <p>{ARRIVAL_TIME_NOTICE}</p>

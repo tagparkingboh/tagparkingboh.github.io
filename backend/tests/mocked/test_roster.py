@@ -1943,6 +1943,7 @@ class TestMultipleBookingsPerShift:
                 reference="TAG-ABC123",
                 type="dropoff",
                 customer_name="Sarah Thompson",
+                vehicle_registration="AB12CDE",
                 time="06:00",
                 flight_number="EZY123",
                 destination="Tenerife"
@@ -1986,6 +1987,7 @@ class TestMultipleBookingsPerShift:
             reference="TAG-ABC123",
             type="dropoff",
             customer_name="Sarah Thompson",
+            vehicle_registration="AB12CDE",
             time="06:00",
             flight_number="EZY123",
             destination="Tenerife"
@@ -1995,6 +1997,7 @@ class TestMultipleBookingsPerShift:
         assert booking.reference == "TAG-ABC123"
         assert booking.type == "dropoff"
         assert booking.customer_name == "Sarah Thompson"
+        assert booking.vehicle_registration == "AB12CDE"
         assert booking.time == "06:00"
         assert booking.flight_number == "EZY123"
         assert booking.destination == "Tenerife"
@@ -2013,6 +2016,7 @@ class TestMultipleBookingsPerShift:
         assert booking.time is None
         assert booking.flight_number is None
         assert booking.destination is None
+        assert booking.vehicle_registration is None
 
     def test_shift_response_backwards_compatible(self):
         """RosterShiftResponse should still have single booking fields for backwards compatibility."""
@@ -2742,6 +2746,7 @@ class TestBookingLinksPersistence:
             reference="TAG-ABC123",
             type="dropoff",
             customer_name="John Smith",
+            vehicle_registration="AB12CDE",
             time="06:00",
             flight_number="FR1234",
             destination="Alicante"
@@ -2751,6 +2756,7 @@ class TestBookingLinksPersistence:
         assert booking.reference == "TAG-ABC123"
         assert booking.type == "dropoff"
         assert booking.customer_name == "John Smith"
+        assert booking.vehicle_registration == "AB12CDE"
         assert booking.time == "06:00"
         assert booking.flight_number == "FR1234"
         assert booking.destination == "Alicante"
@@ -2769,6 +2775,7 @@ class TestBookingLinksPersistence:
         assert booking.time is None
         assert booking.flight_number is None
         assert booking.destination is None
+        assert booking.vehicle_registration is None
 
 
 # =============================================================================
@@ -2816,6 +2823,7 @@ class TestOvernightShiftBookingLinks:
         mock_booking.dropoff_destination = "Tenerife"
         mock_booking.pickup_date = date(2026, 4, 10)
         mock_booking.pickup_time = None
+        mock_booking.vehicle_registration = "AB12CDE"
 
         mock_shift.bookings = [mock_booking]
 
@@ -2826,6 +2834,8 @@ class TestOvernightShiftBookingLinks:
         assert len(result.bookings) == 1
         assert result.bookings[0].id == 101
         assert result.bookings[0].type == "dropoff"
+        assert result.bookings[0].vehicle_registration == "AB12CDE"
+        assert result.booking_vehicle_registration == "AB12CDE"
 
     def test_shift_to_response_includes_booking_on_end_date(self):
         """Bookings with pickup on shift end date should be included."""

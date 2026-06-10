@@ -413,9 +413,10 @@ describe('Time Format Warning - Warning Content', () => {
     })
 
     it('arrival notice message mentions following-day landings', () => {
-      const warningMessage = "Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day."
+      const warningMessage = "Please enter the arrival date and time shown for your flight, using the 24-hour clock. If your flight lands after midnight, select the date it lands, even if that's the following day."
 
       expect(warningMessage).toContain('arrival date and time')
+      expect(warningMessage).toContain('24-hour clock')
       expect(warningMessage).toContain('after midnight')
       expect(warningMessage).toContain('following day')
     })

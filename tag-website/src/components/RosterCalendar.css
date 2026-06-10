@@ -1238,6 +1238,17 @@
   font-size: 0.9rem;
 }
 
+.shift-booking-reg {
+  font-family: monospace;
+  color: #1a1a1a;
+  background: #D9FF00;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
 .shift-booking-details {
   display: flex;
   flex-wrap: wrap;
