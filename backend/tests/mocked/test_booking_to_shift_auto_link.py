@@ -17,7 +17,12 @@ from db_models import RosterShift, ShiftBookingLink, ShiftStatus, Booking
 from roster_planner import PlannerSettings
 from roster_planner_runner import (
     auto_link_booking_to_shifts,
+    auto_link_booking_async,
+    fire_engine_async,
+    record_run,
+    _safe_json,
     _shift_covers_event,
+    _shift_covers_event_window,
 )
 
 
@@ -495,6 +500,10 @@ class TestShiftCoversEvent:
         s = _mk_shift()
         assert _shift_covers_event(s, None) is False
 
+    def test_same_day_rejects_wrong_date(self):
+        s = _mk_shift(start_time=time(8, 0), end_time=time(16, 0))
+        assert _shift_covers_event(s, datetime(2026, 5, 12, 9, 0)) is False
+
     def test_inclusive_on_both_endpoints(self):
         s = _mk_shift(start_time=time(8, 0), end_time=time(16, 0))
         assert _shift_covers_event(s, datetime(2026, 5, 11, 8, 0)) is True
@@ -509,6 +518,76 @@ class TestShiftCoversEvent:
         assert _shift_covers_event(s, datetime(2026, 5, 12, 0, 30)) is True
         assert _shift_covers_event(s, datetime(2026, 5, 12, 2, 0)) is True
         assert _shift_covers_event(s, datetime(2026, 5, 12, 2, 1)) is False
+
+    def test_window_rejects_missing_start_or_end(self):
+        s = _mk_shift()
+        assert _shift_covers_event_window(s, None, datetime(2026, 5, 11, 9, 0)) is False
+        assert _shift_covers_event_window(s, datetime(2026, 5, 11, 9, 0), None) is False
+
+
+class TestRunnerDefensiveHelpers:
+    def test_safe_json_handles_none_and_serialisation_failure(self, monkeypatch):
+        assert _safe_json(None) is None
+        monkeypatch.setattr("roster_planner_runner.json.dumps", MagicMock(side_effect=TypeError("bad payload")))
+        assert _safe_json({"bad": object()}) is None
+
+    def test_record_run_skips_missing_run_id_and_rolls_back_failures(self):
+        db = MagicMock()
+        assert record_run(
+            db,
+            trigger_event="manual",
+            trigger_ref=None,
+            proposal={},
+            started_at=datetime.utcnow(),
+        ) is None
+        db.add.assert_not_called()
+
+        db.commit.side_effect = RuntimeError("write failed")
+        db.rollback.side_effect = RuntimeError("rollback failed")
+        assert record_run(
+            db,
+            trigger_event="manual",
+            trigger_ref="TAG-X",
+            proposal={
+                "run_id": "run-fail",
+                "window_start": date(2026, 5, 11),
+                "window_end": date(2026, 5, 12),
+                "warnings": [],
+            },
+            started_at=datetime.utcnow(),
+        ) is None
+        db.rollback.assert_called_once()
+
+    def test_fire_engine_async_closes_session_even_when_close_raises(self, monkeypatch):
+        import database
+
+        db = MagicMock()
+        db.close.side_effect = RuntimeError("close failed")
+        monkeypatch.setattr(database, "SessionLocal", MagicMock(return_value=db))
+        monkeypatch.setattr("roster_planner_runner.fire_engine", MagicMock())
+
+        fire_engine_async("manual", "TAG-CLOSE")
+
+        db.close.assert_called_once()
+
+    def test_auto_link_booking_async_noops_without_session_and_swallows_close_failure(self, monkeypatch):
+        import database
+
+        monkeypatch.setattr(database, "SessionLocal", None)
+        assert auto_link_booking_async(123) is None
+
+        booking = _mk_booking()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = booking
+        db.close.side_effect = RuntimeError("close failed")
+        monkeypatch.setattr(database, "SessionLocal", MagicMock(return_value=db))
+        link = MagicMock()
+        monkeypatch.setattr("roster_planner_runner.auto_link_booking_to_shifts", link)
+
+        auto_link_booking_async(booking.id)
+
+        link.assert_called_once_with(db, booking)
+        db.close.assert_called_once()
 
 
 # =====================================================================================

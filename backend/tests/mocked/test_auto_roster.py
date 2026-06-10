@@ -23,10 +23,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auto_roster import (  # noqa: E402
     _events_for_booking,
     _shift_window,
+    _windows_overlap,
+    _shift_linked_booking_ids,
+    _is_auto_shift_eligible_for_rebuild,
     _affected_dates_for_booking,
     rebuild_auto_for_dates,
     auto_create_or_extend_for_booking,
+    auto_create_or_extend_async,
     handle_booking_cancelled,
+    handle_booking_cancelled_async,
     delete_all_auto_shifts,
 )
 from db_models import (  # noqa: E402
@@ -1812,3 +1817,253 @@ class TestDeleteAllAutoShifts:
         )
         assert untouched in db._deleted
         assert shaped not in db._deleted
+
+
+# ===========================================================================
+# focused coverage helpers / isolation paths
+# ===========================================================================
+
+class TestAutoRosterCoverageEdges:
+    def test_helper_collects_shift_booking_ids_from_legacy_and_relationships(self):
+        shift = SimpleNamespace(
+            booking_id=10,
+            bookings=[
+                SimpleNamespace(id=20),
+                SimpleNamespace(id=None),
+                SimpleNamespace(id=30),
+            ],
+        )
+
+        assert _shift_linked_booking_ids(shift) == {10, 20, 30}
+        assert _shift_linked_booking_ids(SimpleNamespace(booking_id=None, bookings=None)) == set()
+
+    def test_helper_windows_overlap_false_for_disjoint_windows(self):
+        morning = (datetime(2026, 6, 10, 8, 0), datetime(2026, 6, 10, 9, 0))
+        afternoon = (datetime(2026, 6, 10, 13, 0), datetime(2026, 6, 10, 14, 0))
+
+        assert _windows_overlap(morning, afternoon) is False
+
+    def test_helper_auto_shift_eligibility_rejects_admin_owned_rows(self):
+        eligible = SimpleNamespace(
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+        )
+        assigned = SimpleNamespace(
+            created_source="auto",
+            staff_id=12,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+        )
+        shaped = SimpleNamespace(
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=datetime(2026, 6, 10, 9, 0),
+            status=ShiftStatus.SCHEDULED,
+        )
+        manual = SimpleNamespace(
+            created_source="manual",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+        )
+
+        assert _is_auto_shift_eligible_for_rebuild(eligible) is True
+        assert _is_auto_shift_eligible_for_rebuild(assigned) is False
+        assert _is_auto_shift_eligible_for_rebuild(shaped) is False
+        assert _is_auto_shift_eligible_for_rebuild(manual) is False
+
+    def test_rebuild_with_empty_target_dates_returns_zero_summary(self):
+        db = make_db()
+
+        assert rebuild_auto_for_dates(db, set(), mk_settings()) == {
+            "deleted": 0,
+            "created": 0,
+            "skipped_covered": 0,
+            "skipped_suppressed": 0,
+            "bookings_in_scope": 0,
+            "events": 0,
+        }
+        db.query.assert_not_called()
+
+    def test_rebuild_skips_adjacent_day_cluster_owned_elsewhere(self):
+        booking = SimpleNamespace(
+            id=91,
+            reference="TAG-ADJ0001",
+            status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
+            dropoff_date=date(2026, 6, 10),
+            dropoff_time=time(8, 0),
+            pickup_date=None,
+            pickup_time=None,
+            flight_arrival_time=None,
+        )
+        db = make_db(bookings=[booking])
+
+        summary = rebuild_auto_for_dates(db, {date(2026, 6, 11)}, mk_settings())
+
+        assert summary["created"] == 0
+        assert not db._added
+
+    def test_rebuild_suppresses_cluster_when_cancelled_shift_kept_booking_link(self):
+        booking = SimpleNamespace(
+            id=92,
+            reference="TAG-SUPP001",
+            status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
+            dropoff_date=date(2026, 6, 10),
+            dropoff_time=time(8, 0),
+            pickup_date=None,
+            pickup_time=None,
+            flight_arrival_time=None,
+        )
+        suppressed = SimpleNamespace(
+            id=50,
+            date=date(2026, 6, 10),
+            end_date=None,
+            start_time=time(1, 0),
+            end_time=time(2, 0),
+            booking_id=booking.id,
+            bookings=[],
+            created_source="auto",
+            status=ShiftStatus.CANCELLED,
+            suppressed_at=datetime(2026, 6, 9, 18, 0),
+        )
+        db = make_db(bookings=[booking], suppressed_shifts=[suppressed])
+
+        summary = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        assert summary["skipped_suppressed"] == 1
+        assert summary["created"] == 0
+
+    def test_rebuild_does_not_suppress_when_cancelled_shift_is_unrelated(self):
+        booking = SimpleNamespace(
+            id=93,
+            reference="TAG-SUPP002",
+            status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
+            dropoff_date=date(2026, 6, 10),
+            dropoff_time=time(8, 0),
+            pickup_date=None,
+            pickup_time=None,
+            flight_arrival_time=None,
+        )
+        suppressed = SimpleNamespace(
+            id=51,
+            date=date(2026, 6, 10),
+            end_date=None,
+            start_time=time(1, 0),
+            end_time=time(2, 0),
+            booking_id=999,
+            bookings=[],
+            created_source="auto",
+            status=ShiftStatus.CANCELLED,
+            suppressed_at=datetime(2026, 6, 9, 18, 0),
+        )
+        db = make_db(bookings=[booking], suppressed_shifts=[suppressed])
+
+        summary = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        assert summary["skipped_suppressed"] == 0
+        assert summary["created"] == 1
+
+    def test_focused_rebuild_deletes_overlapping_untouched_auto_shift_once(self):
+        booking = SimpleNamespace(
+            id=94,
+            reference="TAG-FOCUS01",
+            status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
+            dropoff_date=date(2026, 6, 10),
+            dropoff_time=time(8, 0),
+            pickup_date=None,
+            pickup_time=None,
+            flight_arrival_time=None,
+        )
+        existing = SimpleNamespace(
+            id=60,
+            date=date(2026, 6, 10),
+            end_date=None,
+            start_time=time(7, 30),
+            end_time=time(8, 45),
+            booking_id=None,
+            bookings=[],
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+        )
+        db = make_db(untouched_auto_shifts=[existing], bookings=[booking])
+
+        summary = rebuild_auto_for_dates(
+            db,
+            {date(2026, 6, 10)},
+            mk_settings(),
+            focus_booking_id=booking.id,
+        )
+
+        assert summary["deleted"] == 1
+        assert existing in db._deleted
+        assert summary["created"] == 1
+
+    def test_auto_create_or_extend_skips_when_booking_has_no_events(self):
+        booking = SimpleNamespace(
+            id=95,
+            reference="TAG-EMPTY01",
+            status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
+            dropoff_date=None,
+            dropoff_time=None,
+            pickup_date=None,
+            pickup_time=None,
+            flight_arrival_time=None,
+        )
+
+        assert auto_create_or_extend_for_booking(make_db(), booking, mk_settings()) == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 1,
+        }
+
+    def test_handle_booking_cancelled_skips_rebuild_when_booking_has_no_events(self):
+        booking = SimpleNamespace(
+            id=96,
+            reference="TAG-EMPTY02",
+            status=BookingStatus.CANCELLED,
+            service_type=ServiceType.MEET_GREET,
+            dropoff_date=None,
+            dropoff_time=None,
+            pickup_date=None,
+            pickup_time=None,
+            flight_arrival_time=None,
+        )
+
+        assert handle_booking_cancelled(make_db(), booking) == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 0,
+        }
+
+    def test_auto_create_async_swallows_query_and_rollback_failures(self, monkeypatch):
+        db = MagicMock()
+        db.query.side_effect = RuntimeError("query exploded")
+        db.rollback.side_effect = RuntimeError("rollback exploded")
+        monkeypatch.setattr("database.SessionLocal", lambda: db)
+
+        auto_create_or_extend_async(123)
+
+        db.rollback.assert_called_once()
+        db.close.assert_called_once()
+
+    def test_handle_cancelled_async_swallows_query_and_rollback_failures(self, monkeypatch):
+        db = MagicMock()
+        db.query.side_effect = RuntimeError("query exploded")
+        db.rollback.side_effect = RuntimeError("rollback exploded")
+        monkeypatch.setattr("database.SessionLocal", lambda: db)
+
+        handle_booking_cancelled_async(123)
+
+        db.rollback.assert_called_once()
+        db.close.assert_called_once()

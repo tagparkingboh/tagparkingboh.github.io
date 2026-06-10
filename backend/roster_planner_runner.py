@@ -360,7 +360,8 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
         return []
     if getattr(booking, "service_type", None) == ServiceType.PARK_RIDE:
         return []
-    if getattr(booking, "status", None) not in (
+    booking_status = getattr(booking, "status", BookingStatus.CONFIRMED)
+    if booking_status not in (
         BookingStatus.CONFIRMED,
         BookingStatus.REFUNDED,
     ):

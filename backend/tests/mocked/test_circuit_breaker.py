@@ -10,6 +10,7 @@ Tests cover:
 import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
+import json
 
 
 class TestPoolCircuitBreakerStates:
@@ -180,6 +181,34 @@ class TestRequestFiltering:
 
         assert cb.rejected_count == 3
 
+    @patch('circuit_breaker.PoolCircuitBreaker.get_pool_usage')
+    def test_allows_high_priority_during_open_with_emergency_reason(self, mock_usage):
+        """High-priority admin/auth paths are allowed during OPEN with warning."""
+        from circuit_breaker import PoolCircuitBreaker
+        mock_usage.return_value = 98
+
+        cb = PoolCircuitBreaker()
+        with patch.object(cb, 'update_state', return_value="OPEN"):
+            cb.state = "OPEN"
+            allowed, reason = cb.should_allow_request("/api/auth/login")
+
+        assert allowed is True
+        assert reason == "high_priority_emergency"
+
+    @patch('circuit_breaker.PoolCircuitBreaker.get_pool_usage')
+    def test_rejects_regular_endpoints_when_open(self, mock_usage):
+        """Regular paths are rejected when the circuit is fully OPEN."""
+        from circuit_breaker import PoolCircuitBreaker
+        mock_usage.return_value = 96
+
+        cb = PoolCircuitBreaker()
+        with patch.object(cb, 'update_state', return_value="OPEN"):
+            cb.state = "OPEN"
+            allowed, reason = cb.should_allow_request("/api/bookings")
+
+        assert allowed is False
+        assert "circuit_open" in reason
+
 
 class TestSnapshotRecording:
     """Tests for pool snapshot recording on state changes."""
@@ -263,6 +292,57 @@ class TestSnapshotRecording:
         assert snapshot.health_status == PoolHealthStatus.CRITICAL
         assert snapshot.trigger == "critical"
 
+    @patch('database.SessionLocal')
+    @patch('database.get_pool_status')
+    def test_snapshot_has_correct_health_status_recovery(self, mock_status, mock_session):
+        """Snapshot records HEALTHY recovery status below warning threshold."""
+        from circuit_breaker import PoolCircuitBreaker
+        from db_models import PoolHealthStatus
+
+        mock_status.return_value = {
+            "pool_size": 10,
+            "max_overflow": 20,
+            "checked_out": 1,
+            "overflow": 0,
+            "checked_in": 9,
+            "usage_percent": 10,
+        }
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        cb = PoolCircuitBreaker()
+        cb._record_snapshot(10)
+
+        snapshot = mock_db.add.call_args[0][0]
+        assert snapshot.health_status == PoolHealthStatus.HEALTHY
+        assert snapshot.trigger == "recovery"
+
+    @patch('database.SessionLocal')
+    @patch('database.get_pool_status')
+    def test_snapshot_failure_is_swallowed(self, mock_status, mock_session):
+        """Snapshot errors should not propagate into request handling."""
+        from circuit_breaker import PoolCircuitBreaker
+
+        mock_status.side_effect = RuntimeError("pool unavailable")
+        cb = PoolCircuitBreaker()
+
+        cb._record_snapshot(80)
+
+        mock_session.assert_not_called()
+
+
+class TestPoolUsageFailure:
+    """Tests for defensive pool-status handling."""
+
+    @patch('database.get_pool_status')
+    def test_get_pool_usage_returns_zero_when_database_check_fails(self, mock_status):
+        from circuit_breaker import PoolCircuitBreaker
+
+        mock_status.side_effect = RuntimeError("database down")
+        cb = PoolCircuitBreaker()
+
+        assert cb.get_pool_usage() == 0
+
 
 class TestCircuitBreakerStats:
     """Tests for circuit breaker statistics."""
@@ -344,6 +424,10 @@ class TestCircuitBreakerMiddleware:
 
         assert isinstance(result, JSONResponse)
         assert result.status_code == 503
+        assert result.headers["retry-after"] == "5"
+        body = json.loads(result.body.decode())
+        assert body["retry_after"] == 5
+        assert "high load" in body["detail"]
 
     @pytest.mark.asyncio
     @patch('circuit_breaker.circuit_breaker')
