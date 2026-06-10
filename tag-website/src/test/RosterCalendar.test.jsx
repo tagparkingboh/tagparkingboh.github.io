@@ -24,6 +24,7 @@ import {
   getRosterCoverageReviewItems,
   getRosterCoverageReviewItemsByDate,
   groupAutoOverlapReviewItems,
+  getAutoShiftShapeState,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -88,6 +89,41 @@ describe('UK date filtering', () => {
       ['2026-05-29', '2026-05-30', '2026-05-31'],
       new Date('2026-06-09T12:00:00Z'),
     )).toEqual([])
+  })
+})
+
+describe('getAutoShiftShapeState', () => {
+  it('H: returns null for manual shifts', () => {
+    expect(getAutoShiftShapeState({
+      created_source: 'manual',
+      admin_shaped_at: '2026-06-09T10:00:00Z',
+    })).toBeNull()
+  })
+
+  it('U: marks a fresh auto shift as original with no calendar tick', () => {
+    expect(getAutoShiftShapeState({
+      created_source: 'auto',
+      admin_shaped_at: null,
+    })).toEqual({
+      isAdminShaped: false,
+      className: 'auto-original',
+      detailLabel: 'Auto',
+      chipLabel: '',
+      title: 'Original auto shift',
+    })
+  })
+
+  it('B: marks admin-shaped auto shifts with an edited label and calendar tick', () => {
+    expect(getAutoShiftShapeState({
+      created_source: 'auto',
+      admin_shaped_at: '2026-06-09T10:00:00Z',
+    })).toEqual({
+      isAdminShaped: true,
+      className: 'auto-shaped',
+      detailLabel: 'Auto ✓ Edited',
+      chipLabel: '✓',
+      title: 'Auto shift edited, duplicated, split, or merged by admin',
+    })
   })
 })
 

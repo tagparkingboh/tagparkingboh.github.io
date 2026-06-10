@@ -654,6 +654,10 @@ class RosterShiftResponse(BaseModel):
     # Surfaced so the v3 admin Calendar can colour / sort badges differently
     # when toggle = 'All' (mixing auto + manual on the same day cell).
     created_source: Optional[str] = None
+    # Marks an auto shift that an admin has deliberately shaped via
+    # edit/duplicate/split/merge, so the Calendar can distinguish it from a
+    # fresh engine-created shift.
+    admin_shaped_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     suppressed_at: Optional[datetime] = None
