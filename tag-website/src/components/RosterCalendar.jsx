@@ -2837,14 +2837,8 @@ function RosterCalendar({
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
   const selectedDateReviewItems = getRosterCoverageReviewItems(selectedDateBookings, selectedDateShifts)
   const selectedMissingShiftReviewItems = selectedDateReviewItems.filter((item) => item.kind === 'missing-shift')
-  const selectedAutoOverlapIssueGroups = groupAutoOverlapReviewItems(
-    selectedDateReviewItems.filter((item) => item.kind === 'unassigned-linked-shift'),
-  )
-  const selectedReviewIssueCount = selectedMissingShiftReviewItems.length + selectedAutoOverlapIssueGroups.length
-  const selectedAffectedBookingEventCount = selectedMissingShiftReviewItems.length + selectedAutoOverlapIssueGroups.reduce(
-    (total, group) => total + group.affected_count,
-    0,
-  )
+  const selectedReviewIssueCount = selectedMissingShiftReviewItems.length
+  const selectedAffectedBookingEventCount = selectedMissingShiftReviewItems.length
   const selectedDateHolidays = selectedDate ? getHolidaysForDate(selectedDate) : []
   const visibleDateKeys = calendarData.weeks
     .flat()
@@ -2855,13 +2849,8 @@ function RosterCalendar({
   const calendarDemandTotal = calendarDemandItems.reduce((total, item) => total + item.total, 0)
   const calendarReviewItems = getRosterCoverageReviewItemsByDate(bookingsByDate, shiftsByDate, visibleDateKeys)
   const missingShiftReviewItems = calendarReviewItems.filter((item) => item.kind === 'missing-shift')
-  const autoOverlapReviewItems = calendarReviewItems.filter((item) => item.kind === 'unassigned-linked-shift')
-  const autoOverlapIssueGroups = groupAutoOverlapReviewItems(autoOverlapReviewItems)
-  const calendarReviewIssueCount = missingShiftReviewItems.length + autoOverlapIssueGroups.length
-  const calendarAffectedBookingEventCount = missingShiftReviewItems.length + autoOverlapIssueGroups.reduce(
-    (total, group) => total + group.affected_count,
-    0,
-  )
+  const calendarReviewIssueCount = missingShiftReviewItems.length
+  const calendarAffectedBookingEventCount = missingShiftReviewItems.length
 
   const renderCalendarHeader = (position = 'top') => (
     <div className={`roster-calendar-header roster-calendar-header-${position}`}>
@@ -2951,32 +2940,6 @@ function RosterCalendar({
                           .filter(Boolean)
                           .join(' · ')}
                       </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {autoOverlapIssueGroups.length > 0 && (
-              <section className="roster-review-group">
-                <h4>Auto-roster created unstaffed overlap</h4>
-                <ul className="roster-review-list">
-                  {autoOverlapIssueGroups.map((group) => (
-                    <li key={group.key} className={`roster-review-item roster-review-${group.kind}`}>
-                      <span className="roster-review-message">
-                        {group.date_label} · Auto shift {group.shift_times.join(', ')} overlaps assigned {group.blocking_shift_times.join(', ')}
-                      </span>
-                      <span className="roster-review-meta">
-                        {group.affected_count} affected booking event{group.affected_count === 1 ? '' : 's'}
-                      </span>
-                      <ul className="roster-review-affected-list">
-                        {group.affected_items.map((item) => (
-                          <li key={`${item.date}-${item.key}`}>
-                            {[item.event_type && bookingEventLabel(item.event_type), item.booking_reference, item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </li>
-                        ))}
-                      </ul>
                     </li>
                   ))}
                 </ul>
@@ -3392,25 +3355,6 @@ function RosterCalendar({
                           .join(' · ')}
                         {item.shift_times?.length > 0 && ` · Shift ${item.shift_times.join(', ')}`}
                       </span>
-                    </li>
-                  ))}
-                  {selectedAutoOverlapIssueGroups.map((group) => (
-                    <li key={group.key} className={`roster-review-item roster-review-${group.kind}`}>
-                      <span className="roster-review-message">
-                        Auto shift {group.shift_times.join(', ')} overlaps assigned {group.blocking_shift_times.join(', ')}
-                      </span>
-                      <span className="roster-review-meta">
-                        {group.affected_count} affected booking event{group.affected_count === 1 ? '' : 's'}
-                      </span>
-                      <ul className="roster-review-affected-list">
-                        {group.affected_items.map((item) => (
-                          <li key={item.key}>
-                            {[item.event_type && bookingEventLabel(item.event_type), item.booking_reference, item.time && formatTime(item.time), item.customer_name, item.flight_number, item.destination]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </li>
-                        ))}
-                      </ul>
                     </li>
                   ))}
                 </ul>
