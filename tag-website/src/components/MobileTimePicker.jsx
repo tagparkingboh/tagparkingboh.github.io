@@ -119,6 +119,7 @@ function MobileTimePicker({ value, onChange, id, placeholder, label, onAmbiguous
 
   // Handle desktop input change with ambiguous time detection
   const handleDesktopChange = (e) => {
+    onStartEntry?.()
     const formatted = formatTimeInput(e.target.value)
     onChange(formatted)
     // Check for ambiguous time when input is complete (HH:MM format)
