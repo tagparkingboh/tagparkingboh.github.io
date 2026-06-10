@@ -56,6 +56,8 @@ const countryNames = {
   EG: 'Egypt'
 }
 
+const ARRIVAL_TIME_NOTICE = "Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day."
+
 // Generate a unique session ID for tracking the booking flow
 const generateSessionId = () => {
   return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
@@ -291,6 +293,7 @@ function Bookings({ isModal = false, onClose }) {
   const [arrivalTimeError, setArrivalTimeError] = useState('')
   // 24-hour time format warning - shown once per field type per session
   const [showDepartureTimeWarning, setShowDepartureTimeWarning] = useState(false)
+  const [showArrivalTimeNotice, setShowArrivalTimeNotice] = useState(false)
   const departureTimeWarningShownRef = useRef(
     sessionStorage.getItem('booking_departureTimeWarningShown') === 'true'
   )
@@ -1472,7 +1475,7 @@ function Bookings({ isModal = false, onClose }) {
     if (!arrivalTimeWarningShownRef.current) {
       arrivalTimeWarningShownRef.current = true
       sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
-      window.alert("Please enter the arrival date and time shown for your flight. If your flight lands after midnight, select the date it lands, even if that's the following day.")
+      setShowArrivalTimeNotice(true)
     }
   }
 
@@ -3379,17 +3382,31 @@ function Bookings({ isModal = false, onClose }) {
                     </div>
                     <div className="form-group">
                       <label htmlFor="manualArrivalFlightTime">Arrival Time <span className="required">*</span></label>
-                      <MobileTimePicker
-                        id="manualArrivalFlightTime"
-                        placeholder="e.g., 14:30"
-                        value={manualArrivalData.flightTime}
-                        label="Arrival Time"
-                        onChange={(value) => setManualArrivalData(prev => ({
-                          ...prev,
-                          flightTime: value
-                        }))}
-                        onStartEntry={handleArrivalTimeStarted}
-                      />
+                      <div className="arrival-time-field">
+                        <MobileTimePicker
+                          id="manualArrivalFlightTime"
+                          placeholder="e.g., 14:30"
+                          value={manualArrivalData.flightTime}
+                          label="Arrival Time"
+                          onChange={(value) => setManualArrivalData(prev => ({
+                            ...prev,
+                            flightTime: value
+                          }))}
+                          onStartEntry={handleArrivalTimeStarted}
+                        />
+                        {showArrivalTimeNotice && (
+                          <div className="arrival-time-notice" role="status">
+                            <p>{ARRIVAL_TIME_NOTICE}</p>
+                            <button
+                              type="button"
+                              className="arrival-time-notice-dismiss"
+                              onClick={() => setShowArrivalTimeNotice(false)}
+                            >
+                              Got it
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
