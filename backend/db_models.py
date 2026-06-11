@@ -3,7 +3,8 @@ SQLAlchemy database models for TAG booking system.
 """
 from sqlalchemy import (
     Column, Integer, String, DateTime, Date, Time,
-    ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint, Index
+    ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint, Index,
+    CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
@@ -857,6 +858,43 @@ class LoginCode(Base):
 
     def __repr__(self):
         return f"<LoginCode {self.code} for user {self.user_id}>"
+
+
+class ParkingCapacitySetting(Base):
+    """Date-effective parking capacity schedule.
+
+    total_spaces is the physical car-park ceiling. online_spaces is the cap
+    exposed to customer checkout and occupancy reporting. Manual reserve is
+    derived as total_spaces - online_spaces.
+    """
+    __tablename__ = "parking_capacity_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    effective_from = Column(DateTime(timezone=True), nullable=False, unique=True, index=True)
+    total_spaces = Column(Integer, nullable=False)
+    online_spaces = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+    updated_by = Column(String(255), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("total_spaces > 0", name="ck_parking_capacity_total_positive"),
+        CheckConstraint("online_spaces > 0", name="ck_parking_capacity_online_positive"),
+        CheckConstraint(
+            "total_spaces >= online_spaces",
+            name="ck_parking_capacity_total_gte_online",
+        ),
+    )
+
+    @property
+    def manual_spaces(self):
+        return self.total_spaces - self.online_spaces
+
+    def __repr__(self):
+        return (
+            f"<ParkingCapacitySetting {self.effective_from}: "
+            f"{self.online_spaces}/{self.total_spaces}>"
+        )
 
 
 class AuthThrottle(Base):

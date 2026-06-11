@@ -12,7 +12,7 @@
  * Coverage:
  *   Happy    — single-date at cap returns true; un-capped date returns false
  *   Unhappy  — null inputs / empty maps don't crash
- *   Edge     — soft cap boundary at exactly 64, custom cap overrides
+ *   Edge     — online cap boundary at default 73, custom cap overrides
  *   Boundary — straddle dates (dropoff and pickup themselves fine, day in
  *              the middle at cap) → findBlockedDateInStay catches it
  */
@@ -23,6 +23,8 @@ import {
   isManuallyBlocked,
   findBlockedDateInStay,
   getDayOccupancyPercent,
+  getOnlineCapacityForDate,
+  DEFAULT_ONLINE_CAPACITY,
   SOFT_CAP,
 } from '../utils/capacity'
 
@@ -36,22 +38,22 @@ const D = (y, m, d) => new Date(y, m - 1, d)
 describe('isAtCapacity', () => {
   // --- HAPPY ---------------------------------------------------------------
 
-  it('H: date at the soft cap returns true', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 64 })).toBe(true)
+  it('H: date at the online cap returns true', () => {
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 73 })).toBe(true)
   })
 
-  it('H: date well above the soft cap returns true', () => {
+  it('H: date well above the online cap returns true', () => {
     expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 75 })).toBe(true)
   })
 
-  it('H: date below the soft cap returns false', () => {
+  it('H: date below the online cap returns false', () => {
     expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 12 })).toBe(false)
   })
 
   // --- UNHAPPY -------------------------------------------------------------
 
   it('U: null date returns false (no crash)', () => {
-    expect(isAtCapacity(null, { '2026-05-26': 64 })).toBe(false)
+    expect(isAtCapacity(null, { '2026-05-26': 73 })).toBe(false)
   })
 
   it('U: missing dailyOccupancy returns false', () => {
@@ -63,7 +65,7 @@ describe('isAtCapacity', () => {
   })
 
   it('U: date with no entry in dailyOccupancy treated as 0 (not full)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-27': 64 })).toBe(false)
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-27': 73 })).toBe(false)
   })
 
   // --- EDGE ----------------------------------------------------------------
@@ -73,22 +75,30 @@ describe('isAtCapacity', () => {
     expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 39 }, 40)).toBe(false)
   })
 
-  it('E: default SOFT_CAP is 64', () => {
-    expect(SOFT_CAP).toBe(64)
+  it('E: default online capacity is 73', () => {
+    expect(SOFT_CAP).toBe(73)
+    expect(DEFAULT_ONLINE_CAPACITY).toBe(73)
   })
 
   // --- BOUNDARY ------------------------------------------------------------
 
-  it('B: exactly 63 cars → not at cap (one slot left)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 63 })).toBe(false)
+  it('B: exactly 72 cars → not at cap (one slot left)', () => {
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 72 })).toBe(false)
   })
 
-  it('B: exactly 64 cars → AT cap (no slot left, public soft cap)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 64 })).toBe(true)
+  it('B: exactly 73 cars → AT cap (no online slot left)', () => {
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 73 })).toBe(true)
   })
 
-  it('B: 65 cars → AT cap (admin override territory)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 65 })).toBe(true)
+    it('B: 74 cars → AT cap (manual reserve territory)', () => {
+      expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 74 })).toBe(true)
+    })
+
+  it('B: date-effective capacity map overrides the fallback', () => {
+    const capacity = { '2026-05-26': { online_spaces: 88 } }
+    expect(getOnlineCapacityForDate(D(2026, 5, 26), capacity)).toBe(88)
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 87 }, capacity)).toBe(false)
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 88 }, capacity)).toBe(true)
   })
 })
 
@@ -118,16 +128,15 @@ describe('getDayOccupancyPercent', () => {
   // --- HAPPY ---------------------------------------------------------------
 
   it('H: returns rounded integer percent for a populated date', () => {
-    // 48 / 64 = 75% exact
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 48 })).toBe(75)
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 55 })).toBe(75)
   })
 
-  it('H: 52 / 64 rounds to 81% (amber band lower edge)', () => {
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 52 })).toBe(81)
+  it('H: 59 / 73 rounds to 81% (amber band lower edge)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 59 })).toBe(81)
   })
 
-  it('H: 58 / 64 rounds to 91% (red band lower edge)', () => {
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 58 })).toBe(91)
+  it('H: 66 / 73 rounds to 90% (red band lower edge)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 66 })).toBe(90)
   })
 
   // --- UNHAPPY -------------------------------------------------------------
@@ -154,23 +163,20 @@ describe('getDayOccupancyPercent', () => {
     expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 0 })).toBe(0)
   })
 
-  it('B: at cap (64) → 100%', () => {
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 64 })).toBe(100)
+  it('B: at cap (73) → 100%', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 73 })).toBe(100)
   })
 
-  it('B: 51 / 64 rounds to 80% (top of "no warning" band)', () => {
-    // 51/64 = 79.6875 → rounds to 80%
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 51 })).toBe(80)
+  it('B: 58 / 73 rounds to 79% (top of "no warning" band)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 58 })).toBe(79)
   })
 
-  it('B: 57 / 64 rounds to 89% (top of amber band)', () => {
-    // 57/64 = 89.0625 → rounds to 89%
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 57 })).toBe(89)
+  it('B: 65 / 73 rounds to 89% (top of amber band)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 65 })).toBe(89)
   })
 
-  it('B: 63 / 64 rounds to 98% (top of red band, one slot left)', () => {
-    // 63/64 = 98.4375 → rounds to 98%
-    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 63 })).toBe(98)
+  it('B: 72 / 73 rounds to 99% (top of red band, one slot left)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 72 })).toBe(99)
   })
 
   // --- EDGE ----------------------------------------------------------------
@@ -228,7 +234,7 @@ describe('isManuallyBlocked', () => {
 
 describe('findBlockedDateInStay', () => {
   const fullDate = '2026-05-26'
-  const dailyOccupancyFull = { [fullDate]: 64 }
+  const dailyOccupancyFull = { [fullDate]: 73 }
   const blockedRanges = [
     { start_date: '2026-12-24', end_date: '2026-12-26', reason: 'Christmas' },
   ]
@@ -289,7 +295,7 @@ describe('findBlockedDateInStay', () => {
     // 2026-12-25 is both manually blocked AND at cap → returns 'manual'.
     const got = findBlockedDateInStay(
       D(2026, 12, 25), D(2026, 12, 25),
-      { '2026-12-25': 64 }, blockedRanges,
+      { '2026-12-25': 73 }, blockedRanges,
     )
     expect(got.reason).toBe('manual')
   })
@@ -319,7 +325,7 @@ describe('findBlockedDateInStay', () => {
   it('B: straddle — two capped days inside the stay → returns the EARLIER one', () => {
     const got = findBlockedDateInStay(
       D(2026, 5, 24), D(2026, 5, 30),
-      { '2026-05-26': 64, '2026-05-28': 64 }, [],
+      { '2026-05-26': 73, '2026-05-28': 73 }, [],
     )
     expect(isoDate(got.date)).toBe('2026-05-26')
   })
@@ -337,7 +343,7 @@ describe('findBlockedDateInStay', () => {
   it('B: stay crosses month boundary; capped day is in the next month', () => {
     const got = findBlockedDateInStay(
       D(2026, 5, 30), D(2026, 6, 3),
-      { '2026-06-01': 64 }, [],
+      { '2026-06-01': 73 }, [],
     )
     expect(isoDate(got.date)).toBe('2026-06-01')
   })
@@ -345,7 +351,7 @@ describe('findBlockedDateInStay', () => {
   it('B: long stay (10 days) with capped day at the far end', () => {
     const got = findBlockedDateInStay(
       D(2026, 6, 1), D(2026, 6, 10),
-      { '2026-06-09': 64 }, [],
+      { '2026-06-09': 73 }, [],
     )
     expect(isoDate(got.date)).toBe('2026-06-09')
   })

@@ -5,11 +5,12 @@
 // bookings overlapping that operational day. The customer-form fetches this
 // via `/api/capacity/daily?from=...&to=...` and stores it in component state.
 //
-// `softCap` (default 64) is the public soft cap. The hard ceiling is 70 (admin
-// override territory). At softCap the customer flow blocks new bookings; admin
-// can still push past it via manual booking.
+// `onlineCapacity` is the public online cap. The backend returns a
+// date-effective `daily_capacity` map from `/api/capacity/daily`; when that
+// has not loaded yet, helpers fall back to the production default below.
 
-export const SOFT_CAP = 64
+export const DEFAULT_ONLINE_CAPACITY = 73
+export const SOFT_CAP = DEFAULT_ONLINE_CAPACITY
 
 // Format a Date as 'YYYY-MM-DD' using LOCAL fields. Using toISOString() would
 // shift across midnight in any non-UTC timezone; UK is BST in summer so this
@@ -17,21 +18,32 @@ export const SOFT_CAP = 64
 export const isoDate = (date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
-// True if `date` is at or above the public soft cap.
-export const isAtCapacity = (date, dailyOccupancy, softCap = SOFT_CAP) => {
+export const getOnlineCapacityForDate = (date, dailyCapacity, fallback = SOFT_CAP) => {
+  if (!date) return fallback
+  if (typeof dailyCapacity === 'number') return dailyCapacity
+  if (!dailyCapacity) return fallback
+  const capacity = dailyCapacity[isoDate(date)]
+  return capacity?.online_spaces || capacity?.online_capacity || fallback
+}
+
+// True if `date` is at or above the public online cap.
+export const isAtCapacity = (date, dailyOccupancy, dailyCapacity = SOFT_CAP) => {
   if (!date) return false
   if (!dailyOccupancy) return false
-  return (dailyOccupancy[isoDate(date)] || 0) >= softCap
+  const onlineCapacity = getOnlineCapacityForDate(date, dailyCapacity)
+  return (dailyOccupancy[isoDate(date)] || 0) >= onlineCapacity
 }
 
 // Occupancy % for a single date, rounded to the nearest integer. Drives the
 // "we're getting full" early-warning modal in the booking flow — fires in
 // the 80-99% band where the lot still has room but is filling up. Returns
 // 0 for null/missing inputs so the JSX gate can do a simple `>= 80` check.
-export const getDayOccupancyPercent = (date, dailyOccupancy, softCap = SOFT_CAP) => {
-  if (!date || !dailyOccupancy || !softCap) return 0
+export const getDayOccupancyPercent = (date, dailyOccupancy, dailyCapacity = SOFT_CAP) => {
+  if (!date || !dailyOccupancy) return 0
+  const onlineCapacity = getOnlineCapacityForDate(date, dailyCapacity)
+  if (!onlineCapacity) return 0
   const count = dailyOccupancy[isoDate(date)] || 0
-  return Math.round((count / softCap) * 100)
+  return Math.round((count / onlineCapacity) * 100)
 }
 
 // True if `date` falls inside any manual BlockedDate row. blockedDates is a
@@ -55,7 +67,7 @@ export const findBlockedDateInStay = (
   pickupDate,
   dailyOccupancy,
   blockedDates,
-  softCap = SOFT_CAP,
+  dailyCapacity = SOFT_CAP,
 ) => {
   if (!dropoffDate || !pickupDate) return null
   const cursor = new Date(dropoffDate)
@@ -66,7 +78,7 @@ export const findBlockedDateInStay = (
     if (isManuallyBlocked(cursor, blockedDates)) {
       return { date: new Date(cursor), reason: 'manual' }
     }
-    if (isAtCapacity(cursor, dailyOccupancy, softCap)) {
+    if (isAtCapacity(cursor, dailyOccupancy, dailyCapacity)) {
       return { date: new Date(cursor), reason: 'cap' }
     }
     cursor.setDate(cursor.getDate() + 1)

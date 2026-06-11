@@ -3,8 +3,10 @@ Database service layer for CRUD operations.
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
-from datetime import date, time, datetime, timezone
-from typing import Optional, List
+from datetime import date, time, datetime, timezone, timedelta
+from typing import Optional, List, Union
+from zoneinfo import ZoneInfo
+import logging
 import os
 import random
 import string
@@ -12,13 +14,44 @@ import string
 from db_models import (
     Customer, Vehicle, Booking, Payment, FlightDeparture, FlightArrival,
     FlightDepartureHistory, FlightArrivalHistory,
-    BookingStatus, PaymentStatus, ServiceType
+    BookingStatus, PaymentStatus, ServiceType, ParkingCapacitySetting
 )
+
+logger = logging.getLogger(__name__)
 
 E2E_CAPACITY_EXCLUDED_EMAILS = (
     "qa.orca.contact@gmail.com",
     "qa.orca.contact+referral-friend1@gmail.com",
     "qa.orca.contact+referral-friend2@gmail.com",
+)
+
+UK_TIMEZONE = ZoneInfo("Europe/London")
+LEGACY_CAPACITY_EFFECTIVE_FROM = datetime(1970, 1, 1, 0, 0, tzinfo=UK_TIMEZONE)
+CURRENT_CAPACITY_EFFECTIVE_FROM = datetime(2026, 6, 11, 0, 0, tzinfo=UK_TIMEZONE)
+LEGACY_TOTAL_SPACES = 70
+LEGACY_ONLINE_SPACES = 64
+CURRENT_TOTAL_SPACES = 75
+CURRENT_ONLINE_SPACES = 73
+
+DEFAULT_CAPACITY_SCHEDULE = (
+    {
+        "id": None,
+        "effective_from": LEGACY_CAPACITY_EFFECTIVE_FROM,
+        "total_spaces": LEGACY_TOTAL_SPACES,
+        "online_spaces": LEGACY_ONLINE_SPACES,
+        "manual_spaces": LEGACY_TOTAL_SPACES - LEGACY_ONLINE_SPACES,
+        "updated_at": None,
+        "updated_by": "fallback",
+    },
+    {
+        "id": None,
+        "effective_from": CURRENT_CAPACITY_EFFECTIVE_FROM,
+        "total_spaces": CURRENT_TOTAL_SPACES,
+        "online_spaces": CURRENT_ONLINE_SPACES,
+        "manual_spaces": CURRENT_TOTAL_SPACES - CURRENT_ONLINE_SPACES,
+        "updated_at": None,
+        "updated_by": "fallback",
+    },
 )
 
 
@@ -36,6 +69,182 @@ def exclude_staging_e2e_capacity_bookings(query, booking_model=Booking):
     return query.join(booking_model.customer).filter(
         func.lower(Customer.email).notin_(E2E_CAPACITY_EXCLUDED_EMAILS)
     )
+
+
+# ============== PARKING CAPACITY SETTINGS ==============
+
+def _capacity_row_to_dict(row) -> dict:
+    """Normalize a DB row or dict into the API/helper shape."""
+    if isinstance(row, dict):
+        effective_from = normalize_capacity_effective_from(row["effective_from"])
+        total_spaces = int(row["total_spaces"])
+        online_spaces = int(row["online_spaces"])
+        return {
+            "id": row.get("id"),
+            "effective_from": effective_from,
+            "total_spaces": total_spaces,
+            "online_spaces": online_spaces,
+            "manual_spaces": total_spaces - online_spaces,
+            "updated_at": row.get("updated_at"),
+            "updated_by": row.get("updated_by"),
+        }
+
+    total_spaces = int(row.total_spaces)
+    online_spaces = int(row.online_spaces)
+    return {
+        "id": row.id,
+        "effective_from": normalize_capacity_effective_from(row.effective_from),
+        "total_spaces": total_spaces,
+        "online_spaces": online_spaces,
+        "manual_spaces": total_spaces - online_spaces,
+        "updated_at": row.updated_at,
+        "updated_by": row.updated_by,
+    }
+
+
+def _fallback_capacity_schedule() -> list[dict]:
+    return [_capacity_row_to_dict(row) for row in DEFAULT_CAPACITY_SCHEDULE]
+
+
+def validate_capacity_values(total_spaces: int, online_spaces: int) -> None:
+    if total_spaces is None or online_spaces is None:
+        raise ValueError("total_spaces and online_spaces are required")
+    if int(total_spaces) < 1:
+        raise ValueError("total_spaces must be at least 1")
+    if int(online_spaces) < 1:
+        raise ValueError("online_spaces must be at least 1")
+    if int(online_spaces) > int(total_spaces):
+        raise ValueError("online_spaces cannot exceed total_spaces")
+
+
+def normalize_capacity_effective_from(value) -> datetime:
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        dt = datetime.combine(value, time(0, 0))
+    elif isinstance(value, str):
+        normalized = value.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+    else:
+        raise ValueError("effective_from must be a datetime")
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UK_TIMEZONE)
+    return dt.astimezone(UK_TIMEZONE)
+
+
+def _capacity_lookup_datetime(value) -> datetime:
+    if isinstance(value, datetime):
+        return normalize_capacity_effective_from(value)
+    if isinstance(value, date):
+        return datetime.combine(value, time(23, 59, 59), tzinfo=UK_TIMEZONE)
+    raise ValueError("capacity lookup value must be a date or datetime")
+
+
+def get_parking_capacity_schedule(db: Session) -> list[dict]:
+    """Return the date-effective capacity schedule, oldest first.
+
+    During deploys where the migration has not populated the table yet,
+    fall back to the known legacy/current schedule so capacity decisions remain
+    deterministic.
+    """
+    try:
+        rows = (
+            db.query(ParkingCapacitySetting)
+            .order_by(ParkingCapacitySetting.effective_from.asc())
+            .all()
+        )
+    except Exception:
+        logger.exception("Failed to load parking capacity settings; using fallback capacity schedule")
+        rows = []
+
+    if not rows:
+        return _fallback_capacity_schedule()
+
+    return [_capacity_row_to_dict(row) for row in rows]
+
+
+def capacity_for_date_from_schedule(schedule: list[dict], target_date: Union[date, datetime]) -> dict:
+    """Pick the latest capacity row whose effective_from <= target date/time."""
+    if not schedule:
+        schedule = _fallback_capacity_schedule()
+    target_dt = _capacity_lookup_datetime(target_date)
+    selected = None
+    for row in sorted(schedule, key=lambda item: item["effective_from"]):
+        if row["effective_from"] <= target_dt:
+            selected = row
+        else:
+            break
+    if selected is None:
+        selected = sorted(schedule, key=lambda item: item["effective_from"])[0]
+    return _capacity_row_to_dict(selected)
+
+
+def get_parking_capacity_for_date(db: Session, target_date: Union[date, datetime]) -> dict:
+    return capacity_for_date_from_schedule(get_parking_capacity_schedule(db), target_date)
+
+
+def get_parking_capacity_for_range(
+    db: Session,
+    start_date: date,
+    end_date: date,
+) -> dict[str, dict]:
+    schedule = get_parking_capacity_schedule(db)
+    current = start_date
+    by_date: dict[str, dict] = {}
+    while current <= end_date:
+        capacity = capacity_for_date_from_schedule(schedule, current)
+        by_date[current.isoformat()] = {
+            "total_spaces": capacity["total_spaces"],
+            "online_spaces": capacity["online_spaces"],
+            "manual_spaces": capacity["manual_spaces"],
+        }
+        current += timedelta(days=1)
+    return by_date
+
+
+def upsert_parking_capacity_setting(
+    db: Session,
+    effective_from: datetime,
+    total_spaces: int,
+    online_spaces: int,
+    updated_by: str = None,
+) -> ParkingCapacitySetting:
+    validate_capacity_values(total_spaces, online_spaces)
+    effective_from = normalize_capacity_effective_from(effective_from)
+
+    setting = (
+        db.query(ParkingCapacitySetting)
+        .filter(ParkingCapacitySetting.effective_from == effective_from)
+        .first()
+    )
+    if setting:
+        setting.total_spaces = int(total_spaces)
+        setting.online_spaces = int(online_spaces)
+        setting.updated_at = datetime.now(timezone.utc)
+        setting.updated_by = updated_by
+    else:
+        setting = ParkingCapacitySetting(
+            effective_from=effective_from,
+            total_spaces=int(total_spaces),
+            online_spaces=int(online_spaces),
+            updated_by=updated_by,
+        )
+        db.add(setting)
+
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def serialize_capacity_setting(row: dict) -> dict:
+    payload = _capacity_row_to_dict(row)
+    effective_from = payload["effective_from"].astimezone(UK_TIMEZONE)
+    payload["effective_from"] = effective_from.isoformat()
+    payload["effective_from_display"] = effective_from.strftime("%d/%m/%Y %H:%M")
+    if payload["updated_at"] is not None:
+        payload["updated_at"] = payload["updated_at"].isoformat()
+    return payload
 
 
 def generate_booking_reference() -> str:
@@ -880,15 +1089,19 @@ def find_overcapacity_day_in_stay(
     db: Session,
     dropoff_date: date,
     pickup_date: date,
-    cap: int,
+    cap: int = None,
+    cap_by_date: Optional[dict] = None,
+    cap_field: str = "online_spaces",
     exclude_booking_id: Optional[int] = None,
 ) -> Optional[tuple]:
     """Walk every day in [dropoff_date, pickup_date] and return (day, count)
     for the first day where existing occupancy + this booking would push
-    over `cap`. None if all days fit.
+    over capacity. None if all days fit.
 
-    Called from /api/payments/create-intent (cap=64 public soft cap) and
-    the admin manual-booking endpoints (cap=70 physical hard ceiling).
+    `cap` is kept for legacy callers/tests. New production paths pass
+    `cap_by_date` from parking_capacity_settings:
+      - cap_field='online_spaces' for customer checkout
+      - cap_field='total_spaces' for admin/manual bookings
 
     Counts CONFIRMED + COMPLETED only — PENDING (in-checkout carts) are
     excluded after the 2026-05-21 review: mid-flow carts inflated the
@@ -903,7 +1116,7 @@ def find_overcapacity_day_in_stay(
     PENDING is universally excluded the practical effect is no-op for
     that case, but keeping the param avoids a wider call-site cleanup.
 
-    Returns (offending_date, current_count) — count is the number of
+    Returns (offending_date, current_count, cap) — count is the number of
     bookings already on that day (excluding the optional excluded one),
     so the calling endpoint can render an informative error.
     """
@@ -922,8 +1135,16 @@ def find_overcapacity_day_in_stay(
     cursor = dropoff_date
     while cursor <= pickup_date:
         count = sum(1 for b in overlapping if b.dropoff_date <= cursor <= b.pickup_date)
-        if count + 1 > cap:
-            return (cursor, count)
+        date_cap = cap
+        if cap_by_date is not None:
+            date_capacity = cap_by_date.get(cursor.isoformat(), {})
+            date_cap = date_capacity.get(cap_field)
+        if date_cap is None:
+            date_cap = CURRENT_ONLINE_SPACES if cap_field == "online_spaces" else CURRENT_TOTAL_SPACES
+        if count + 1 > date_cap:
+            if cap_by_date is None:
+                return (cursor, count)
+            return (cursor, count, int(date_cap))
         cursor = cursor + _td(days=1)
     return None
 
@@ -932,16 +1153,18 @@ def find_overcapacity_day_in_stay_locked(
     db: Session,
     dropoff_date: date,
     pickup_date: date,
-    cap: int,
+    cap: int = None,
+    cap_by_date: Optional[dict] = None,
+    cap_field: str = "online_spaces",
     exclude_booking_id: Optional[int] = None,
 ) -> Optional[tuple]:
     """find_overcapacity_day_in_stay() preceded by per-date advisory locks.
 
     Acquires SELECT pg_advisory_xact_lock(hashtext('booking_capacity:DATE'))
     for each date in [dropoff_date, pickup_date], then runs the bare
-    capacity check under those locks. Returns the same (offending_date,
-    current_count) tuple or None, so call sites swap one-for-one and keep
-    their existing error-message formatting.
+    capacity check under those locks. Legacy cap callers get
+    (offending_date, current_count); dynamic capacity callers get
+    (offending_date, current_count, cap).
 
     Closes the check-then-write race: a second request racing for the
     same date BLOCKS at lock acquisition until the first request's
@@ -962,22 +1185,10 @@ def find_overcapacity_day_in_stay_locked(
     identical to the bare function and avoid masking upstream
     validation bugs.
 
-    Sole caller (as of 2026-05-29 PR 3): the Stripe webhook handler
-    at /api/webhooks/stripe (payment_intent.succeeded branch), where
-    it re-checks capacity inside the same transaction as the booking
-    flip to CONFIRMED. That is the only path that ACTUALLY writes a
-    CONFIRMED row to the DB and therefore the only path where the
-    advisory lock guards a real oversell window.
-
-    Earlier drafts called this from /api/payments/create-intent and
-    /api/admin/bookings too, but those paths don't write a CONFIRMED
-    DB row (create-intent writes PENDING, which isn't counted;
-    admin/bookings writes through BookingService in-memory state),
-    so the lock there was decorative. Reverted in review.
-
-    NOT used at /api/admin/manual-booking — that endpoint's existing
-    cap=70 check stays unchanged in this PR (out of scope per
-    2026-05-29 scoping decision; revisit alongside force=true override).
+    Used when confirming customer-paid bookings so concurrent requests
+    cannot oversell the date-effective online cap. Manual/admin booking
+    paths use the same date-effective capacity schedule with
+    cap_field='total_spaces'.
 
     Must be called inside an active SQLAlchemy transaction (the default
     for the FastAPI get_db dependency). No other code path in this
@@ -1000,5 +1211,7 @@ def find_overcapacity_day_in_stay_locked(
         dropoff_date=dropoff_date,
         pickup_date=pickup_date,
         cap=cap,
+        cap_by_date=cap_by_date,
+        cap_field=cap_field,
         exclude_booking_id=exclude_booking_id,
     )
