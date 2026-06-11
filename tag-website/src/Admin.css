@@ -6883,6 +6883,133 @@
   letter-spacing: 0.5px;
 }
 
+.capacity-settings-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 18px;
+  margin: 20px 0;
+  background: #ffffff;
+}
+
+.capacity-settings-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.capacity-settings-header h4 {
+  margin: 0;
+  color: #1e293b;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.capacity-settings-header p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.capacity-settings-status {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.capacity-settings-form {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.2fr) repeat(2, minmax(120px, 0.7fr)) minmax(110px, 0.6fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.capacity-settings-form label,
+.capacity-reserve-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.capacity-settings-form label span,
+.capacity-reserve-preview span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.capacity-settings-form input {
+  height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #1f2937;
+  font: inherit;
+}
+
+.capacity-reserve-preview strong {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  color: #1f2937;
+  font-size: 22px;
+}
+
+.save-capacity-btn {
+  height: 42px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.save-capacity-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.capacity-settings-message {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.capacity-settings-message.success {
+  color: #15803d;
+}
+
+.capacity-settings-message.error {
+  color: #b91c1c;
+}
+
+.capacity-schedule-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.capacity-schedule-row {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, minmax(90px, auto));
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 14px;
+}
+
+.capacity-schedule-row strong {
+  color: #1f2937;
+}
+
 /* Occupancy Chart */
 .occupancy-chart-container {
   background: white;
@@ -7479,11 +7606,20 @@
     flex-direction: column;
   }
 
-  .occupancy-stat {
-    width: 100%;
+    .occupancy-stat {
+      width: 100%;
+    }
+
+  .capacity-settings-form,
+  .capacity-schedule-row {
+    grid-template-columns: 1fr;
   }
 
-  .occupancy-chart {
+  .capacity-settings-header {
+    flex-direction: column;
+  }
+
+    .occupancy-chart {
     height: 150px;
   }
 

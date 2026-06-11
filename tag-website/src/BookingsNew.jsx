@@ -15,6 +15,8 @@ import {
   isManuallyBlocked as isManuallyBlockedUtil,
   findBlockedDateInStay as findBlockedDateInStayUtil,
   getDayOccupancyPercent as getDayOccupancyPercentUtil,
+  getOnlineCapacityForDate,
+  DEFAULT_ONLINE_CAPACITY,
   isoDate as isoDateUtil,
 } from './utils/capacity'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -411,10 +413,11 @@ function Bookings({ isModal = false, onClose }) {
 
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
-  // Daily occupancy map { 'YYYY-MM-DD': count } for the next 90 days — drives
-  // the amber "at-cap" tint on the date pickers and the stay-span warning.
+  // Daily occupancy/capacity maps for the next 90 days drive the date picker
+  // tint, stay-span warning, and busy warning.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
-  const SOFT_CAP_FE = 64
+  const [dailyCapacity, setDailyCapacity] = useState({})
+  const [onlineCapacity, setOnlineCapacity] = useState(DEFAULT_ONLINE_CAPACITY)
   // "We're getting full" early-warning modal. Fires for any date in the
   // 80-99% band — at-or-above 100% is already blocked by the existing
   // "Sorry, we're full" banners. Tracks dismissed ISO dates ONLY while
@@ -429,8 +432,7 @@ function Bookings({ isModal = false, onClose }) {
   // window so a 16:30 drop-off is allowed if another car is being picked
   // up at 16:00 the same day. Populated by the useEffect below once all
   // four inputs (dates + times) are set; null while we're still waiting.
-  const MAX_PARKING_SPOTS = 64
-  const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
+    const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
 
   // Lead-time gate. Pure logic lives in utils/leadTime.js so it's testable
   // with vi.setSystemTime(). leadTimeTick is bumped once a minute inside the
@@ -632,14 +634,14 @@ function Bookings({ isModal = false, onClose }) {
 
   // -- Day-level capacity helpers --------------------------------------
   // Pure logic lives in src/utils/capacity.js so it can be HUEB-tested. The
-  // wrappers below thread the component's state (dailyOccupancy, blockedDates,
-  // SOFT_CAP_FE) so the JSX call sites stay parameter-free.
+  // wrappers below thread the component's state (dailyOccupancy, dailyCapacity,
+  // blockedDates) so the JSX call sites stay parameter-free.
 
   const isManuallyBlocked = (date) =>
     isManuallyBlockedUtil(date, blockedDates)
 
   const isAtCapacity = (date) =>
-    isAtCapacityUtil(date, dailyOccupancy, SOFT_CAP_FE)
+    isAtCapacityUtil(date, dailyOccupancy, dailyCapacity)
 
   // Tint helper for react-datepicker `dayClassName` prop.
   const datePickerDayClass = (date) => {
@@ -651,11 +653,11 @@ function Bookings({ isModal = false, onClose }) {
   // Walk the stay range and return the first date that's blocked or at cap.
   // Catches the "straddle" case where dropoff + pickup themselves are fine
   // but a day inside the stay is full.
-  const findBlockedDateInStay = useMemo(
-    () => findBlockedDateInStayUtil(
-      formData.dropoffDate, formData.pickupDate, dailyOccupancy, blockedDates, SOFT_CAP_FE,
-    ),
-    [formData.dropoffDate, formData.pickupDate, blockedDates, dailyOccupancy],
+    const findBlockedDateInStay = useMemo(
+      () => findBlockedDateInStayUtil(
+        formData.dropoffDate, formData.pickupDate, dailyOccupancy, blockedDates, dailyCapacity,
+      ),
+    [formData.dropoffDate, formData.pickupDate, blockedDates, dailyOccupancy, dailyCapacity],
   )
 
   // Check if a date/time is blocked for drop-offs
@@ -847,8 +849,8 @@ function Bookings({ isModal = false, onClose }) {
     fetchBlockedDates()
   }, [API_BASE_URL])
 
-  // Fetch daily occupancy for the next 90 days. Drives:
-  //   1. Amber tint on date pickers for days at SOFT_CAP_FE (64+).
+  // Fetch daily occupancy/capacity for the next 90 days. Drives:
+  //   1. Amber tint on date pickers for days at the date-effective online cap.
   //   2. The stay-span "we're full" warning when a customer picks a range
   //      that crosses an over-cap day.
   useEffect(() => {
@@ -865,6 +867,8 @@ function Bookings({ isModal = false, onClose }) {
         if (response.ok) {
           const data = await response.json()
           setDailyOccupancy(data.daily_occupancy || {})
+          setDailyCapacity(data.daily_capacity || {})
+          setOnlineCapacity(data.online_capacity || data.max_capacity || DEFAULT_ONLINE_CAPACITY)
         }
       } catch (error) {
         console.error('Error fetching daily capacity:', error)
@@ -911,11 +915,12 @@ function Bookings({ isModal = false, onClose }) {
       const iso = isoDateUtil(candidate)
       if (dismissedBusyDatesRef.current.has(iso)) continue
       if (isManuallyBlockedUtil(candidate, blockedDates)) continue
-      if (isAtCapacityUtil(candidate, dailyOccupancy, SOFT_CAP_FE)) continue
-      const pct = getDayOccupancyPercentUtil(candidate, dailyOccupancy, SOFT_CAP_FE)
+      if (isAtCapacityUtil(candidate, dailyOccupancy, dailyCapacity)) continue
+      const pct = getDayOccupancyPercentUtil(candidate, dailyOccupancy, dailyCapacity)
       if (pct >= 80) {
         const count = dailyOccupancy[iso] || 0
-        const spacesLeft = Math.max(0, SOFT_CAP_FE - count)
+        const cap = getOnlineCapacityForDate(candidate, dailyCapacity, onlineCapacity)
+        const spacesLeft = Math.max(0, cap - count)
         setBusyWarning({
           percent: pct,
           level: pct >= 90 ? 'red' : 'amber',
@@ -926,7 +931,7 @@ function Bookings({ isModal = false, onClose }) {
         return
       }
     }
-  }, [formData.dropoffDate, formData.pickupDate, dailyOccupancy, blockedDates, busyWarning])
+  }, [formData.dropoffDate, formData.pickupDate, dailyOccupancy, dailyCapacity, onlineCapacity, blockedDates, busyWarning])
 
   const dismissBusyWarning = () => {
     if (busyWarning?.dateISO) {
@@ -1008,19 +1013,11 @@ function Bookings({ isModal = false, onClose }) {
     return flightsForDropoff.find(f => f.flightKey === formData.dropoffFlight)
   }, [flightsForDropoff, formData.dropoffFlight])
 
-  // Check if flight is "Call Us only" (capacity_tier = 0)
-  const isCallUsOnly = useMemo(() => {
-    if (!selectedDropoffFlight) return false
-    return selectedDropoffFlight.is_call_us_only || selectedDropoffFlight.capacity_tier === 0
-  }, [selectedDropoffFlight])
-
   // Calculate drop-off time slots (2¾h, 2h, 1½h before departure)
-  // Shows slots based on capacity tier and remaining availability
+  // Flight Slot Capacity is old booking-system metadata; parking capacity is
+  // governed by the date-effective online/manual capacity schedule.
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
-
-    // If this is a "Call Us only" flight, no slots available
-    if (isCallUsOnly) return []
 
     // Use overridden departure time if set, otherwise use scheduled time
     const flightTime = departureTimeOverride || selectedDropoffFlight.time
@@ -1054,7 +1051,7 @@ function Bookings({ isModal = false, onClose }) {
         isLastSlot: false,
       },
     ]
-  }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride, formData.dropoffDate])
+  }, [selectedDropoffFlight, departureTimeOverride])
 
   // Customer's selected drop-off TIME (HH:MM) — derived from the dropoffSlot
   // id by looking up the matching slot. Drives the time-aware capacity gate.
@@ -1119,17 +1116,6 @@ function Bookings({ isModal = false, onClose }) {
       cancelled = true
     }
   }, [formData.dropoffDate, formData.pickupDate, dropoffTime, pickupTime, API_BASE_URL])
-
-  // Check if flight is fully booked (all slots taken) or Call Us only
-  const isFlightFullyBooked = useMemo(() => {
-    if (!selectedDropoffFlight) return false
-    // New capacity-based check
-    if (selectedDropoffFlight.all_slots_booked !== undefined) {
-      return selectedDropoffFlight.all_slots_booked
-    }
-    // Fallback for old data format
-    return selectedDropoffFlight.is_slot_1_booked && selectedDropoffFlight.is_slot_2_booked
-  }, [selectedDropoffFlight])
 
   // Fetch arrivals when pick-up date changes
   useEffect(() => {
@@ -1579,30 +1565,25 @@ function Bookings({ isModal = false, onClose }) {
         dropoffSlot: ''
       }))
 
-      // Track when user selects a flight with 0 capacity
-      if (value) {
-        const selectedFlight = flightsForDropoff.find(f => f.flightKey === value)
-        if (selectedFlight && (selectedFlight.capacity_tier === 0 || selectedFlight.is_call_us_only)) {
-          console.log('Zero capacity flight selected:', {
+      const selectedFlight = flightsForDropoff.find(f => f.flightKey === value)
+      if (selectedFlight && (selectedFlight.capacity_tier === 0 || selectedFlight.is_call_us_only)) {
+        console.log('Legacy zero-capacity flight selected:', {
+          flight_number: `${selectedFlight.airlineCode}${selectedFlight.flightNumber}`,
+          flight_date: formData.dropoffDate ? format(formData.dropoffDate, 'yyyy-MM-dd') : null,
+          destination_airport: selectedFlight.destinationCode,
+          departure_time: selectedFlight.time,
+          gtag_available: !!window.gtag
+        })
+        if (window.gtag) {
+          window.gtag('event', 'zero_capacity_flight_selected', {
             flight_number: `${selectedFlight.airlineCode}${selectedFlight.flightNumber}`,
             flight_date: formData.dropoffDate ? format(formData.dropoffDate, 'yyyy-MM-dd') : null,
             destination_airport: selectedFlight.destinationCode,
-            departure_time: selectedFlight.time,
-            gtag_available: !!window.gtag
+            departure_time: selectedFlight.time
           })
-          if (window.gtag) {
-            window.gtag('event', 'zero_capacity_flight_selected', {
-              flight_number: `${selectedFlight.airlineCode}${selectedFlight.flightNumber}`,
-              flight_date: formData.dropoffDate ? format(formData.dropoffDate, 'yyyy-MM-dd') : null,
-              destination_airport: selectedFlight.destinationCode,
-              departure_time: selectedFlight.time
-            })
-          }
         }
       }
     }
-
-
   }
 
   const handleDateChange = (date, field) => {

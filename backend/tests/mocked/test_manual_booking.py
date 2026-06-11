@@ -709,11 +709,26 @@ class TestSlotValidationIntegration:
 
         app.dependency_overrides.clear()
 
+    def _wire_legacy_slot_fixture(self, mock_db, departure):
+        def _query(model):
+            chain = MagicMock()
+            chain.filter.return_value = chain
+            chain.order_by.return_value = chain
+            chain.all.return_value = []
+            name = model.__name__ if hasattr(model, "__name__") else str(model)
+            if name == "FlightDeparture":
+                chain.first.return_value = departure
+            else:
+                chain.first.return_value = None
+            return chain
+        mock_db.query.side_effect = _query
+        return mock_db
+
     @patch("email_service.send_manual_booking_payment_email")
-    def test_rejects_booking_when_early_slot_full(
+    def test_allows_booking_when_legacy_early_slot_full(
         self, mock_email, mock_app_dependencies, mock_db, valid_manual_booking_request
     ):
-        """Should reject booking when early slot is at capacity."""
+        """Legacy flight-slot counters do not block parking capacity."""
         from main import app
 
         departure = create_mock_departure(
@@ -721,12 +736,7 @@ class TestSlotValidationIntegration:
             slots_booked_early=1,  # At capacity for tier 2
         )
 
-        # Customer None, Vehicle None, Departure found
-        mock_db.query.return_value.filter.return_value.first.side_effect = [
-            None,  # Customer
-            None,  # Vehicle
-            departure,  # Departure
-        ]
+        self._wire_legacy_slot_fixture(mock_db, departure)
 
         valid_manual_booking_request["departure_id"] = 1
         valid_manual_booking_request["dropoff_slot"] = "early"
@@ -737,23 +747,18 @@ class TestSlotValidationIntegration:
             json=valid_manual_booking_request,
         )
 
-        assert response.status_code == 400
-        assert "early slot" in response.json()["detail"].lower()
+        assert response.status_code == 200
 
     @patch("email_service.send_manual_booking_payment_email")
-    def test_rejects_call_us_only_flight(
+    def test_allows_legacy_call_us_only_flight(
         self, mock_email, mock_app_dependencies, mock_db, valid_manual_booking_request
     ):
-        """Should reject booking for call-us-only flights."""
+        """Legacy call-us-only flight metadata does not block parking capacity."""
         from main import app
 
         departure = create_mock_departure(capacity_tier=0)
 
-        mock_db.query.return_value.filter.return_value.first.side_effect = [
-            None,  # Customer
-            None,  # Vehicle
-            departure,  # Departure (call-us-only)
-        ]
+        self._wire_legacy_slot_fixture(mock_db, departure)
 
         valid_manual_booking_request["departure_id"] = 1
         valid_manual_booking_request["dropoff_slot"] = "early"
@@ -764,8 +769,7 @@ class TestSlotValidationIntegration:
             json=valid_manual_booking_request,
         )
 
-        assert response.status_code == 400
-        assert "call" in response.json()["detail"].lower()
+        assert response.status_code == 200
 
 
 # =============================================================================

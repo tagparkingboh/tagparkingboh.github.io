@@ -77,7 +77,12 @@ class QueryStub:
 def _db_from_sequence(items):
     db = MagicMock()
     queue = [QueryStub(rows=item) for item in items]
-    db.query.side_effect = lambda *_, **__: queue.pop(0) if queue else QueryStub()
+    def _query(model, *_, **__):
+        name = getattr(model, "__name__", "")
+        if name == "ParkingCapacitySetting":
+            return QueryStub()
+        return queue.pop(0) if queue else QueryStub()
+    db.query.side_effect = _query
     return db
 
 
@@ -754,7 +759,6 @@ class TestStatsExportWebhookCoverage:
             confirmation_email_sent=False,
             confirmation_email_sent_at=None,
         )
-        departure = SimpleNamespace(capacity_tier=4, slots_booked_early=0, slots_booked_late=0)
         payment = SimpleNamespace(status=PaymentStatus.PENDING, paid_at=None, amount_pence=15000)
         subscriber = SimpleNamespace(
             promo_10_used_booking_id=55,
@@ -764,7 +768,7 @@ class TestStatsExportWebhookCoverage:
             promo_free_code=None,
             promo_code=None,
         )
-        db = _db_from_sequence([[booking], [departure], [payment], [subscriber]])
+        db = _db_from_sequence([[booking], [], [payment], [subscriber]])
 
         result = await main.mark_booking_paid(
             booking_id=55,
@@ -776,7 +780,6 @@ class TestStatsExportWebhookCoverage:
         assert result["success"] is True
         assert result["email_sent"] is True
         assert booking.status == BookingStatus.CONFIRMED
-        assert departure.slots_booked_early == 1
         assert payment.status == PaymentStatus.SUCCEEDED
         assert booking.confirmation_email_sent is True
 

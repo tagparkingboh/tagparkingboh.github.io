@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../AuthContext'
+import { DEFAULT_ONLINE_CAPACITY, getOnlineCapacityForDate } from '../utils/capacity'
 import './RosterCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -804,10 +805,10 @@ function RosterCalendar({
 
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
-  // Daily occupancy map { 'YYYY-MM-DD': count } for the visible month.
-  // Drives the amber "Full" bar on at-cap days (soft cap 64 in BookingService).
+  // Daily occupancy/capacity maps for the visible month.
+  // Drives the "Full" bar on at-cap days using the date-effective online cap.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
-  const SOFT_CAP = 64
+  const [dailyCapacity, setDailyCapacity] = useState({})
   const [showBlockedDateModal, setShowBlockedDateModal] = useState(false)
   const [editingBlockedDate, setEditingBlockedDate] = useState(null)
   const [blockedDateForm, setBlockedDateForm] = useState({
@@ -1083,6 +1084,7 @@ function RosterCalendar({
       if (response.ok) {
         const data = await response.json()
         setDailyOccupancy(data.daily_occupancy || {})
+        setDailyCapacity(data.daily_capacity || {})
       }
     } catch (err) {
       console.error('Failed to load daily occupancy:', err)
@@ -1658,6 +1660,10 @@ function RosterCalendar({
     if (!day) return 0
     return dailyOccupancy[getDateKey(day)] || 0
   }
+
+  const getOnlineCapacityForDay = (day) => (
+    getOnlineCapacityForDate(day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day) : null, dailyCapacity, DEFAULT_ONLINE_CAPACITY)
+  )
 
   // Is today?
   const isToday = (day) => {
@@ -3296,7 +3302,8 @@ function RosterCalendar({
                 const showDayContent = showPastDays || !isPastDay || hasActiveOvernightShift
                 const blockedInfo = getBlockedInfoForDay(day)
                 const dayOccupancy = getOccupancyForDay(day)
-                const isAtCap = dayOccupancy >= SOFT_CAP
+                const dayOnlineCapacity = getOnlineCapacityForDay(day)
+                const isAtCap = dayOccupancy >= dayOnlineCapacity
                 const dayHolidays = dateKey ? getHolidaysForDate(dateKey) : []
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
@@ -3332,10 +3339,10 @@ function RosterCalendar({
                                     blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
                             </div>
                           )}
-                          {/* At-capacity indicator (auto — driven by daily occupancy >= 64). */}
+                          {/* At-capacity indicator (auto — driven by daily occupancy >= online cap). */}
                           {/* Shown only when not already manually blocked, since manual block trumps cap visually. */}
                           {!blockedInfo && isAtCap && (
-                            <div className="day-badge badge-at-cap" title={`Full: ${dayOccupancy}/${SOFT_CAP} cars parked`}>
+                            <div className="day-badge badge-at-cap" title={`Full: ${dayOccupancy}/${dayOnlineCapacity} online spaces parked`}>
                               ⛔ Full ({dayOccupancy})
                             </div>
                           )}

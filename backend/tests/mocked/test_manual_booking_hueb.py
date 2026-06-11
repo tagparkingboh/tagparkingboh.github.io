@@ -59,17 +59,22 @@ class TestManualBookingValidation:
     def teardown_method(self):
         _clear()
 
-    def _wire(self, customer=None, vehicle=None, departure=None, arrival=None):
+    def _wire(self, customer=None, vehicle=None, departure=None, arrival=None, bookings=None):
         """Build a DB stub that returns the listed objects for each model."""
         db = MagicMock()
         def _query(model):
             chain = MagicMock()
             chain.filter.return_value = chain
+            chain.order_by.return_value = chain
+            chain.all.return_value = []
             name = model.__name__ if hasattr(model, "__name__") else str(model)
             if name == "Customer":
                 chain.first.return_value = customer
             elif name == "Vehicle":
                 chain.first.return_value = vehicle
+            elif name == "Booking":
+                chain.first.return_value = None
+                chain.all.return_value = bookings or []
             elif name == "FlightDeparture":
                 chain.first.return_value = departure
             elif name == "FlightArrival":
@@ -103,6 +108,23 @@ class TestManualBookingValidation:
         assert "ceiling" in resp.json()["detail"].lower()
         assert "70" in resp.json()["detail"]
 
+    def test_U_total_capacity_ceiling_endpoint_gate(self):
+        from db_models import BookingStatus
+        overlapping = [
+            SimpleNamespace(
+                id=i,
+                status=BookingStatus.CONFIRMED,
+                dropoff_date=date_type(2026, 8, 15),
+                pickup_date=date_type(2026, 8, 22),
+            )
+            for i in range(75)
+        ]
+        _override(self._wire(bookings=overlapping))
+        resp = TestClient(app).post("/api/admin/manual-booking", json=_payload())
+        assert resp.status_code == 400
+        assert "Cannot create" in resp.json()["detail"]
+        assert "75-car physical ceiling" in resp.json()["detail"]
+
     def test_U_invalid_departure_id(self, monkeypatch):
         monkeypatch.setattr(
             "db_service.find_overcapacity_day_in_stay",
@@ -114,11 +136,12 @@ class TestManualBookingValidation:
         assert resp.status_code == 400
         assert "departure flight" in resp.json()["detail"].lower()
 
-    def test_U_call_us_only_flight(self, monkeypatch):
+    def test_H_legacy_call_us_only_flight_does_not_block_manual_booking(self, monkeypatch):
         monkeypatch.setattr(
             "db_service.find_overcapacity_day_in_stay",
             lambda *a, **kw: None,
         )
+        monkeypatch.setattr("email_service.send_manual_booking_payment_email", lambda *a, **kw: True)
         dep = SimpleNamespace(
             id=5, capacity_tier=0,
             slots_booked_early=0, slots_booked_late=0,
@@ -127,14 +150,14 @@ class TestManualBookingValidation:
         _override(self._wire(departure=dep))
         p = _payload(departure_id=5, dropoff_slot="early")
         resp = TestClient(app).post("/api/admin/manual-booking", json=p)
-        assert resp.status_code == 400
-        assert "calling to book" in resp.json()["detail"].lower()
+        assert resp.status_code == 200
 
-    def test_U_early_slot_full(self, monkeypatch):
+    def test_H_legacy_early_slot_full_does_not_block_manual_booking(self, monkeypatch):
         monkeypatch.setattr(
             "db_service.find_overcapacity_day_in_stay",
             lambda *a, **kw: None,
         )
+        monkeypatch.setattr("email_service.send_manual_booking_payment_email", lambda *a, **kw: True)
         dep = SimpleNamespace(
             id=5, capacity_tier=4,
             slots_booked_early=2, slots_booked_late=0,
@@ -143,14 +166,14 @@ class TestManualBookingValidation:
         _override(self._wire(departure=dep))
         p = _payload(departure_id=5, dropoff_slot="early")
         resp = TestClient(app).post("/api/admin/manual-booking", json=p)
-        assert resp.status_code == 400
-        assert "early slot" in resp.json()["detail"].lower()
+        assert resp.status_code == 200
 
-    def test_U_late_slot_full(self, monkeypatch):
+    def test_H_legacy_late_slot_full_does_not_block_manual_booking(self, monkeypatch):
         monkeypatch.setattr(
             "db_service.find_overcapacity_day_in_stay",
             lambda *a, **kw: None,
         )
+        monkeypatch.setattr("email_service.send_manual_booking_payment_email", lambda *a, **kw: True)
         dep = SimpleNamespace(
             id=5, capacity_tier=4,
             slots_booked_early=0, slots_booked_late=2,
@@ -159,14 +182,14 @@ class TestManualBookingValidation:
         _override(self._wire(departure=dep))
         p = _payload(departure_id=5, dropoff_slot="late")
         resp = TestClient(app).post("/api/admin/manual-booking", json=p)
-        assert resp.status_code == 400
-        assert "late slot" in resp.json()["detail"].lower()
+        assert resp.status_code == 200
 
-    def test_U_standard_slot_full(self, monkeypatch):
+    def test_H_legacy_standard_slot_full_does_not_block_manual_booking(self, monkeypatch):
         monkeypatch.setattr(
             "db_service.find_overcapacity_day_in_stay",
             lambda *a, **kw: None,
         )
+        monkeypatch.setattr("email_service.send_manual_booking_payment_email", lambda *a, **kw: True)
         dep = SimpleNamespace(
             id=5, capacity_tier=4,
             slots_booked_early=0, slots_booked_late=2,
@@ -175,8 +198,7 @@ class TestManualBookingValidation:
         _override(self._wire(departure=dep))
         p = _payload(departure_id=5, dropoff_slot="standard")
         resp = TestClient(app).post("/api/admin/manual-booking", json=p)
-        assert resp.status_code == 400
-        assert "standard slot" in resp.json()["detail"].lower()
+        assert resp.status_code == 200
 
     def test_E_free_booking_no_payment_link_required(self, monkeypatch):
         """When amount_pence=0 and is_free_booking=true, payment link is optional."""
@@ -221,6 +243,8 @@ def _spy_db_for_promo(promo_code_record=None, subscriber=None):
         chain = MagicMock()
         chain.filter.return_value = chain
         chain.options.return_value = chain
+        chain.order_by.return_value = chain
+        chain.all.return_value = []
         name = model.__name__ if hasattr(model, "__name__") else str(model)
         if name == "Customer":
             chain.first.return_value = None

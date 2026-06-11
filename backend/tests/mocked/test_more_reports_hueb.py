@@ -194,10 +194,14 @@ class TestOccupancyReport:
 
     def _wire(self, bookings):
         db = MagicMock()
-        chain = MagicMock()
-        chain.filter.return_value = chain
-        chain.all.return_value = bookings
-        db.query.return_value = chain
+        def _query(model):
+            chain = MagicMock()
+            chain.filter.return_value = chain
+            chain.order_by.return_value = chain
+            name = model.__name__ if hasattr(model, "__name__") else str(model)
+            chain.all.return_value = bookings if name == "Booking" else []
+            return chain
+        db.query.side_effect = _query
         return db
 
     def _booking(self, dropoff, pickup):
@@ -213,7 +217,7 @@ class TestOccupancyReport:
         assert resp.status_code == 200
         body = resp.json()
         assert body["view"] == "daily"
-        assert body["max_capacity"] == 64
+        assert body["max_capacity"] == 73
 
     def test_H_daily_with_booking(self):
         b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22))

@@ -2,12 +2,13 @@
 Tests for the daily-occupancy capacity gate.
 
 The gate is implemented as a single helper, db_service.find_overcapacity_day_in_stay,
-called from /api/payments/create-intent (cap=64 public soft cap) and the
-two admin manual-booking endpoints (cap=70 physical hard ceiling).
+called by customer checkout with the date-effective online cap and by
+admin/manual booking paths with the date-effective total cap.
 
 This file:
   - Unit tests the helper itself with MagicMock for the DB session — covers
-    every t-ε / t / t+ε boundary on both caps per backend/docs/SPEC.md.
+    every t-ε / t / t+ε boundary for legacy fixed-cap callers and dynamic
+    cap_by_date callers per backend/docs/SPEC.md.
   - Integration tests via TestClient that override get_db with a fake
     session so we exercise the real FastAPI endpoint code path, not a
     parallel implementation.

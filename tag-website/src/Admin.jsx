@@ -16,6 +16,42 @@ import './Admin.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const REFERRALS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 const REFERRALS_DEFAULT_PAGE_SIZE = 10
+
+const formatUkTimestampInput = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
+  return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}`
+}
+
+const parseUkTimestampInput = (value) => {
+  const match = String(value || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/)
+  if (!match) return null
+  const [, dd, mm, yyyy, hh, min] = match
+  const day = parseInt(dd, 10)
+  const month = parseInt(mm, 10)
+  const year = parseInt(yyyy, 10)
+  const hour = parseInt(hh, 10)
+  const minute = parseInt(min, 10)
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null
+  const checkDate = new Date(year, month - 1, day)
+  if (
+    checkDate.getFullYear() !== year ||
+    checkDate.getMonth() !== month - 1 ||
+    checkDate.getDate() !== day
+  ) {
+    return null
+  }
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`
+}
+
 const TESTIMONIAL_THEME_DEFINITIONS = [
   ['Recommend', [/\bhighly recommend(?:ed)?\b/i, /\brecommend(?:ed|ation)?\b/i]],
   ['Easy', [/\beasy\b/i, /\bsimple\b/i, /\bstraightforward\b/i, /\bdoddle\b/i]],
@@ -650,6 +686,27 @@ function Admin() {
   const [loadingOccupancy, setLoadingOccupancy] = useState(false)
   const [occupancyView, setOccupancyView] = useState('daily') // 'daily', 'weekly', 'monthly'
   const [occupancyChartOffset, setOccupancyChartOffset] = useState(0) // 0 = centered on today, negative = past, positive = future
+  const todayInputValue = formatUkTimestampInput()
+  const [capacitySettings, setCapacitySettings] = useState(null)
+  const [loadingCapacitySettings, setLoadingCapacitySettings] = useState(false)
+  const [savingCapacitySettings, setSavingCapacitySettings] = useState(false)
+  const [capacityMessage, setCapacityMessage] = useState('')
+  const [capacityForm, setCapacityForm] = useState({
+    effective_from: todayInputValue,
+    total_spaces: '75',
+    online_spaces: '73',
+  })
+  const occupancyChartMaxPercent = useMemo(() => {
+    if (!occupancyData?.data?.length) return 110
+    const maxPercent = occupancyData.data.reduce((max, item) => {
+      const percent = item.occupancy_percent || item.avg_occupancy_percent || 0
+      const online = item.online_capacity || item.avg_online_capacity || occupancyData.online_capacity || occupancyData.max_capacity || 73
+      const total = item.total_capacity || item.avg_total_capacity || occupancyData.total_capacity || online
+      const totalRatio = online ? (total / online) * 100 : 100
+      return Math.max(max, percent, totalRatio)
+    }, 100)
+    return Math.max(110, Math.ceil(maxPercent / 10) * 10)
+  }, [occupancyData])
 
   // Popular airlines/destinations report state
   const [popularData, setPopularData] = useState(null)
@@ -1123,6 +1180,7 @@ function Admin() {
         fetchBookingStats()
         fetchFunFacts()
       } else if (reportsSubTab === 'occupancy') {
+        fetchCapacitySettings()
         fetchOccupancyReport(occupancyView)
       } else if (reportsSubTab === 'popular') {
         fetchPopularReport()
@@ -1994,6 +2052,84 @@ function Admin() {
       console.error('Failed to fetch fun facts:', err)
     } finally {
       setLoadingFunFacts(false)
+    }
+  }
+
+  const fetchCapacitySettings = async () => {
+    setLoadingCapacitySettings(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/capacity-settings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setCapacitySettings(data)
+        if (data.current) {
+          setCapacityForm({
+            effective_from: data.current.effective_from_display || todayInputValue,
+            total_spaces: String(data.current.total_spaces || 75),
+            online_spaces: String(data.current.online_spaces || 73),
+          })
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch capacity settings:', err)
+    } finally {
+      setLoadingCapacitySettings(false)
+    }
+  }
+
+  const saveCapacitySettings = async (event) => {
+    event.preventDefault()
+    setCapacityMessage('')
+
+    const totalSpaces = parseInt(capacityForm.total_spaces, 10)
+    const onlineSpaces = parseInt(capacityForm.online_spaces, 10)
+
+    const effectiveFrom = parseUkTimestampInput(capacityForm.effective_from)
+
+    if (!effectiveFrom || Number.isNaN(totalSpaces) || Number.isNaN(onlineSpaces)) {
+      setCapacityMessage('Enter an effective timestamp as dd/mm/yyyy HH:mm, plus total and online spaces.')
+      return
+    }
+    if (totalSpaces < 1 || onlineSpaces < 1) {
+      setCapacityMessage('Capacity values must be at least 1.')
+      return
+    }
+    if (onlineSpaces > totalSpaces) {
+      setCapacityMessage('Online spaces cannot exceed total spaces.')
+      return
+    }
+
+    setSavingCapacitySettings(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/capacity-settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          effective_from: effectiveFrom,
+          total_spaces: totalSpaces,
+          online_spaces: onlineSpaces,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setCapacityMessage(data.detail || 'Failed to save capacity settings.')
+        return
+      }
+      setCapacityMessage('Capacity settings saved.')
+      await fetchCapacitySettings()
+      await fetchOccupancyReport(occupancyView, true)
+    } catch (err) {
+      console.error('Failed to save capacity settings:', err)
+      setCapacityMessage('Network error saving capacity settings.')
+    } finally {
+      setSavingCapacitySettings(false)
     }
   }
 
@@ -12931,7 +13067,7 @@ function Admin() {
               <div className="occupancy-report-section">
                 <h3>Parking Occupancy</h3>
                 <p className="reports-description">
-                  View parking space utilization across your 64 spaces. Shows historical and future occupancy based on confirmed and completed bookings.
+                  View online-cap utilization from confirmed and completed bookings. Total capacity and manual reserve are managed below.
                 </p>
 
                 {/* View Type Selector */}
@@ -12951,6 +13087,83 @@ function Admin() {
                   </button>
                 </div>
 
+                <div className="capacity-settings-panel">
+                  <div className="capacity-settings-header">
+                    <div>
+                      <h4>Capacity Schedule</h4>
+                      <p>Total spaces minus online spaces becomes the manual reserve. Each row applies to that UK operational day.</p>
+                    </div>
+                    {loadingCapacitySettings && <span className="capacity-settings-status">Loading...</span>}
+                  </div>
+
+                  <form className="capacity-settings-form" onSubmit={saveCapacitySettings}>
+                    <label>
+                      <span>Effective From (UK)</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="11/06/2026 14:30"
+                        value={capacityForm.effective_from}
+                        onChange={e => setCapacityForm({ ...capacityForm, effective_from: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      <span>Total Spaces</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={capacityForm.total_spaces}
+                        onChange={e => setCapacityForm({ ...capacityForm, total_spaces: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      <span>Online Spaces</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={capacityForm.online_spaces}
+                        onChange={e => setCapacityForm({ ...capacityForm, online_spaces: e.target.value })}
+                      />
+                    </label>
+                    <div className="capacity-reserve-preview">
+                      <span>Manual Reserve</span>
+                      <strong>
+                        {Math.max(
+                          0,
+                          (parseInt(capacityForm.total_spaces, 10) || 0) -
+                          (parseInt(capacityForm.online_spaces, 10) || 0)
+                        )}
+                      </strong>
+                    </div>
+                    <button
+                      type="submit"
+                      className="save-capacity-btn"
+                      disabled={savingCapacitySettings}
+                    >
+                      {savingCapacitySettings ? 'Saving...' : 'Save Capacity'}
+                    </button>
+                  </form>
+
+                  {capacityMessage && (
+                    <div className={`capacity-settings-message ${capacityMessage.includes('saved') ? 'success' : 'error'}`}>
+                      {capacityMessage}
+                    </div>
+                  )}
+
+                  {capacitySettings?.settings?.length > 0 && (
+                    <div className="capacity-schedule-list">
+                      {capacitySettings.settings.map(setting => (
+                        <div key={setting.effective_from} className="capacity-schedule-row">
+                          <span>{setting.effective_from_display || setting.effective_from}</span>
+                          <strong>{setting.total_spaces} total</strong>
+                          <strong>{setting.online_spaces} online</strong>
+                          <strong>{setting.manual_spaces} manual</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {loadingOccupancy ? (
                   <div className="admin-loading-inline">
                     <div className="spinner-small"></div>
@@ -12962,7 +13175,7 @@ function Admin() {
                     <div className="occupancy-summary">
                       <div className="occupancy-stat">
                         <span className="occupancy-stat-value">{occupancyData.max_capacity}</span>
-                        <span className="occupancy-stat-label">Total Spaces</span>
+                        <span className="occupancy-stat-label">Online Spaces</span>
                       </div>
                       {occupancyData.data && occupancyData.data.length > 0 && (() => {
                         const todayEntry = occupancyData.data.find(d => d.is_today);
@@ -13023,38 +13236,27 @@ function Admin() {
                               Future →
                             </button>
                           </div>
-                          <span className="occupancy-capacity-badge">
-                            Capacity: {occupancyData.max_capacity} spaces
-                          </span>
+                            <span className="occupancy-capacity-badge">
+                              Online cap: {occupancyData.max_capacity} spaces
+                            </span>
                         </div>
                       </div>
-                      <div className="occupancy-chart-wrapper">
-                        {/* Y-axis labels — absolute-positioned so they line up
-                            with the unevenly-spaced gridlines below. Scale tops
-                            out at 110% so admin manual-booking overflow (up to
-                            the 70-car hard ceiling = ~109%) stays inside the
-                            chart instead of clipping past the top gridline.
-                            Bottom % math: gridline pct * 350px / 400px + 12.5%
-                            offset (chart area = top 350px of the 400px wrapper,
-                            bottom 50px reserved for day-name labels). */}
-                        <div className="occupancy-y-axis">
-                          <span className="y-axis-label" style={{ bottom: '100%' }}>110%</span>
-                          <span className="y-axis-label" style={{ bottom: '92.05%' }}>100%</span>
-                          <span className="y-axis-label" style={{ bottom: '72.16%' }}>75%</span>
-                          <span className="y-axis-label" style={{ bottom: '52.27%' }}>50%</span>
-                          <span className="y-axis-label" style={{ bottom: '32.39%' }}>25%</span>
-                          <span className="y-axis-label" style={{ bottom: '12.5%' }}>0%</span>
-                        </div>
-                        <div className="occupancy-chart-area">
-                          {/* Horizontal gridlines — top is now 110%; the 100%
-                              line gets a heavier .gridline-cap stroke to keep
-                              it readable as the soft-cap reference. */}
-                          <div className="occupancy-gridlines">
-                            <div className="gridline" style={{ bottom: '100%' }}></div>
-                            <div className="gridline gridline-cap" style={{ bottom: `${100 / 1.1}%` }}></div>
-                            <div className="gridline" style={{ bottom: `${75 / 1.1}%` }}></div>
-                            <div className="gridline" style={{ bottom: `${50 / 1.1}%` }}></div>
-                            <div className="gridline" style={{ bottom: `${25 / 1.1}%` }}></div>
+                        <div className="occupancy-chart-wrapper">
+                          <div className="occupancy-y-axis">
+                            <span className="y-axis-label" style={{ bottom: '100%' }}>{occupancyChartMaxPercent}%</span>
+                            <span className="y-axis-label" style={{ bottom: `${(100 / occupancyChartMaxPercent) * 87.5 + 12.5}%` }}>100%</span>
+                            <span className="y-axis-label" style={{ bottom: `${(75 / occupancyChartMaxPercent) * 87.5 + 12.5}%` }}>75%</span>
+                            <span className="y-axis-label" style={{ bottom: `${(50 / occupancyChartMaxPercent) * 87.5 + 12.5}%` }}>50%</span>
+                            <span className="y-axis-label" style={{ bottom: `${(25 / occupancyChartMaxPercent) * 87.5 + 12.5}%` }}>25%</span>
+                            <span className="y-axis-label" style={{ bottom: '12.5%' }}>0%</span>
+                          </div>
+                          <div className="occupancy-chart-area">
+                            <div className="occupancy-gridlines">
+                              <div className="gridline" style={{ bottom: '100%' }}></div>
+                              <div className="gridline gridline-cap" style={{ bottom: `${(100 / occupancyChartMaxPercent) * 100}%` }}></div>
+                              <div className="gridline" style={{ bottom: `${(75 / occupancyChartMaxPercent) * 100}%` }}></div>
+                              <div className="gridline" style={{ bottom: `${(50 / occupancyChartMaxPercent) * 100}%` }}></div>
+                              <div className="gridline" style={{ bottom: `${(25 / occupancyChartMaxPercent) * 100}%` }}></div>
                             <div className="gridline" style={{ bottom: '0%' }}></div>
                           </div>
                           <div className="occupancy-chart">
@@ -13092,7 +13294,8 @@ function Admin() {
                               return filteredData.slice(startIndex, startIndex + daysToShow).map((item, index) => {
                               const percent = item.occupancy_percent || item.avg_occupancy_percent || 0;
                               const occupied = item.occupied || item.avg_occupied || 0;
-                              const available = occupancyData.max_capacity - occupied;
+                                const online = item.online_capacity || item.avg_online_capacity || occupancyData.online_capacity || occupancyData.max_capacity;
+                                const available = (item.available ?? item.avg_available ?? (online - occupied));
                               const isHighlight = item.is_today || item.is_current_week || item.is_current_month;
                               const isPast = item.is_past;
                               let barClass = 'occupancy-bar';
@@ -13125,7 +13328,7 @@ function Admin() {
                                       <span className="tooltip-percent">{Math.round(percent)}% full</span>
                                     </div>
                                   </div>
-                                  <div className={barClass} style={{ height: `${Math.max(percent / 1.1, 3)}%` }}>
+                                    <div className={barClass} style={{ height: `${Math.max((percent / occupancyChartMaxPercent) * 100, 3)}%` }}>
                                     <div className="occupancy-bar-content">
                                       <span className="occupancy-bar-percent">{Math.round(percent)}%</span>
                                       <span className="occupancy-bar-cars">{occupied}</span>

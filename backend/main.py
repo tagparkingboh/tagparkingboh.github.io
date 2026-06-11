@@ -76,6 +76,14 @@ def pickup_time_from_arrival(arrival_hhmm: Optional[str]) -> Optional[str]:
         return None
 
 
+def unpack_capacity_offending(offending, fallback_cap: int):
+    """Support legacy (day, count) and dynamic (day, count, cap) tuples."""
+    if len(offending) == 2:
+        day, count = offending
+        return day, count, fallback_cap
+    return offending
+
+
 def log_promo(message: str, data: dict = None):
     """
     Log promotion-related messages to console.
@@ -180,6 +188,12 @@ _financial_cache = {"data": None, "cached_at": None}
 _session_tracking_cache = {"data": None, "cached_at": None}
 _abandoned_carts_cache = {"data": None, "cached_at": None}
 REPORT_CACHE_DURATION_SECONDS = 3600  # 1 hour
+
+
+class ParkingCapacitySettingRequest(BaseModel):
+    effective_from: datetime
+    total_spaces: int
+    online_spaces: int
 
 
 # Initialize FastAPI app
@@ -910,9 +924,7 @@ async def get_daily_capacity(
     each date in [date_from, date_to] based on the live `bookings` table.
     Counts CONFIRMED + COMPLETED only — PENDING bookings are mid-checkout
     carts that may never convert, and including them inflates the count
-    against the public 64-cap (caught 2026-05-21 on 27 May: 57 confirmed
-    + 3 pending stuck for a while → ops calendar showed "Full" but
-    there were actually 3 real slots free).
+    against the online booking cap.
 
     First-come-first-served race protection moved to /api/payments/create-intent:
     if two customers race for the same last slot, only one's create-intent
@@ -920,7 +932,8 @@ async def get_daily_capacity(
     the other gets the "Sorry, we're full" 400 with a phone routing link.
 
     Public endpoint (no auth) — only exposes aggregate counts per date,
-    no PII. Locked at MAX_PARKING_SPOTS = 64 (booking_service.py).
+    no PII. Capacity is date-effective: online checkout uses online_spaces,
+    while admin/manual reserve is total_spaces - online_spaces.
     """
     if date_to < date_from:
         raise HTTPException(status_code=400, detail="date_to must be on or after date_from")
@@ -939,6 +952,7 @@ async def get_daily_capacity(
     bookings = db_service.exclude_staging_e2e_capacity_bookings(bookings, DbBooking).all()
 
     occupancy: dict[str, int] = {}
+    daily_capacity = db_service.get_parking_capacity_for_range(db, date_from, date_to)
     current = date_from
     while current <= date_to:
         occupancy[current.isoformat()] = sum(
@@ -947,9 +961,15 @@ async def get_daily_capacity(
         )
         current += timedelta(days=1)
 
+    current_capacity = db_service.get_parking_capacity_for_date(db, get_uk_now())
     return {
         "daily_occupancy": occupancy,
-        "max_capacity": BookingService.MAX_PARKING_SPOTS,
+        "daily_capacity": daily_capacity,
+        "online_capacity": current_capacity["online_spaces"],
+        "total_capacity": current_capacity["total_spaces"],
+        "manual_capacity": current_capacity["manual_spaces"],
+        # Backward-compatible alias: the customer-facing cap is online capacity.
+        "max_capacity": current_capacity["online_spaces"],
     }
 
 
@@ -980,7 +1000,7 @@ async def check_capacity_for_slot(
     Returns:
       allowed       bool     — peak + 1 <= max_capacity
       peak          int      — peak concurrent OTHER bookings during stay
-      max_capacity  int      — MAX_PARKING_SPOTS (64)
+      max_capacity  int      — date-effective online capacity
 
     Counts CONFIRMED, COMPLETED, and PENDING bookings (PENDING included
     so two customers in-payment-flow can't both race for the last spot).
@@ -1038,10 +1058,16 @@ async def check_capacity_for_slot(
         if current > peak:
             peak = current
 
-    cap = BookingService.MAX_PARKING_SPOTS
+    daily_capacity = db_service.get_parking_capacity_for_range(db, dropoff_date, pickup_date)
+    cap = min(
+        capacity["online_spaces"]
+        for capacity in daily_capacity.values()
+    )
     return {
         "allowed": peak + 1 <= cap,
         "peak": peak,
+        "online_capacity": cap,
+        "daily_capacity": daily_capacity,
         "max_capacity": cap,
     }
 
@@ -1937,6 +1963,7 @@ async def get_all_bookings(
 @app.get("/api/admin/occupancy/{target_date}")
 async def get_daily_occupancy(
     target_date: date,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
@@ -1944,12 +1971,16 @@ async def get_daily_occupancy(
     """
     service = get_service()
     bookings = service.get_bookings_for_date(target_date)
+    capacity = db_service.get_parking_capacity_for_date(db, target_date)
 
     return {
         "date": target_date.isoformat(),
         "occupied": len(bookings),
-        "available": service.MAX_PARKING_SPOTS - len(bookings),
-        "max_capacity": service.MAX_PARKING_SPOTS,
+        "available": capacity["online_spaces"] - len(bookings),
+        "online_capacity": capacity["online_spaces"],
+        "total_capacity": capacity["total_spaces"],
+        "manual_capacity": capacity["manual_spaces"],
+        "max_capacity": capacity["online_spaces"],
     }
 
 
@@ -2645,16 +2676,15 @@ async def create_admin_booking(
     - Set custom drop-off times (not restricted to slots)
     - Override pricing if needed
     - Book for phone/walk-in customers
-    - Push past the 64 customer soft-cap up to the 70 hard ceiling
+    - Use the manual reserve up to the date-effective total capacity
 
-    Use this when customers contact you because all slots are booked.
-    Admin can override the public 64-spot cap but never the 70 physical
-    ceiling — every day in the stay range is checked against the live DB.
+    Use this when customers contact you because online capacity is full.
+    Admin can use capacity held back from online bookings, but every day
+    in the stay range is checked against the date-effective total capacity.
     """
-    # Hard ceiling (70) check across the stay range. Uses live DB counts
-    # via the shared helper — the legacy in-memory counter inside
-    # BookingService doesn't reflect prod state and would silently let
-    # bookings past 70.
+    # Total-capacity check across the stay range. Uses live DB counts via
+    # the shared helper — the legacy in-memory counter inside BookingService
+    # doesn't reflect prod state and would silently let bookings past capacity.
     #
     # NOTE: this endpoint's downstream write goes through
     # BookingService.create_admin_booking, which writes to in-memory
@@ -2665,18 +2695,24 @@ async def create_admin_booking(
     # would be cosmetic — there is no DB write to gate. If/when this
     # endpoint is migrated to a real DB write path, swap to
     # find_overcapacity_day_in_stay_locked.
+    capacity_by_date = db_service.get_parking_capacity_for_range(
+        db,
+        request.drop_off_date,
+        request.pickup_date,
+    )
     offending = db_service.find_overcapacity_day_in_stay(
         db,
         dropoff_date=request.drop_off_date,
         pickup_date=request.pickup_date,
-        cap=70,
+        cap_by_date=capacity_by_date,
+        cap_field="total_spaces",
     )
     if offending:
-        day, current = offending
+        day, current, cap = unpack_capacity_offending(offending, 70)
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Cannot create — {day.strftime('%a %d %b %Y')} is at the 70-car physical ceiling "
+                f"Cannot create — {day.strftime('%a %d %b %Y')} is at the {cap}-car physical ceiling "
                 f"({current} bookings). Even an admin can't push past the lot's actual capacity."
             ),
         )
@@ -2783,54 +2819,40 @@ async def create_manual_booking(
             vehicle.dvla_checked_at = datetime.now(timezone.utc)
             vehicle.dvla_retry_count = 0
 
-        # Admin hard ceiling (70 cars per day) — manual bookings can push
-        # past the public 64 soft-cap but never the lot's physical capacity.
+        # Manual bookings can use the manual reserve, but never exceed the
+        # date-effective total physical capacity.
+        capacity_by_date = db_service.get_parking_capacity_for_range(
+            db,
+            request.dropoff_date,
+            request.pickup_date,
+        )
         offending = db_service.find_overcapacity_day_in_stay(
             db,
             dropoff_date=request.dropoff_date,
             pickup_date=request.pickup_date,
-            cap=70,
+            cap_by_date=capacity_by_date,
+            cap_field="total_spaces",
         )
         if offending:
-            day, current = offending
+            day, current, cap = unpack_capacity_offending(offending, 70)
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Cannot create — {day.strftime('%a %d %b %Y')} is at the 70-car physical ceiling "
+                    f"Cannot create — {day.strftime('%a %d %b %Y')} is at the {cap}-car physical ceiling "
                     f"({current} bookings). The lot can't physically hold another car."
                 ),
             )
 
-        # If departure_id and dropoff_slot provided, validate slot availability
+        # Flight slot capacity is legacy metadata from the old booking system.
+        # Parking capacity is governed by parking_capacity_settings above.
         from db_models import FlightDeparture
         departure_flight = None
-        if request.departure_id and request.dropoff_slot:
+        if request.departure_id:
             departure_flight = db.query(FlightDeparture).filter(
                 FlightDeparture.id == request.departure_id
             ).first()
             if not departure_flight:
                 raise HTTPException(status_code=400, detail="Invalid departure flight")
-
-            # Check if this is a "Call Us only" flight (capacity_tier = 0)
-            if departure_flight.capacity_tier == 0:
-                raise HTTPException(status_code=400, detail="This flight requires calling to book")
-
-            # Check slot availability using same formula as online booking system
-            # max_slots_per_time = capacity_tier // 2 (e.g., capacity_tier=4 means 2 early + 2 late)
-            max_per_slot = departure_flight.capacity_tier // 2
-
-            # Slot types: "150"/"early" (2½h), "120"/"standard" (2h), "90"/"late" (1½h)
-            # Note: "165" is legacy format, treat as "early"
-            if request.dropoff_slot in ("150", "165", "early"):  # Early slot
-                if departure_flight.slots_booked_early >= max_per_slot:
-                    raise HTTPException(status_code=400, detail="Early slot is fully booked")
-            elif request.dropoff_slot in ("120", "standard"):  # Standard slot
-                # For now, standard slot shares capacity with late slot
-                if departure_flight.slots_booked_late >= max_per_slot:
-                    raise HTTPException(status_code=400, detail="Standard slot is fully booked")
-            elif request.dropoff_slot in ("90", "late"):  # Late slot
-                if departure_flight.slots_booked_late >= max_per_slot:
-                    raise HTTPException(status_code=400, detail="Late slot is fully booked")
 
         # Generate booking reference
         import random
@@ -2984,17 +3006,8 @@ async def create_manual_booking(
                         subscriber.promo_code_used_at = now
                         subscriber.promo_code_used_booking_id = booking.id
 
-        # For free bookings with flight selection, increment slot counts
-        # Slot types: "150"/"early" (2½h), "120"/"standard" (2h), "90"/"late" (1½h)
-        # Note: "165" is legacy format, treat as "early"
-        if is_free and request.departure_id and request.dropoff_slot:
-            departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
-            if departure:
-                if request.dropoff_slot in ("150", "165", "early"):
-                    departure.slots_booked_early = (departure.slots_booked_early or 0) + 1
-                elif request.dropoff_slot in ("120", "standard", "90", "late"):
-                    # Standard and late slots share the late slot capacity
-                    departure.slots_booked_late = (departure.slots_booked_late or 0) + 1
+        # Flight slot counters are legacy metadata from the old booking system;
+        # parking capacity is controlled by parking_capacity_settings.
 
         # Format dates for email
         dropoff_date_formatted = request.dropoff_date.strftime("%A, %d %B %Y")
@@ -3128,7 +3141,7 @@ async def mark_booking_paid(
     Sends booking confirmation email to customer.
     Use this after verifying payment was received via Stripe Payment Link.
     """
-    from db_models import Booking, Payment, BookingStatus, PaymentStatus, FlightDeparture
+    from db_models import Booking, Payment, BookingStatus, PaymentStatus
     from email_service import send_booking_confirmation_email
 
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
@@ -3145,26 +3158,31 @@ async def mark_booking_paid(
     if booking.status == BookingStatus.REFUNDED:
         raise HTTPException(status_code=400, detail="Cannot confirm a refunded booking")
 
-    # If booking has departure_id and dropoff_slot, increment the slot count
-    if booking.departure_id and booking.dropoff_slot:
-        departure_flight = db.query(FlightDeparture).filter(
-            FlightDeparture.id == booking.departure_id
-        ).first()
-        if departure_flight:
-            # Use same formula as online booking system: max_per_slot = capacity_tier // 2
-            max_per_slot = departure_flight.capacity_tier // 2
+    capacity_by_date = db_service.get_parking_capacity_for_range(
+        db,
+        booking.dropoff_date,
+        booking.pickup_date,
+    )
+    offending = db_service.find_overcapacity_day_in_stay(
+        db,
+        dropoff_date=booking.dropoff_date,
+        pickup_date=booking.pickup_date,
+        cap_by_date=capacity_by_date,
+        cap_field="total_spaces",
+        exclude_booking_id=booking.id,
+    )
+    if offending:
+        day, current, cap = unpack_capacity_offending(offending, capacity_by_date[booking.dropoff_date.isoformat()]["total_spaces"])
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot confirm — {day.strftime('%a %d %b %Y')} is at the {cap}-car physical ceiling "
+                f"({current} bookings). The lot can't physically hold another car."
+            ),
+        )
 
-            # Check slot availability before booking
-            # Slot types: "150"/"early" (2½h), "120"/"standard" (2h), "90"/"late" (1½h)
-            # Note: "165" is legacy format, treat as "early"
-            if booking.dropoff_slot in ("150", "165", "early"):  # Early slot
-                if departure_flight.slots_booked_early >= max_per_slot:
-                    raise HTTPException(status_code=400, detail="Early slot is now fully booked")
-                departure_flight.slots_booked_early += 1
-            elif booking.dropoff_slot in ("120", "standard", "90", "late"):  # Standard/Late slot
-                if departure_flight.slots_booked_late >= max_per_slot:
-                    raise HTTPException(status_code=400, detail="Slot is now fully booked")
-                departure_flight.slots_booked_late += 1
+    # Flight slot counters are legacy metadata from the old booking system;
+    # parking capacity is controlled by parking_capacity_settings.
 
     # Update booking status
     booking.status = BookingStatus.CONFIRMED
@@ -5643,6 +5661,49 @@ async def get_booking_locations(
     return result
 
 
+@app.get("/api/admin/capacity-settings")
+async def get_admin_capacity_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Return the date-effective parking capacity schedule."""
+    schedule = db_service.get_parking_capacity_schedule(db)
+    current = db_service.get_parking_capacity_for_date(db, get_uk_now())
+    return {
+        "current": db_service.serialize_capacity_setting(current),
+        "settings": [db_service.serialize_capacity_setting(row) for row in schedule],
+    }
+
+
+@app.put("/api/admin/capacity-settings")
+async def upsert_admin_capacity_setting(
+    request: ParkingCapacitySettingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create or update a capacity schedule row."""
+    try:
+        setting = db_service.upsert_parking_capacity_setting(
+            db,
+            effective_from=request.effective_from,
+            total_spaces=request.total_spaces,
+            online_spaces=request.online_spaces,
+            updated_by=current_user.email if current_user else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    global _occupancy_cache
+    _occupancy_cache = {"data": None, "cached_at": None}
+    return {
+        "success": True,
+        "setting": db_service.serialize_capacity_setting(setting),
+        "current": db_service.serialize_capacity_setting(
+            db_service.get_parking_capacity_for_date(db, get_uk_now())
+        ),
+    }
+
+
 @app.get("/api/admin/reports/occupancy")
 async def get_occupancy_report(
     view: str = Query("daily", description="View type: 'daily', 'weekly', or 'monthly'"),
@@ -5658,7 +5719,7 @@ async def get_occupancy_report(
 
     For each time period, calculates:
     - occupied: Number of vehicles parked (active bookings for that date/period)
-    - available: Number of free spaces (64 - occupied)
+    - available: Number of online spaces left (online capacity - occupied)
     - occupancy_percent: Percentage utilization
 
     A vehicle is counted as "occupied" on any date between dropoff_date and pickup_date (inclusive).
@@ -5687,8 +5748,6 @@ async def get_occupancy_report(
     from collections import defaultdict
     import calendar
 
-    MAX_CAPACITY = BookingService.MAX_PARKING_SPOTS
-
     # Set default date ranges based on view type
     today = date.today()
     if view == "daily":
@@ -5706,6 +5765,8 @@ async def get_occupancy_report(
 
     report_start = start_date or default_start
     report_end = end_date or default_end
+    daily_capacity = db_service.get_parking_capacity_for_range(db, report_start, report_end)
+    current_capacity = db_service.get_parking_capacity_for_date(db, get_uk_now())
 
     # Get all active bookings (confirmed or completed) that overlap with our date range
     bookings = (
@@ -5734,14 +5795,20 @@ async def get_occupancy_report(
         while current_date <= report_end:
             date_str = current_date.isoformat()
             occupied = daily_occupancy.get(date_str, 0)
+            capacity = daily_capacity[date_str]
+            online_capacity = capacity["online_spaces"]
+            total_capacity = capacity["total_spaces"]
             # Format as dd/mm/yyyy for UK display
             display_date = current_date.strftime("%d/%m/%Y")
             data.append({
                 "date": date_str,
                 "display_date": display_date,
                 "occupied": occupied,
-                "available": MAX_CAPACITY - occupied,
-                "occupancy_percent": round((occupied / MAX_CAPACITY) * 100, 1),
+                "available": online_capacity - occupied,
+                "online_capacity": online_capacity,
+                "total_capacity": total_capacity,
+                "manual_capacity": capacity["manual_spaces"],
+                "occupancy_percent": round((occupied / online_capacity) * 100, 1),
                 "is_past": current_date < today,
                 "is_today": current_date == today,
             })
@@ -5749,7 +5816,10 @@ async def get_occupancy_report(
 
         result = {
             "view": "daily",
-            "max_capacity": MAX_CAPACITY,
+            "max_capacity": current_capacity["online_spaces"],
+            "online_capacity": current_capacity["online_spaces"],
+            "total_capacity": current_capacity["total_spaces"],
+            "manual_capacity": current_capacity["manual_spaces"],
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
@@ -5793,6 +5863,19 @@ async def get_occupancy_report(
             week_start = date.fromisocalendar(int(year), int(week_num), 1)
             week_end = week_start + timedelta(days=6)
             display_week = f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m/%Y')}"
+            capacity_days = [
+                daily_capacity[current.isoformat()]
+                for current in (week_start + timedelta(days=i) for i in range(7))
+                if report_start <= current <= report_end
+            ]
+            avg_online_capacity = (
+                sum(c["online_spaces"] for c in capacity_days) / len(capacity_days)
+                if capacity_days else current_capacity["online_spaces"]
+            )
+            avg_total_capacity = (
+                sum(c["total_spaces"] for c in capacity_days) / len(capacity_days)
+                if capacity_days else current_capacity["total_spaces"]
+            )
 
             data.append({
                 "week": week_key,
@@ -5800,15 +5883,21 @@ async def get_occupancy_report(
                 "week_start": week_start.isoformat(),
                 "week_end": week_end.isoformat(),
                 "avg_occupied": round(avg_occupied, 1),
-                "avg_available": round(MAX_CAPACITY - avg_occupied, 1),
-                "avg_occupancy_percent": round((avg_occupied / MAX_CAPACITY) * 100, 1),
+                "avg_available": round(avg_online_capacity - avg_occupied, 1),
+                "avg_online_capacity": round(avg_online_capacity, 1),
+                "avg_total_capacity": round(avg_total_capacity, 1),
+                "avg_manual_capacity": round(avg_total_capacity - avg_online_capacity, 1),
+                "avg_occupancy_percent": round((avg_occupied / avg_online_capacity) * 100, 1),
                 "is_current_week": week_start <= today <= week_end,
                 "is_past": week_end < today,
             })
 
         result = {
             "view": "weekly",
-            "max_capacity": MAX_CAPACITY,
+            "max_capacity": current_capacity["online_spaces"],
+            "online_capacity": current_capacity["online_spaces"],
+            "total_capacity": current_capacity["total_spaces"],
+            "manual_capacity": current_capacity["manual_spaces"],
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
@@ -5854,20 +5943,39 @@ async def get_occupancy_report(
             # Check if current month
             is_current = (int(year) == today.year and int(month) == today.month)
             is_past = date(int(year), int(month), 1) < today.replace(day=1)
+            month_capacity_days = [
+                capacity
+                for date_str, capacity in daily_capacity.items()
+                if date_str.startswith(month_key)
+            ]
+            avg_online_capacity = (
+                sum(c["online_spaces"] for c in month_capacity_days) / len(month_capacity_days)
+                if month_capacity_days else current_capacity["online_spaces"]
+            )
+            avg_total_capacity = (
+                sum(c["total_spaces"] for c in month_capacity_days) / len(month_capacity_days)
+                if month_capacity_days else current_capacity["total_spaces"]
+            )
 
             data.append({
                 "month": month_key,
                 "display_month": display_month,
                 "avg_occupied": round(avg_occupied, 1),
-                "avg_available": round(MAX_CAPACITY - avg_occupied, 1),
-                "avg_occupancy_percent": round((avg_occupied / MAX_CAPACITY) * 100, 1),
+                "avg_available": round(avg_online_capacity - avg_occupied, 1),
+                "avg_online_capacity": round(avg_online_capacity, 1),
+                "avg_total_capacity": round(avg_total_capacity, 1),
+                "avg_manual_capacity": round(avg_total_capacity - avg_online_capacity, 1),
+                "avg_occupancy_percent": round((avg_occupied / avg_online_capacity) * 100, 1),
                 "is_current_month": is_current,
                 "is_past": is_past and not is_current,
             })
 
         result = {
             "view": "monthly",
-            "max_capacity": MAX_CAPACITY,
+            "max_capacity": current_capacity["online_spaces"],
+            "online_capacity": current_capacity["online_spaces"],
+            "total_capacity": current_capacity["total_spaces"],
+            "manual_capacity": current_capacity["manual_spaces"],
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
@@ -11838,12 +11946,11 @@ async def create_payment(
                     detail=f"Sorry, pick-ups are not available on {request_pickup_date.strftime('%d %B %Y')}. Please select a different date or time."
                 )
 
-        # Soft capacity gate (64 spots). The helper walks every day in the
-        # stay window and returns the first day that would exceed the cap
-        # — including days strictly between dropoff and pickup. This stops
-        # the leak shown by TAG-MSH89023 / TAG-UHB47647 on 2026-05-18
-        # (endpoints clear but middle of stay full). Hard physical ceiling
-        # is 70 and only available to admin overrides; public stops at 64.
+        # Online capacity gate. The helper walks every day in the stay
+        # window and returns the first day that would exceed that date's
+        # effective online cap — including days strictly between dropoff
+        # and pickup. This stops the leak shown by TAG-MSH89023 /
+        # TAG-UHB47647 on 2026-05-18 (endpoints clear but middle of stay full).
         existing_pending_id = None
         if request.session_id:
             _existing = db_service.get_pending_booking_by_session(db, request.session_id)
@@ -11859,19 +11966,26 @@ async def create_payment(
         # customer-facing "show 'we're full' early so checkout doesn't
         # waste time" guard; two simultaneous customers can both pass
         # at 63 confirmed, but only one webhook will succeed.
+        capacity_by_date = db_service.get_parking_capacity_for_range(
+            db,
+            request_dropoff_date,
+            request_pickup_date,
+        )
         offending = db_service.find_overcapacity_day_in_stay(
             db,
             dropoff_date=request_dropoff_date,
             pickup_date=request_pickup_date,
-            cap=BookingService.MAX_PARKING_SPOTS,
+            cap_by_date=capacity_by_date,
+            cap_field="online_spaces",
             exclude_booking_id=existing_pending_id,
         )
         if offending:
-            day, _ = offending
+            day, _, cap = unpack_capacity_offending(offending, capacity_by_date[request_dropoff_date.isoformat()]["online_spaces"])
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Sorry, we're full and have no space on {day.strftime('%A %d %B %Y')}. "
+                    f"Sorry, we're full and have no online space on {day.strftime('%A %d %B %Y')} "
+                    f"(online capacity {cap}). "
                     "Please call 01202 798710 and we'll do our best to help."
                 ),
             )
@@ -12504,39 +12618,8 @@ async def create_payment(
             booking_id = booking_data["booking"].id
             customer = booking_data["customer"]
 
-        # Validate slot availability (but don't book yet - that happens after payment)
-        if request.departure_id and request.drop_off_slot:
-            departure = db.query(FlightDeparture).filter(
-                FlightDeparture.id == request.departure_id
-            ).first()
-            if departure:
-                # Check if this is a "Call Us only" flight (capacity_tier = 0)
-                if departure.is_call_us_only:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="This flight requires calling to book. Please contact us directly."
-                    )
-
-                # Check if all slots are booked
-                if departure.all_slots_booked:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="This flight is fully booked. Please contact us directly to arrange an alternative."
-                    )
-
-                # Slot types: "150"/"165" = early (2½h), "120" = standard (2h), "90" = late (1½h)
-                if request.drop_off_slot in ("150", "165") and departure.early_slots_available <= 0:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="This slot is fully booked. Please select another available slot or contact us directly."
-                    )
-                elif request.drop_off_slot in ("120", "90") and departure.late_slots_available <= 0:
-                    # Standard and late slots share late capacity
-                    raise HTTPException(
-                        status_code=400,
-                        detail="This slot is fully booked. Please select another available slot or contact us directly."
-                    )
-                # Note: Slot is NOT booked here - it will be booked after payment succeeds via webhook
+        # Flight slot capacity is legacy metadata from the old booking system.
+        # Parking capacity is controlled by parking_capacity_settings.
 
         settings = get_settings()
 
@@ -12636,11 +12719,8 @@ async def create_payment(
                 except Exception as e:
                     print(f"[FREE BOOKING] Failed to check promo modal code usage: {e}")
 
-            # Book the slot immediately for free bookings
-            # "150"/"165" = early, "120"/"90" = late (shares capacity)
-            if request.departure_id and request.drop_off_slot:
-                slot_type = 'early' if request.drop_off_slot in ("150", "165") else 'late'
-                db_service.book_departure_slot(db, request.departure_id, slot_type)
+            # Flight slot counters are legacy metadata from the old booking
+            # system and no longer govern parking availability.
 
             # Log payment success
             log_audit_event(
@@ -13008,11 +13088,17 @@ async def stripe_webhook(
         if race_payment and race_payment.booking_id:
             race_booking = db_service.get_booking_by_id(db, race_payment.booking_id)
             if race_booking and race_booking.status == BookingStatus.PENDING:
+                capacity_by_date = db_service.get_parking_capacity_for_range(
+                    db,
+                    race_booking.dropoff_date,
+                    race_booking.pickup_date,
+                )
                 race_offending = db_service.find_overcapacity_day_in_stay_locked(
                     db,
                     dropoff_date=race_booking.dropoff_date,
                     pickup_date=race_booking.pickup_date,
-                    cap=BookingService.MAX_PARKING_SPOTS,
+                    cap_by_date=capacity_by_date,
+                    cap_field="online_spaces",
                     exclude_booking_id=race_booking.id,
                 )
                 # Lock is now held. Refresh the booking + payment objects:
@@ -13031,7 +13117,10 @@ async def stripe_webhook(
                 if race_booking.status != BookingStatus.PENDING:
                     race_offending = None
                 if race_offending:
-                    race_day, race_count = race_offending
+                    race_day, race_count, race_cap = unpack_capacity_offending(
+                        race_offending,
+                        capacity_by_date[race_booking.dropoff_date.isoformat()]["online_spaces"],
+                    )
                     # Prefer the DB-canonical reference over Stripe metadata
                     # so the log/response reflects the booking we actually
                     # gated, not whatever metadata happened to carry.
@@ -13039,7 +13128,7 @@ async def stripe_webhook(
                     print(
                         f"[CAPACITY-RACE] Webhook over-cap on {payment_intent_id} "
                         f"(booking {race_ref}, {race_day.isoformat()} "
-                        f"at {race_count}/{BookingService.MAX_PARKING_SPOTS}). "
+                        f"at {race_count}/{race_cap}). "
                         f"Booking left PENDING for ops refund."
                     )
                     log_error(
@@ -13048,7 +13137,7 @@ async def stripe_webhook(
                         message=(
                             f"Webhook over-cap on {race_day.isoformat()}: "
                             f"{race_count} confirmed bookings already exist "
-                            f"(cap {BookingService.MAX_PARKING_SPOTS}). "
+                            f"(online cap {race_cap}). "
                             f"Funds captured but booking left PENDING — "
                             f"ops must refund manually."
                         ),
@@ -13171,22 +13260,8 @@ async def stripe_webhook(
             except Exception as e:
                 print(f"[WEBHOOK] Failed to log audit event BOOKING_CONFIRMED: {e}")
 
-        # Book the slot on the departure flight (now that payment succeeded)
-        # Skip if this webhook was already processed (idempotency for duplicate webhooks)
-        # "150"/"165" = early, "120"/"90" = late (shares capacity)
-        if departure_id and drop_off_slot and payment and not was_already_processed:
-            try:
-                slot_type = 'early' if drop_off_slot in ("150", "165") else 'late'
-                db_service.book_departure_slot(db, int(departure_id), slot_type)
-            except Exception as e:
-                log_error(
-                    db=db,
-                    error_type="slot_booking",
-                    message=f"Failed to book slot after payment: {str(e)}",
-                    request=request,
-                    booking_reference=booking_reference,
-                    stack_trace=traceback.format_exc(),
-                )
+        # Flight slot counters are legacy metadata from the old booking system;
+        # parking capacity is controlled by parking_capacity_settings.
 
         # Mark promo code as used (if one was applied)
         # Skip if this webhook was already processed

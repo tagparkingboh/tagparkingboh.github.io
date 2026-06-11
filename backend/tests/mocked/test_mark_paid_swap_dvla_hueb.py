@@ -75,16 +75,19 @@ class TestMarkBookingPaid:
     def teardown_method(self):
         _clear()
 
-    def _wire(self, booking, payment=None, departure=None, subscriber=None):
+    def _wire(self, booking, payment=None, departure=None, subscriber=None, overlapping=None):
         db = MagicMock()
         calls = {"n": 0}
         def _query(model):
             calls["n"] += 1
             chain = MagicMock()
             chain.filter.return_value = chain
+            chain.order_by.return_value = chain
+            chain.all.return_value = []
             name = model.__name__ if hasattr(model, "__name__") else str(model)
             if name == "Booking":
                 chain.first.return_value = booking
+                chain.all.return_value = overlapping or []
             elif name == "Payment":
                 chain.first.return_value = payment
             elif name == "FlightDeparture":
@@ -136,7 +139,7 @@ class TestMarkBookingPaid:
         resp = TestClient(app).post(f"/api/admin/bookings/{b.id}/mark-paid")
         assert resp.status_code == 400
 
-    def test_U_slot_full_blocks(self, monkeypatch):
+    def test_U_legacy_slot_full_does_not_block(self, monkeypatch):
         b = _booking(departure_id=5, dropoff_slot="150")
         dep = SimpleNamespace(id=5, capacity_tier=4,
                               slots_booked_early=2, slots_booked_late=0)
@@ -147,8 +150,29 @@ class TestMarkBookingPaid:
                             lambda *a, **kw: None)
         _override(self._wire(b, departure=dep))
         resp = TestClient(app).post(f"/api/admin/bookings/{b.id}/mark-paid")
+        assert resp.status_code == 200
+
+    def test_U_total_capacity_ceiling_blocks_confirmation(self):
+        from db_models import BookingStatus
+        b = _booking(
+            id=99,
+            dropoff_date=date_type(2026, 8, 15),
+            pickup_date=date_type(2026, 8, 22),
+        )
+        overlapping = [
+            SimpleNamespace(
+                id=i,
+                status=BookingStatus.CONFIRMED,
+                dropoff_date=date_type(2026, 8, 15),
+                pickup_date=date_type(2026, 8, 22),
+            )
+            for i in range(75)
+        ]
+        _override(self._wire(b, overlapping=overlapping))
+        resp = TestClient(app).post(f"/api/admin/bookings/{b.id}/mark-paid")
         assert resp.status_code == 400
-        assert "fully booked" in resp.json()["detail"].lower()
+        assert "Cannot confirm" in resp.json()["detail"]
+        assert "75-car physical ceiling" in resp.json()["detail"]
 
 
 # ============================================================================
