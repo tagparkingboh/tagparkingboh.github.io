@@ -378,6 +378,28 @@ const bookingEventKey = (bookingId, type) => `${bookingId}:${type || 'unknown'}`
 
 const bookingEventLabel = (type) => (type === 'dropoff' ? 'Drop-off' : 'Pick-up')
 
+const reviewItemTimeMinutes = (item) => {
+  const value = String(item?.time || item?.event_time || '').slice(0, 5)
+  const [hours, minutes] = value.split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return Number.MAX_SAFE_INTEGER
+  return (hours * 60) + minutes
+}
+
+export const sortRosterReviewItems = (items = []) => (
+  [...items].sort((a, b) => {
+    const dateCompare = String(a?.date || '').localeCompare(String(b?.date || ''))
+    if (dateCompare !== 0) return dateCompare
+
+    const timeCompare = reviewItemTimeMinutes(a) - reviewItemTimeMinutes(b)
+    if (timeCompare !== 0) return timeCompare
+
+    const typeCompare = String(a?.event_type || '').localeCompare(String(b?.event_type || ''))
+    if (typeCompare !== 0) return typeCompare
+
+    return String(a?.booking_reference || '').localeCompare(String(b?.booking_reference || ''))
+  })
+)
+
 const shiftLinkedBookings = (shift) => {
   if (Array.isArray(shift?.bookings) && shift.bookings.length > 0) return shift.bookings
   if (shift?.booking_id) {
@@ -612,11 +634,11 @@ export const getRosterCoverageReviewItems = (dayBookings = { dropoffs: [], picku
     })
   })
 
-  return [...missingShiftItems, ...unassignedShiftItems]
+  return sortRosterReviewItems([...missingShiftItems, ...unassignedShiftItems])
 }
 
 export const getRosterCoverageReviewItemsByDate = (bookingsByDate = {}, shiftsByDate = {}, dateKeys = []) => (
-  (dateKeys.length > 0 ? dateKeys : Object.keys({ ...bookingsByDate, ...shiftsByDate }))
+  sortRosterReviewItems((dateKeys.length > 0 ? dateKeys : Object.keys({ ...bookingsByDate, ...shiftsByDate }))
     .flatMap((dateKey) => (
       getRosterCoverageReviewItems(
         bookingsByDate[dateKey] || { dropoffs: [], pickups: [] },
@@ -626,7 +648,7 @@ export const getRosterCoverageReviewItemsByDate = (bookingsByDate = {}, shiftsBy
         date: dateKey,
         date_label: formatDateUK(dateKey),
       }))
-    ))
+    )))
 )
 
 const normaliseGateEventType = (eventType) => {
@@ -636,7 +658,7 @@ const normaliseGateEventType = (eventType) => {
 }
 
 export const getRosterCoverageReviewItemsFromGates = (gatesByDate = {}, dateKeys = []) => (
-  (dateKeys.length > 0 ? dateKeys : Object.keys(gatesByDate).sort())
+  sortRosterReviewItems((dateKeys.length > 0 ? dateKeys : Object.keys(gatesByDate).sort())
     .flatMap((dateKey) => {
       const gate = gatesByDate[dateKey]
       return (gate?.missing_events || []).map((event) => {
@@ -657,7 +679,7 @@ export const getRosterCoverageReviewItemsFromGates = (gatesByDate = {}, dateKeys
           date_label: formatDateUK(dateKey),
         }
       })
-    })
+    }))
 )
 
 export const groupAutoOverlapReviewItems = (items = []) => {
