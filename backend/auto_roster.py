@@ -125,6 +125,8 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]
 def _shift_window(shift: RosterShift) -> tuple[datetime, datetime]:
     """Naive [start, end] datetimes for an existing shift (handles overnight)."""
     end_date = shift.end_date or shift.date
+    if not shift.end_date and shift.end_time <= shift.start_time:
+        end_date = shift.date + timedelta(days=1)
     return (
         datetime.combine(shift.date, shift.start_time),
         datetime.combine(end_date, shift.end_time),
@@ -163,12 +165,176 @@ def _is_auto_shift_eligible_for_rebuild(shift: RosterShift) -> bool:
     )
 
 
+def _shift_can_cover_jockey_work(shift: RosterShift) -> bool:
+    """Auto-roster events are jockey work. Fleet shifts must not be treated
+    as coverage for jockey bookings; legacy NULL rows are treated as jockey."""
+    driver_type = getattr(shift, "intended_driver_type", None)
+    return driver_type in (None, "", "jockey")
+
+
 def _booking_in_scope(booking: Booking) -> bool:
     """Bookings the auto-roster covers: jockey work (not P&R) with status
     in CONFIRMED or REFUNDED. CANCELLED / PENDING are excluded."""
-    if getattr(booking, "service_type", None) == ServiceType.PARK_RIDE:
+    if _scalar_value(getattr(booking, "service_type", None)) == ServiceType.PARK_RIDE.value:
         return False
-    return booking.status in (BookingStatus.CONFIRMED, BookingStatus.REFUNDED)
+    return _scalar_value(getattr(booking, "status", None)) in (
+        BookingStatus.CONFIRMED.value,
+        BookingStatus.REFUNDED.value,
+    )
+
+
+def _review_event_key(booking_id: int, event_type: str) -> str:
+    return f"{booking_id}:{event_type}"
+
+
+def _pickup_event_date(booking: Booking) -> Optional[date_type]:
+    if getattr(booking, "flight_arrival_date", None):
+        return booking.flight_arrival_date
+    if not getattr(booking, "pickup_date", None):
+        return None
+    if (
+        getattr(booking, "flight_arrival_time", None)
+        and getattr(booking, "pickup_time", None)
+        and booking.flight_arrival_time > booking.pickup_time
+    ):
+        return booking.pickup_date - timedelta(days=1)
+    return booking.pickup_date
+
+
+def _shift_linked_event_keys(shift: RosterShift) -> set[str]:
+    shift_dates = {getattr(shift, "date", None), getattr(shift, "end_date", None)}
+    shift_dates.discard(None)
+    keys: set[str] = set()
+
+    for booking in getattr(shift, "bookings", []) or []:
+        if _scalar_value(getattr(booking, "status", None)) == BookingStatus.CANCELLED.value:
+            continue
+        bid = getattr(booking, "id", None)
+        if bid is None:
+            continue
+        if getattr(booking, "dropoff_date", None) in shift_dates:
+            keys.add(_review_event_key(bid, "drop_off"))
+        elif _pickup_event_date(booking) in shift_dates:
+            keys.add(_review_event_key(bid, "pick_up"))
+
+    booking_id = getattr(shift, "booking_id", None)
+    booking = getattr(shift, "booking", None)
+    if booking_id is not None and booking is not None:
+        if _scalar_value(getattr(booking, "status", None)) != BookingStatus.CANCELLED.value:
+            if getattr(booking, "dropoff_date", None) in shift_dates:
+                keys.add(_review_event_key(booking_id, "drop_off"))
+            elif _pickup_event_date(booking) in shift_dates:
+                keys.add(_review_event_key(booking_id, "pick_up"))
+
+    return keys
+
+
+def _review_operational_date(event_type: str, event_time: datetime) -> date_type:
+    if event_type == "pick_up" and event_time.time() < ARRIVAL_OVERNIGHT_CUTOFF:
+        return event_time.date() - timedelta(days=1)
+    return event_time.date()
+
+
+def _cluster_shift_plan(cluster, settings: PlannerSettings) -> dict:
+    """Shared generated-shift window/date calculation for rebuild and sweep."""
+    cluster_start = cluster.events[0].event_time
+    shift_start, shift_end = compute_cluster_shift_window(
+        cluster,
+        start_buffer_minutes=settings.start_buffer_minutes,
+        end_buffer_minutes=settings.end_buffer_minutes,
+        min_shift_minutes=settings.min_shift_minutes,
+    )
+    shift_start = shift_start.replace(tzinfo=None)
+    shift_end = shift_end.replace(tzinfo=None)
+    shift_type, _ = round_to_shift_type(shift_start, shift_end)
+
+    earliest_event = min(cluster.events, key=lambda e: e.event_time)
+    if (
+        earliest_event.event_type == "pick_up"
+        and cluster_start.time() < ARRIVAL_OVERNIGHT_CUTOFF
+    ):
+        shift_date_val = cluster_start.date() - timedelta(days=1)
+        shift_end_date_val = (
+            shift_end.date() if shift_end.date() != shift_date_val else None
+        )
+    else:
+        shift_date_val = shift_start.date()
+        shift_end_date_val = (
+            shift_end.date() if shift_end.date() != shift_start.date() else None
+        )
+
+    return {
+        "cluster_start": cluster_start,
+        "shift_start": shift_start,
+        "shift_end": shift_end,
+        "shift_date": shift_date_val,
+        "shift_end_date": shift_end_date_val,
+        "shift_type": shift_type,
+    }
+
+
+def _cluster_fully_covered_by_shifts(
+    cluster_events,
+    required_start: datetime,
+    required_end: datetime,
+    frozen_shifts: list[RosterShift],
+) -> list[RosterShift]:
+    """Return frozen shifts that cover the full generated window."""
+    if not frozen_shifts:
+        return []
+    covering = []
+    for fs in frozen_shifts:
+        if not _shift_can_cover_jockey_work(fs):
+            continue
+        fs_start, fs_end = _shift_window(fs)
+        if fs_start <= required_start and required_end <= fs_end:
+            covering.append(fs)
+    if not covering:
+        return []
+    return covering
+
+
+def _cluster_suppression_blockers(
+    booking_ids: set[int],
+    required_start: datetime,
+    required_end: datetime,
+    suppressed_shifts: list[RosterShift],
+) -> list[RosterShift]:
+    """Cancelled/suppressed auto shift = do not recreate this coverage."""
+    if not suppressed_shifts:
+        return []
+    blockers = []
+    required_window = (required_start, required_end)
+    for s in suppressed_shifts:
+        suppressed_start, suppressed_end = _shift_window(s)
+        if suppressed_start <= required_window[0] and required_window[1] <= suppressed_end:
+            blockers.append(s)
+            continue
+        if _shift_linked_booking_ids(s) & booking_ids:
+            blockers.append(s)
+    return blockers
+
+
+def _format_dt(value: Optional[datetime]) -> Optional[str]:
+    return value.isoformat() if isinstance(value, datetime) else None
+
+
+def _booking_confirmation_marker(booking: Booking) -> dict:
+    payment = getattr(booking, "payment", None)
+    paid_at = getattr(payment, "paid_at", None) if payment is not None else None
+    if isinstance(paid_at, datetime):
+        return {"source": "payment.paid_at", "timestamp": _format_dt(paid_at)}
+    confirmation_email_sent_at = getattr(booking, "confirmation_email_sent_at", None)
+    if isinstance(confirmation_email_sent_at, datetime):
+        return {
+            "source": "booking.confirmation_email_sent_at",
+            "timestamp": _format_dt(confirmation_email_sent_at),
+        }
+    created_at = getattr(booking, "created_at", None)
+    return {
+        "source": "booking.created_at" if isinstance(created_at, datetime) else None,
+        "timestamp": _format_dt(created_at),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -394,49 +560,6 @@ def rebuild_auto_for_dates(
         .all()
     )
 
-    def _cluster_fully_covered(cluster_events, required_start: datetime, required_end: datetime) -> bool:
-        """All-or-nothing skip rule (partial-overlap pivot 2026-05-28):
-        return True only when EVERY event in the cluster has BOTH its
-        start anchor (flight_arrival_time for pickups, dropoff_time for
-        drop-offs) AND its end anchor (pickup handoff = arrival + 30 min
-        for pickups; same as start for drop-offs) inside the wall-clock
-        window of at least one frozen shift. Partial overlap still
-        materialises the whole cluster.
-
-        The full generated shift window matters: start anchor minus start
-        buffer through end anchor plus end buffer, including tight-pair
-        extensions. If pickups at 22:55 and 23:00 sit in a fixed 22:45-23:45
-        shift, they are NOT covered: the tight pickup pair requires an
-        earlier 22:10 start. Regression caught on TAG-SHS00925 / TAG-LDH79714."""
-        if not frozen_shifts:
-            return False
-        for ev in cluster_events:
-            inside_any = False
-            for fs in frozen_shifts:
-                fs_start = datetime.combine(fs.date, fs.start_time)
-                fs_end = datetime.combine(fs.end_date or fs.date, fs.end_time)
-                if fs_start <= required_start and required_end <= fs_end:
-                    inside_any = True
-                    break
-            if not inside_any:
-                return False
-        return True
-
-    def _cluster_suppressed(booking_ids: set[int], required_start: datetime, required_end: datetime) -> bool:
-        """A cancelled/suppressed auto shift means "do not recreate this
-        generated coverage". Match by fully covered window or by retained
-        linked bookings."""
-        if not suppressed_shifts:
-            return False
-        required_window = (required_start, required_end)
-        for s in suppressed_shifts:
-            suppressed_start, suppressed_end = _shift_window(s)
-            if suppressed_start <= required_window[0] and required_window[1] <= suppressed_end:
-                return True
-            if _shift_linked_booking_ids(s) & booking_ids:
-                return True
-        return False
-
     # 4. Materialise shifts for clusters whose owner lands in target_set.
     # Usually that owner is the event anchor date. For arrivals before the
     # 02:00 operational cutoff, the owner is the prior operational day, so a
@@ -448,43 +571,13 @@ def rebuild_auto_for_dates(
         ):
             continue
 
-        cluster_start = cluster.events[0].event_time
-        # Compute each event type's requirement independently, then use the
-        # outer bounds. Tight pickups can pull the start earlier from the
-        # pickup arrival anchor; tight drop-offs can push the end later from
-        # the drop-off anchor. A mixed event in the middle must not magnify
-        # the opposite side of the shift.
-        shift_start, shift_end = compute_cluster_shift_window(
-            cluster,
-            start_buffer_minutes=settings.start_buffer_minutes,
-            end_buffer_minutes=settings.end_buffer_minutes,
-            min_shift_minutes=settings.min_shift_minutes,
-        )
-        # Strip tz for naive DB storage.
-        shift_start = shift_start.replace(tzinfo=None)
-        shift_end = shift_end.replace(tzinfo=None)
-
-        shift_type, _ = round_to_shift_type(shift_start, shift_end)
-
-        # Arrivals strictly before ARRIVAL_OVERNIGHT_CUTOFF (02:00 UK) belong
-        # to the prior day's evening shift — mirrors the rule in
-        # roster_planner.propose_roster and the Admin Calendar display
-        # (RosterCalendar.jsx claimPickupDate). cluster_start is the arrival
-        # anchor for pickup-led clusters.
-        earliest_event = min(cluster.events, key=lambda e: e.event_time)
-        if (
-            earliest_event.event_type == "pick_up"
-            and cluster_start.time() < ARRIVAL_OVERNIGHT_CUTOFF
-        ):
-            shift_date_val = cluster_start.date() - timedelta(days=1)
-            shift_end_date_val = (
-                shift_end.date() if shift_end.date() != shift_date_val else None
-            )
-        else:
-            shift_date_val = shift_start.date()
-            shift_end_date_val = (
-                shift_end.date() if shift_end.date() != shift_start.date() else None
-            )
+        plan = _cluster_shift_plan(cluster, settings)
+        cluster_start = plan["cluster_start"]
+        shift_start = plan["shift_start"]
+        shift_end = plan["shift_end"]
+        shift_type = plan["shift_type"]
+        shift_date_val = plan["shift_date"]
+        shift_end_date_val = plan["shift_end_date"]
 
         if (
             focus_booking_id is None
@@ -497,7 +590,12 @@ def rebuild_auto_for_dates(
         booking_ids = sorted({e.booking_id for e in cluster.events})
         booking_id_set = set(booking_ids)
 
-        if _cluster_suppressed(booking_id_set, shift_start, shift_end):
+        if _cluster_suppression_blockers(
+            booking_id_set,
+            shift_start,
+            shift_end,
+            suppressed_shifts,
+        ):
             summary["skipped_suppressed"] += 1
             continue
 
@@ -524,7 +622,12 @@ def rebuild_auto_for_dates(
         # is the bridge that writes the ShiftBookingLink rows — it runs
         # on confirmation and only links bookings whose event time the
         # shift window actually covers. (Driver-trust pivot 2026-05-28.)
-        if _cluster_fully_covered(cluster.events, shift_start, shift_end):
+        if _cluster_fully_covered_by_shifts(
+            cluster.events,
+            shift_start,
+            shift_end,
+            frozen_shifts,
+        ):
             summary["skipped_covered"] += 1
             continue
 
@@ -547,6 +650,355 @@ def rebuild_auto_for_dates(
 
     db.commit()
     return summary
+
+
+def build_auto_roster_sweep_plan(
+    target_dates: Iterable[date_type],
+    bookings: list[Booking],
+    live_shifts: list[RosterShift],
+    suppressed_shifts: list[RosterShift],
+    settings: PlannerSettings,
+) -> dict:
+    """Read-only per-cluster sweep plan.
+
+    This is Step 2 of the sweep work: the future write-mode sweep should use
+    this same cluster decision path, then execute the `focus_booking_id`
+    actions it reports.
+    """
+    target_set = set(target_dates)
+    dates_payload = {
+        d: {
+            "date": d.isoformat(),
+            "missing_review_count": 0,
+            "cluster_count": 0,
+            "would_generate_count": 0,
+            "skipped_suppressed_count": 0,
+            "skipped_owned_coverage_count": 0,
+            "clusters": [],
+        }
+        for d in sorted(target_set)
+    }
+
+    if not target_set:
+        return {
+            "write": False,
+            "date_from": None,
+            "date_to": None,
+            "dates_scanned": 0,
+            "clusters_missing_coverage": 0,
+            "clusters_would_generate": 0,
+            "clusters_skipped_suppressed": 0,
+            "clusters_skipped_owned_coverage": 0,
+            "focus_rebuild_count": 0,
+            "dates": [],
+        }
+
+    events = []
+    cluster_events = []
+    for booking in bookings or []:
+        if not _booking_in_scope(booking):
+            continue
+        for event_type, start_dt, end_dt in _events_for_booking(booking):
+            event = {
+                "booking": booking,
+                "booking_id": booking.id,
+                "booking_reference": booking.reference or "",
+                "event_type": event_type,
+                "event_time": start_dt,
+                "end_anchor_time": end_dt,
+                "operational_date": _review_operational_date(event_type, start_dt),
+            }
+            events.append(event)
+            cluster_events.append(Event(
+                booking_id=booking.id,
+                booking_reference=booking.reference or "",
+                event_type=event_type,
+                event_time=start_dt.replace(tzinfo=UK_TZ),
+                end_anchor_time=end_dt.replace(tzinfo=UK_TZ),
+            ))
+
+    live_event_keys: set[str] = set()
+    for shift in live_shifts or []:
+        if _scalar_value(getattr(shift, "status", None)) == ShiftStatus.CANCELLED.value:
+            continue
+        live_event_keys.update(_shift_linked_event_keys(shift))
+
+    missing_events = [
+        event for event in events
+        if event["operational_date"] in target_set
+        and _review_event_key(event["booking_id"], event["event_type"]) not in live_event_keys
+    ]
+    for event in missing_events:
+        dates_payload[event["operational_date"]]["missing_review_count"] += 1
+
+    clusters = group_events_by_gap(
+        cluster_events,
+        gap_max_minutes=settings.gap_max_minutes,
+        mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
+    )
+    cluster_by_event_key: dict[str, object] = {}
+    for cluster in clusters:
+        for event in cluster.events:
+            cluster_by_event_key[_review_event_key(event.booking_id, event.event_type)] = cluster
+
+    missing_by_cluster: dict[tuple[str, ...], list[dict]] = {}
+    cluster_by_key: dict[tuple[str, ...], object] = {}
+    for missing in missing_events:
+        key = _review_event_key(missing["booking_id"], missing["event_type"])
+        cluster = cluster_by_event_key.get(key)
+        if cluster is None:
+            continue
+        cluster_key = tuple(sorted(
+            _review_event_key(event.booking_id, event.event_type)
+            for event in cluster.events
+        ))
+        cluster_by_key[cluster_key] = cluster
+        missing_by_cluster.setdefault(cluster_key, []).append(missing)
+
+    frozen_shifts = [
+        shift for shift in (live_shifts or [])
+        if _scalar_value(getattr(shift, "status", None)) in (
+            ShiftStatus.SCHEDULED.value,
+            ShiftStatus.CONFIRMED.value,
+        )
+        and (
+            getattr(shift, "created_source", None) != "auto"
+            or getattr(shift, "staff_id", None) is not None
+            or getattr(shift, "admin_shaped_at", None) is not None
+        )
+    ]
+    active_suppressed = [
+        shift for shift in (suppressed_shifts or [])
+        if getattr(shift, "created_source", None) == "auto"
+        and _scalar_value(getattr(shift, "status", None)) == ShiftStatus.CANCELLED.value
+        and getattr(shift, "suppressed_at", None) is not None
+    ]
+
+    totals = {
+        "clusters_missing_coverage": 0,
+        "clusters_would_generate": 0,
+        "clusters_skipped_suppressed": 0,
+        "clusters_skipped_owned_coverage": 0,
+    }
+    def _event_sort_key(event):
+        return (
+            event["event_time"],
+            event["event_type"],
+            event["booking_reference"],
+            event["booking_id"],
+        )
+
+    for cluster_key in sorted(missing_by_cluster):
+        cluster = cluster_by_key[cluster_key]
+        missing_for_cluster = sorted(missing_by_cluster[cluster_key], key=_event_sort_key)
+        owner_date = min(event["operational_date"] for event in missing_for_cluster)
+        if owner_date not in dates_payload:
+            continue
+
+        plan = _cluster_shift_plan(cluster, settings)
+        shift_start = plan["shift_start"]
+        shift_end = plan["shift_end"]
+        booking_ids = {event.booking_id for event in cluster.events}
+        suppression_blockers = _cluster_suppression_blockers(
+            booking_ids,
+            shift_start,
+            shift_end,
+            active_suppressed,
+        )
+        covering_shifts = _cluster_fully_covered_by_shifts(
+            cluster.events,
+            shift_start,
+            shift_end,
+            frozen_shifts,
+        )
+
+        if suppression_blockers:
+            action = "skip_suppressed"
+            totals["clusters_skipped_suppressed"] += 1
+            dates_payload[owner_date]["skipped_suppressed_count"] += 1
+        elif covering_shifts:
+            action = "skip_owned_coverage"
+            totals["clusters_skipped_owned_coverage"] += 1
+            dates_payload[owner_date]["skipped_owned_coverage_count"] += 1
+        else:
+            action = "would_generate"
+            totals["clusters_would_generate"] += 1
+            dates_payload[owner_date]["would_generate_count"] += 1
+
+        focus_booking_id = missing_for_cluster[0]["booking_id"]
+
+        missing_payload = []
+        for event in missing_for_cluster:
+            booking = event["booking"]
+            marker = _booking_confirmation_marker(booking)
+            missing_payload.append({
+                "booking_id": event["booking_id"],
+                "booking_reference": event["booking_reference"],
+                "event_type": event["event_type"],
+                "event_time": event["event_time"].strftime("%H:%M"),
+                "event_datetime": event["event_time"].isoformat(),
+                "operational_date": event["operational_date"].isoformat(),
+                "confirmation_source": marker["source"],
+                "confirmation_timestamp": marker["timestamp"],
+            })
+
+        cluster_payload = {
+            "operational_date": owner_date.isoformat(),
+            "operational_dates": sorted({
+                event["operational_date"].isoformat()
+                for event in missing_for_cluster
+            }),
+            "action": action,
+            "focus_booking_id": focus_booking_id,
+            "would_call": (
+                "rebuild_auto_for_dates"
+                if action == "would_generate"
+                else None
+            ),
+            "would_call_kwargs": (
+                {
+                    "target_dates": [owner_date.isoformat()],
+                    "focus_booking_id": focus_booking_id,
+                }
+                if action == "would_generate"
+                else None
+            ),
+            "would_shift": {
+                "date": plan["shift_date"].isoformat(),
+                "end_date": (
+                    plan["shift_end_date"].isoformat()
+                    if plan["shift_end_date"] else None
+                ),
+                "start_time": shift_start.strftime("%H:%M"),
+                "end_time": shift_end.strftime("%H:%M"),
+                "start_datetime": shift_start.isoformat(),
+                "end_datetime": shift_end.isoformat(),
+                "shift_type": _scalar_value(plan["shift_type"]),
+            },
+            "missing_events": missing_payload,
+            "all_cluster_events": [
+                {
+                    "booking_id": event.booking_id,
+                    "booking_reference": event.booking_reference,
+                    "event_type": event.event_type,
+                    "event_datetime": event.event_time.replace(tzinfo=None).isoformat(),
+                }
+                for event in sorted(
+                    cluster.events,
+                    key=lambda e: (
+                        e.event_time,
+                        e.event_type,
+                        e.booking_reference,
+                        e.booking_id,
+                    ),
+                )
+            ],
+            "suppressed": {
+                "blocked": bool(suppression_blockers),
+                "shift_ids": sorted(
+                    sid for sid in (
+                        getattr(shift, "id", None) for shift in suppression_blockers
+                    )
+                    if sid is not None
+                ),
+            },
+            "owned_coverage": {
+                "covered": bool(covering_shifts),
+                "shift_ids": sorted(
+                    sid for sid in (
+                        getattr(shift, "id", None) for shift in covering_shifts
+                    )
+                    if sid is not None
+                ),
+            },
+        }
+        dates_payload[owner_date]["clusters"].append(cluster_payload)
+        dates_payload[owner_date]["cluster_count"] += 1
+        totals["clusters_missing_coverage"] += 1
+
+    return {
+        "write": False,
+        "date_from": min(target_set).isoformat(),
+        "date_to": max(target_set).isoformat(),
+        "dates_scanned": len(target_set),
+        "clusters_missing_coverage": totals["clusters_missing_coverage"],
+        "clusters_would_generate": totals["clusters_would_generate"],
+        "clusters_skipped_suppressed": totals["clusters_skipped_suppressed"],
+        "clusters_skipped_owned_coverage": totals["clusters_skipped_owned_coverage"],
+        "focus_rebuild_count": totals["clusters_would_generate"],
+        "dates": list(dates_payload.values()),
+    }
+
+
+def dry_run_auto_roster_sweep(
+    db: Session,
+    date_from: Optional[date_type],
+    date_to: Optional[date_type],
+    settings: PlannerSettings,
+) -> dict:
+    if date_from is None:
+        date_from = datetime.now(UK_TZ).date() + timedelta(days=1)
+    if date_to is None:
+        window_days = settings.window_days if settings.window_days and settings.window_days > 0 else 28
+        date_to = date_from + timedelta(days=window_days - 1)
+    if date_to < date_from:
+        raise ValueError("date_to must be >= date_from")
+    if (date_to - date_from).days > 62:
+        raise ValueError("Date range must be 63 days or fewer")
+
+    target_dates = {
+        date_from + timedelta(days=i)
+        for i in range((date_to - date_from).days + 1)
+    }
+    expanded = set(target_dates)
+    for d in target_dates:
+        expanded.add(d - timedelta(days=1))
+        expanded.add(d + timedelta(days=1))
+
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.REFUNDED]),
+            or_(Booking.service_type.is_(None), Booking.service_type != ServiceType.PARK_RIDE),
+            or_(
+                Booking.dropoff_date.in_(expanded),
+                Booking.pickup_date.in_(expanded),
+                Booking.flight_arrival_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    live_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.status != ShiftStatus.CANCELLED,
+            or_(
+                RosterShift.date.in_(expanded),
+                RosterShift.end_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    suppressed_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.created_source == "auto",
+            RosterShift.status == ShiftStatus.CANCELLED,
+            RosterShift.suppressed_at.isnot(None),
+            or_(
+                RosterShift.date.in_(expanded),
+                RosterShift.end_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    return build_auto_roster_sweep_plan(
+        target_dates,
+        bookings,
+        live_shifts,
+        suppressed_shifts,
+        settings,
+    )
 
 
 def _affected_dates_for_booking(booking: Booking) -> set[date_type]:

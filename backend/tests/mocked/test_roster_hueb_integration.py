@@ -514,6 +514,66 @@ class TestRosterReviewGenerateGateRoutes:
 
         assert resp.status_code == 422
 
+    def test_integration_dry_run_auto_sweep_returns_backend_report(self, monkeypatch):
+        calls = {}
+        expected = {
+            "write": False,
+            "date_from": "2026-07-05",
+            "date_to": "2026-07-05",
+            "dates_scanned": 1,
+            "clusters_missing_coverage": 1,
+            "clusters_would_generate": 1,
+            "clusters_skipped_suppressed": 0,
+            "clusters_skipped_owned_coverage": 0,
+            "focus_rebuild_count": 1,
+            "dates": [{
+                "date": "2026-07-05",
+                "missing_review_count": 5,
+                "cluster_count": 1,
+                "would_generate_count": 1,
+                "skipped_suppressed_count": 0,
+                "skipped_owned_coverage_count": 0,
+                "clusters": [],
+            }],
+        }
+
+        def fake_dry_run(db, date_from, date_to, settings):
+            calls["date_from"] = date_from
+            calls["date_to"] = date_to
+            calls["settings"] = settings
+            return expected
+
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda db: {})
+        monkeypatch.setattr("auto_roster.dry_run_auto_roster_sweep", fake_dry_run)
+        _override_db(MagicMock())
+
+        resp = TestClient(app).get(
+            "/api/admin/qa/roster-planner/auto-sweep/dry-run?date_from=2026-07-05&date_to=2026-07-05"
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == expected
+        assert calls["date_from"] == date_type(2026, 7, 5)
+        assert calls["date_to"] == date_type(2026, 7, 5)
+
+    def test_integration_dry_run_auto_sweep_rejects_inverted_dates(self):
+        _override_db(MagicMock())
+
+        resp = TestClient(app).get(
+            "/api/admin/qa/roster-planner/auto-sweep/dry-run?date_from=2026-07-06&date_to=2026-07-05"
+        )
+
+        assert resp.status_code == 422
+
+    def test_integration_dry_run_auto_sweep_rejects_large_ranges(self):
+        _override_db(MagicMock())
+
+        resp = TestClient(app).get(
+            "/api/admin/qa/roster-planner/auto-sweep/dry-run?date_from=2026-07-01&date_to=2026-09-15"
+        )
+
+        assert resp.status_code == 422
+
     def test_integration_post_generate_runs_only_when_gate_allows(self, monkeypatch):
         calls = {"gate": 0, "rebuild_dates": None}
         before = {
