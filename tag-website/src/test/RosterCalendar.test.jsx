@@ -23,6 +23,7 @@ import {
   getRosterDemandByDate,
   getRosterCoverageReviewItems,
   getRosterCoverageReviewItemsByDate,
+  getRosterCoverageReviewItemsFromGates,
   groupAutoOverlapReviewItems,
   getAutoShiftShapeState,
   canShowRosterGenerateCta,
@@ -790,6 +791,83 @@ describe('getRosterCoverageReviewItems', () => {
       event_type: 'pickup',
     })
     expect(items[0].message).toContain('is not linked to a shift')
+  })
+
+  it('sorts mixed drop-off and pick-up review items by event time', () => {
+    const items = getRosterCoverageReviewItems(
+      {
+        dropoffs: [
+          {
+            id: 401,
+            reference: 'TAG-MGM34049',
+            customer_first_name: 'Mandy',
+            customer_last_name: 'Hall',
+            dropoff_time: '10:40',
+          },
+          {
+            id: 402,
+            reference: 'TAG-NHT62398',
+            customer_first_name: 'Neil',
+            customer_last_name: 'Balcombe',
+            dropoff_time: '11:20',
+          },
+        ],
+        pickups: [
+          {
+            id: 403,
+            reference: 'TAG-FUI38132',
+            customer_first_name: 'Rachel',
+            customer_last_name: 'Barringer',
+            flight_arrival_time: '14:15',
+          },
+          {
+            id: 404,
+            reference: 'TAG-JAG72584',
+            customer_first_name: 'Jacque',
+            customer_last_name: 'Aitken',
+            flight_arrival_time: '14:15',
+          },
+          {
+            id: 405,
+            reference: 'TAG-FIQ67754',
+            customer_first_name: 'Christine',
+            customer_last_name: 'Baker',
+            flight_arrival_time: '12:35',
+          },
+        ],
+      },
+      [],
+    )
+
+    expect(items.map((item) => `${item.time} ${item.booking_reference}`)).toEqual([
+      '10:40 TAG-MGM34049',
+      '11:20 TAG-NHT62398',
+      '12:35 TAG-FIQ67754',
+      '14:15 TAG-FUI38132',
+      '14:15 TAG-JAG72584',
+    ])
+  })
+
+  it('sorts backend gate review items by event time before rendering', () => {
+    const items = getRosterCoverageReviewItemsFromGates({
+      '2026-07-05': {
+        missing_events: [
+          { booking_id: 403, booking_reference: 'TAG-FUI38132', event_type: 'pick_up', event_time: '14:15' },
+          { booking_id: 401, booking_reference: 'TAG-MGM34049', event_type: 'drop_off', event_time: '10:40' },
+          { booking_id: 405, booking_reference: 'TAG-FIQ67754', event_type: 'pick_up', event_time: '12:35' },
+          { booking_id: 402, booking_reference: 'TAG-NHT62398', event_type: 'drop_off', event_time: '11:20' },
+          { booking_id: 404, booking_reference: 'TAG-JAG72584', event_type: 'pick_up', event_time: '14:15' },
+        ],
+      },
+    }, ['2026-07-05'])
+
+    expect(items.map((item) => `${item.time} ${item.booking_reference}`)).toEqual([
+      '10:40 TAG-MGM34049',
+      '11:20 TAG-NHT62398',
+      '12:35 TAG-FIQ67754',
+      '14:15 TAG-FUI38132',
+      '14:15 TAG-JAG72584',
+    ])
   })
 
   it('does not flag an ordinary unassigned shift with linked bookings', () => {
