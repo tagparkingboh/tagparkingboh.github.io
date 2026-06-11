@@ -53,6 +53,9 @@ backend/network_capture_*.json
 docs/SPEC.md
 backend/docs/TEST_STRATEGY.md
 backend/docs/SPEC.md
+AUTO_ROSTER_SWEEP_HANDOFF.md
+PROMO_CODES_HANDOFF.md
+REFERRAL_FEATURE_BRIEF.md
 
 # Migration scripts (contain sensitive patterns)
 backend/migrations/
