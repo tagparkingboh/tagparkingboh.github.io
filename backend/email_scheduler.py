@@ -7,6 +7,8 @@ Checks for subscribers who need welcome or promo emails and sends them.
 """
 import logging
 import asyncio
+import os
+import uuid
 from datetime import datetime, timedelta, time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -48,11 +50,94 @@ NOTIFICATION_STATUS_PENDING = "pending"
 NOTIFICATION_STATUS_SENT = "sent"
 NOTIFICATION_STATUS_FAILED = "failed"
 NOTIFICATION_STATUS_DISABLED = "disabled"
+AUTO_ROSTER_SWEEP_ENABLED_ENV = "AUTO_ROSTER_SWEEP_ENABLED"
+AUTO_ROSTER_SWEEP_HOUR_ENV = "AUTO_ROSTER_SWEEP_HOUR"
+AUTO_ROSTER_SWEEP_MINUTE_ENV = "AUTO_ROSTER_SWEEP_MINUTE"
+AUTO_ROSTER_SWEEP_DEFAULT_HOUR = 3
+AUTO_ROSTER_SWEEP_DEFAULT_MINUTE = 10
 
 
 def get_db() -> Session:
     """Get a database session."""
     return SessionLocal()
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_auto_roster_sweep_enabled() -> bool:
+    """Explicit gate for scheduled roster writes. Default off everywhere."""
+    return _env_truthy(AUTO_ROSTER_SWEEP_ENABLED_ENV)
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using %s", name, raw, default)
+        return default
+    if value < minimum or value > maximum:
+        logger.warning("Out-of-range %s=%r; using %s", name, raw, default)
+        return default
+    return value
+
+
+def process_auto_roster_sweep():
+    """Scheduled write-mode auto-roster reconciliation.
+
+    Env gated so staging/CI/local runs stay read-only unless the runtime
+    explicitly opts in with AUTO_ROSTER_SWEEP_ENABLED=true.
+    """
+    if not is_auto_roster_sweep_enabled():
+        logger.info("auto_roster_sweep scheduler skipped: disabled")
+        return {
+            "write": False,
+            "skipped": True,
+            "reason": f"{AUTO_ROSTER_SWEEP_ENABLED_ENV} is not enabled",
+        }
+
+    run_id = f"auto-sweep-{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    db = get_db()
+    try:
+        from auto_roster import run_auto_roster_sweep
+        from roster_planner import PlannerSettings
+        from routers.roster import _load_planner_settings_rows
+
+        settings = PlannerSettings.from_kv(_load_planner_settings_rows(db))
+        result = run_auto_roster_sweep(
+            db,
+            settings,
+            write=True,
+            run_id=run_id,
+            trigger="scheduled",
+        )
+        logger.info(
+            "auto_roster_sweep scheduler complete run_id=%s attempted=%s repaired=%s noop=%s failures=%s",
+            run_id,
+            result.get("clusters_attempted", 0),
+            result.get("clusters_repaired", 0),
+            result.get("clusters_noop", 0),
+            result.get("failures", 0),
+        )
+        return result
+    except Exception as e:
+        logger.exception("auto_roster_sweep scheduler failed run_id=%s error=%s", run_id, e)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return {
+            "write": True,
+            "run_id": run_id,
+            "failures": 1,
+            "error": str(e),
+        }
+    finally:
+        db.close()
 
 
 def process_pending_welcome_emails(db: Session):
@@ -830,6 +915,39 @@ def start_scheduler():
         replace_existing=True,
         misfire_grace_time=3600,
     )
+
+    if is_auto_roster_sweep_enabled():
+        sweep_hour = _env_int(
+            AUTO_ROSTER_SWEEP_HOUR_ENV,
+            AUTO_ROSTER_SWEEP_DEFAULT_HOUR,
+            minimum=0,
+            maximum=23,
+        )
+        sweep_minute = _env_int(
+            AUTO_ROSTER_SWEEP_MINUTE_ENV,
+            AUTO_ROSTER_SWEEP_DEFAULT_MINUTE,
+            minimum=0,
+            maximum=59,
+        )
+        scheduler.add_job(
+            process_auto_roster_sweep,
+            trigger=CronTrigger(
+                hour=sweep_hour,
+                minute=sweep_minute,
+                timezone=pytz.timezone("Europe/London"),
+            ),
+            id="auto_roster_sweep",
+            name="Auto-roster reconciliation sweep",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Auto-roster sweep scheduled at %02d:%02d Europe/London",
+            sweep_hour,
+            sweep_minute,
+        )
+    else:
+        logger.info("Auto-roster sweep not scheduled; AUTO_ROSTER_SWEEP_ENABLED is disabled")
 
     scheduler.start()
     logger.info(f"Email scheduler started - checking every {CHECK_INTERVAL_MINUTES} minutes")

@@ -31,6 +31,7 @@ from auto_roster import (  # noqa: E402
     build_auto_roster_sweep_plan,
     rebuild_auto_for_dates,
     dry_run_auto_roster_sweep,
+    run_auto_roster_sweep,
     auto_create_or_extend_for_booking,
     auto_create_or_extend_async,
     handle_booking_cancelled,
@@ -1975,6 +1976,171 @@ class TestAutoRosterSweepDryRun:
         db.add.assert_not_called()
         db.delete.assert_not_called()
         db.commit.assert_not_called()
+
+    def test_write_mode_executes_only_reported_would_generate_clusters(self, monkeypatch):
+        report = {
+            "write": False,
+            "date_from": "2026-07-05",
+            "date_to": "2026-07-05",
+            "dates_scanned": 1,
+            "clusters_missing_coverage": 2,
+            "clusters_would_generate": 1,
+            "clusters_skipped_suppressed": 1,
+            "clusters_skipped_owned_coverage": 0,
+            "focus_rebuild_count": 1,
+            "dates": [{
+                "date": "2026-07-05",
+                "clusters": [
+                    {
+                        "operational_date": "2026-07-05",
+                        "action": "would_generate",
+                        "would_call_kwargs": {
+                            "target_dates": ["2026-07-05"],
+                            "focus_booking_id": 501,
+                        },
+                    },
+                    {
+                        "operational_date": "2026-07-05",
+                        "action": "skip_suppressed",
+                        "would_call_kwargs": None,
+                    },
+                ],
+            }],
+        }
+        calls = []
+
+        def fake_rebuild(db, dates, settings, focus_booking_id=None):
+            calls.append((dates, focus_booking_id))
+            return {"created": 1, "deleted": 0, "bookings_in_scope": 5}
+
+        monkeypatch.setattr("auto_roster.dry_run_auto_roster_sweep", lambda *a, **kw: report)
+        monkeypatch.setattr("auto_roster.rebuild_auto_for_dates", fake_rebuild)
+
+        result = run_auto_roster_sweep(
+            MagicMock(),
+            mk_settings(),
+            write=True,
+            run_id="auto-sweep-test",
+            trigger="scheduled",
+        )
+
+        assert calls == [({date(2026, 7, 5)}, 501)]
+        assert result["clusters_attempted"] == 1
+        assert result["clusters_repaired"] == 1
+        assert result["clusters_noop"] == 0
+        assert result["failures"] == 0
+        assert result["executions"][0]["status"] == "repaired"
+
+    def test_write_mode_counts_noop_when_rebuild_finds_nothing_to_create(self, monkeypatch):
+        report = {
+            "write": False,
+            "dates_scanned": 1,
+            "clusters_missing_coverage": 1,
+            "clusters_would_generate": 1,
+            "clusters_skipped_suppressed": 0,
+            "clusters_skipped_owned_coverage": 0,
+            "dates": [{
+                "date": "2026-07-05",
+                "clusters": [{
+                    "operational_date": "2026-07-05",
+                    "action": "would_generate",
+                    "would_call_kwargs": {
+                        "target_dates": ["2026-07-05"],
+                        "focus_booking_id": 601,
+                    },
+                }],
+            }],
+        }
+        monkeypatch.setattr("auto_roster.dry_run_auto_roster_sweep", lambda *a, **kw: report)
+        monkeypatch.setattr(
+            "auto_roster.rebuild_auto_for_dates",
+            lambda *a, **kw: {"created": 0, "deleted": 0, "skipped_covered": 1},
+        )
+
+        result = run_auto_roster_sweep(MagicMock(), mk_settings(), write=True)
+
+        assert result["clusters_attempted"] == 1
+        assert result["clusters_repaired"] == 0
+        assert result["clusters_noop"] == 1
+        assert result["executions"][0]["status"] == "noop"
+
+    def test_write_mode_continues_after_cluster_failure(self, monkeypatch):
+        report = {
+            "write": False,
+            "dates_scanned": 1,
+            "clusters_missing_coverage": 2,
+            "clusters_would_generate": 2,
+            "clusters_skipped_suppressed": 0,
+            "clusters_skipped_owned_coverage": 0,
+            "dates": [{
+                "date": "2026-07-05",
+                "clusters": [
+                    {
+                        "operational_date": "2026-07-05",
+                        "action": "would_generate",
+                        "would_call_kwargs": {
+                            "target_dates": ["2026-07-05"],
+                            "focus_booking_id": 701,
+                        },
+                    },
+                    {
+                        "operational_date": "2026-07-05",
+                        "action": "would_generate",
+                        "would_call_kwargs": {
+                            "target_dates": ["2026-07-05"],
+                            "focus_booking_id": 702,
+                        },
+                    },
+                ],
+            }],
+        }
+
+        def fake_rebuild(db, dates, settings, focus_booking_id=None):
+            if focus_booking_id == 701:
+                raise RuntimeError("cluster exploded")
+            return {"created": 1, "deleted": 0}
+
+        db = MagicMock()
+        monkeypatch.setattr("auto_roster.dry_run_auto_roster_sweep", lambda *a, **kw: report)
+        monkeypatch.setattr("auto_roster.rebuild_auto_for_dates", fake_rebuild)
+
+        result = run_auto_roster_sweep(db, mk_settings(), write=True)
+
+        assert result["clusters_attempted"] == 2
+        assert result["clusters_repaired"] == 1
+        assert result["failures"] == 1
+        assert [e["status"] for e in result["executions"]] == ["failed", "repaired"]
+        db.rollback.assert_called_once()
+
+    def test_dry_run_mode_does_not_execute_reported_generate_clusters(self, monkeypatch):
+        report = {
+            "write": False,
+            "dates_scanned": 1,
+            "clusters_missing_coverage": 1,
+            "clusters_would_generate": 1,
+            "clusters_skipped_suppressed": 0,
+            "clusters_skipped_owned_coverage": 0,
+            "dates": [{
+                "date": "2026-07-05",
+                "clusters": [{
+                    "operational_date": "2026-07-05",
+                    "action": "would_generate",
+                    "would_call_kwargs": {
+                        "target_dates": ["2026-07-05"],
+                        "focus_booking_id": 801,
+                    },
+                }],
+            }],
+        }
+        rebuild = MagicMock()
+        monkeypatch.setattr("auto_roster.dry_run_auto_roster_sweep", lambda *a, **kw: report)
+        monkeypatch.setattr("auto_roster.rebuild_auto_for_dates", rebuild)
+
+        result = run_auto_roster_sweep(MagicMock(), mk_settings(), write=False)
+
+        rebuild.assert_not_called()
+        assert result["write"] is False
+        assert result["clusters_attempted"] == 0
 
 
 # ===========================================================================

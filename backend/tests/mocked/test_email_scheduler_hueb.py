@@ -956,6 +956,70 @@ class TestProcessAllPendingEmails:
         assert db.close.called
 
 
+class TestAutoRosterSweepScheduler:
+    def test_U_disabled_short_circuits_without_db(self, monkeypatch):
+        monkeypatch.delenv("AUTO_ROSTER_SWEEP_ENABLED", raising=False)
+        called = {"db": 0}
+        monkeypatch.setattr(
+            email_scheduler,
+            "get_db",
+            lambda: called.__setitem__("db", called["db"] + 1) or MagicMock(),
+        )
+
+        result = email_scheduler.process_auto_roster_sweep()
+
+        assert result["skipped"] is True
+        assert result["write"] is False
+        assert called["db"] == 0
+
+    def test_H_enabled_runs_shared_write_sweep(self, monkeypatch):
+        monkeypatch.setenv("AUTO_ROSTER_SWEEP_ENABLED", "true")
+        db = MagicMock()
+        calls = {}
+        monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda d: {})
+
+        def fake_sweep(db_arg, settings, **kwargs):
+            calls["db"] = db_arg
+            calls["kwargs"] = kwargs
+            return {
+                "clusters_attempted": 1,
+                "clusters_repaired": 1,
+                "clusters_noop": 0,
+                "failures": 0,
+            }
+
+        monkeypatch.setattr("auto_roster.run_auto_roster_sweep", fake_sweep)
+
+        result = email_scheduler.process_auto_roster_sweep()
+
+        assert calls["db"] is db
+        assert calls["kwargs"]["write"] is True
+        assert calls["kwargs"]["trigger"] == "scheduled"
+        assert calls["kwargs"]["run_id"].startswith("auto-sweep-")
+        assert result["clusters_repaired"] == 1
+        assert db.close.called
+
+    def test_U_enabled_sweep_failure_rolls_back_and_closes(self, monkeypatch):
+        monkeypatch.setenv("AUTO_ROSTER_SWEEP_ENABLED", "true")
+        db = MagicMock()
+        monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda d: {})
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("sweep failed")
+
+        monkeypatch.setattr("auto_roster.run_auto_roster_sweep", boom)
+
+        result = email_scheduler.process_auto_roster_sweep()
+
+        assert result["write"] is True
+        assert result["failures"] == 1
+        assert "sweep failed" in result["error"]
+        db.rollback.assert_called_once()
+        db.close.assert_called_once()
+
+
 class TestStandaloneWrappers:
     @pytest.mark.parametrize("fn,inner_attr", [
         ("_process_welcome_emails_standalone", "process_pending_welcome_emails"),
@@ -1029,12 +1093,43 @@ class TestCleanupOldSnapshots:
 
 class TestSchedulerControl:
     def test_H_start_when_not_running_adds_jobs_and_starts(self, monkeypatch):
+        monkeypatch.delenv("AUTO_ROSTER_SWEEP_ENABLED", raising=False)
         fake_sched = MagicMock()
         fake_sched.running = False
         monkeypatch.setattr(email_scheduler, "scheduler", fake_sched)
         email_scheduler.start_scheduler()
         assert fake_sched.add_job.call_count >= 3  # process / cleanup / weekly report
         assert fake_sched.start.called
+
+    def test_H_start_adds_auto_roster_sweep_job_when_enabled(self, monkeypatch):
+        monkeypatch.setenv("AUTO_ROSTER_SWEEP_ENABLED", "true")
+        monkeypatch.setenv("AUTO_ROSTER_SWEEP_HOUR", "4")
+        monkeypatch.setenv("AUTO_ROSTER_SWEEP_MINUTE", "20")
+        fake_sched = MagicMock()
+        fake_sched.running = False
+        monkeypatch.setattr(email_scheduler, "scheduler", fake_sched)
+
+        email_scheduler.start_scheduler()
+
+        job_ids = [call.kwargs.get("id") for call in fake_sched.add_job.call_args_list]
+        assert "auto_roster_sweep" in job_ids
+        sweep_call = next(
+            call for call in fake_sched.add_job.call_args_list
+            if call.kwargs.get("id") == "auto_roster_sweep"
+        )
+        assert sweep_call.args[0] is email_scheduler.process_auto_roster_sweep
+        assert fake_sched.start.called
+
+    def test_E_start_does_not_add_auto_roster_sweep_job_when_disabled(self, monkeypatch):
+        monkeypatch.delenv("AUTO_ROSTER_SWEEP_ENABLED", raising=False)
+        fake_sched = MagicMock()
+        fake_sched.running = False
+        monkeypatch.setattr(email_scheduler, "scheduler", fake_sched)
+
+        email_scheduler.start_scheduler()
+
+        job_ids = [call.kwargs.get("id") for call in fake_sched.add_job.call_args_list]
+        assert "auto_roster_sweep" not in job_ids
 
     def test_E_start_when_already_running_is_noop(self, monkeypatch):
         fake_sched = MagicMock()

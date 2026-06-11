@@ -1001,6 +1001,128 @@ def dry_run_auto_roster_sweep(
     )
 
 
+def run_auto_roster_sweep(
+    db: Session,
+    settings: PlannerSettings,
+    date_from: Optional[date_type] = None,
+    date_to: Optional[date_type] = None,
+    *,
+    write: bool = False,
+    run_id: Optional[str] = None,
+    trigger: str = "manual",
+) -> dict:
+    """Run the shared sweep decision path, optionally executing it.
+
+    Step 3 contract: write mode executes only the `would_generate` clusters
+    reported by dry-run, using the exact date/focus kwargs in the report.
+    """
+    report = dry_run_auto_roster_sweep(db, date_from, date_to, settings)
+    report["write"] = bool(write)
+    report["trigger"] = trigger
+    report["run_id"] = run_id
+    report["executions"] = []
+    report["clusters_attempted"] = 0
+    report["clusters_repaired"] = 0
+    report["clusters_noop"] = 0
+    report["failures"] = 0
+
+    if not write:
+        logger.info(
+            "auto_roster_sweep outcome=dry_run trigger=%s run_id=%s dates_scanned=%s clusters_missing=%s would_generate=%s skipped_suppressed=%s skipped_owned=%s",
+            trigger,
+            run_id,
+            report.get("dates_scanned", 0),
+            report.get("clusters_missing_coverage", 0),
+            report.get("clusters_would_generate", 0),
+            report.get("clusters_skipped_suppressed", 0),
+            report.get("clusters_skipped_owned_coverage", 0),
+        )
+        return report
+
+    logger.info(
+        "auto_roster_sweep outcome=start trigger=%s run_id=%s dates_scanned=%s clusters_missing=%s would_generate=%s skipped_suppressed=%s skipped_owned=%s",
+        trigger,
+        run_id,
+        report.get("dates_scanned", 0),
+        report.get("clusters_missing_coverage", 0),
+        report.get("clusters_would_generate", 0),
+        report.get("clusters_skipped_suppressed", 0),
+        report.get("clusters_skipped_owned_coverage", 0),
+    )
+
+    for date_payload in report.get("dates", []):
+        for cluster in date_payload.get("clusters", []):
+            if cluster.get("action") != "would_generate":
+                continue
+            kwargs = cluster.get("would_call_kwargs") or {}
+            target_dates = {
+                datetime.strptime(d, "%Y-%m-%d").date()
+                for d in kwargs.get("target_dates", [])
+            }
+            focus_booking_id = kwargs.get("focus_booking_id")
+            execution = {
+                "operational_date": cluster.get("operational_date"),
+                "focus_booking_id": focus_booking_id,
+                "target_dates": sorted(d.isoformat() for d in target_dates),
+                "status": "pending",
+                "result": None,
+                "error": None,
+            }
+            report["clusters_attempted"] += 1
+            try:
+                result = rebuild_auto_for_dates(
+                    db,
+                    target_dates,
+                    settings,
+                    focus_booking_id=focus_booking_id,
+                )
+                execution["status"] = "repaired" if result.get("created", 0) else "noop"
+                execution["result"] = result
+                if result.get("created", 0):
+                    report["clusters_repaired"] += 1
+                else:
+                    report["clusters_noop"] += 1
+                logger.info(
+                    "auto_roster_sweep outcome=cluster trigger=%s run_id=%s operational_date=%s focus_booking_id=%s target_dates=%s status=%s result=%s",
+                    trigger,
+                    run_id,
+                    execution["operational_date"],
+                    focus_booking_id,
+                    execution["target_dates"],
+                    execution["status"],
+                    result,
+                )
+            except Exception as e:
+                execution["status"] = "failed"
+                execution["error"] = str(e)
+                report["failures"] += 1
+                logger.exception(
+                    "auto_roster_sweep outcome=cluster_failure trigger=%s run_id=%s operational_date=%s focus_booking_id=%s target_dates=%s error=%s",
+                    trigger,
+                    run_id,
+                    execution["operational_date"],
+                    focus_booking_id,
+                    execution["target_dates"],
+                    e,
+                )
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+            report["executions"].append(execution)
+
+    logger.info(
+        "auto_roster_sweep outcome=complete trigger=%s run_id=%s attempted=%s repaired=%s noop=%s failures=%s",
+        trigger,
+        run_id,
+        report["clusters_attempted"],
+        report["clusters_repaired"],
+        report["clusters_noop"],
+        report["failures"],
+    )
+    return report
+
+
 def _affected_dates_for_booking(booking: Booking) -> set[date_type]:
     """Days touched by a booking's events — covers both the start anchor
     (e.g. flight_arrival on D) and the end anchor (e.g. pickup_time on D+1
