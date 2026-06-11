@@ -28,7 +28,9 @@ from auto_roster import (  # noqa: E402
     _shift_linked_booking_ids,
     _is_auto_shift_eligible_for_rebuild,
     _affected_dates_for_booking,
+    build_auto_roster_sweep_plan,
     rebuild_auto_for_dates,
+    dry_run_auto_roster_sweep,
     auto_create_or_extend_for_booking,
     auto_create_or_extend_async,
     handle_booking_cancelled,
@@ -57,8 +59,12 @@ def mk_booking(
     dropoff_dt: datetime = datetime(2026, 6, 10, 8, 0),
     pickup_dt: datetime = datetime(2026, 6, 17, 14, 0),
     flight_arrival_time=None,
+    flight_arrival_date=None,
+    created_at=None,
+    paid_at=None,
 ):
     """SimpleNamespace booking — auto_roster only reads attributes."""
+    payment = SimpleNamespace(paid_at=paid_at) if paid_at else None
     return SimpleNamespace(
         id=booking_id,
         reference=reference,
@@ -68,7 +74,11 @@ def mk_booking(
         dropoff_time=dropoff_dt.time(),
         pickup_date=pickup_dt.date(),
         pickup_time=pickup_dt.time(),
+        flight_arrival_date=flight_arrival_date,
         flight_arrival_time=flight_arrival_time,
+        confirmation_email_sent_at=None,
+        created_at=created_at,
+        payment=payment,
     )
 
 
@@ -1063,6 +1073,8 @@ def mk_assigned_shift(
     staff_id=10,
     created_source="auto",
     admin_shaped_at=None,
+    intended_driver_type="jockey",
+    bookings=None,
 ):
     """A frozen shift fixture. Defaults to assigned auto (`staff_id` set,
     `created_source='auto'`, `admin_shaped_at=None`) — the most common
@@ -1079,6 +1091,8 @@ def mk_assigned_shift(
         status=ShiftStatus.SCHEDULED,
         created_source=created_source,
         admin_shaped_at=admin_shaped_at,
+        intended_driver_type=intended_driver_type,
+        bookings=list(bookings or []),
     )
 
 
@@ -1672,6 +1686,295 @@ class TestSkipAndLinkAgreeForFlightArrivalBooking:
         assert (
             frozen.date, frozen.end_date, frozen.start_time, frozen.end_time,
         ) == original_window
+
+
+# ===========================================================================
+# auto-roster sweep dry-run — Step 2 HUEB report contract
+# ===========================================================================
+
+class TestAutoRosterSweepDryRun:
+    def _plan(self, target_dates, bookings, live_shifts=None, suppressed_shifts=None, settings=None):
+        return build_auto_roster_sweep_plan(
+            set(target_dates),
+            list(bookings),
+            list(live_shifts or []),
+            list(suppressed_shifts or []),
+            settings or mk_settings(gap_max_minutes=150, mixed_gap_max_minutes=150),
+        )
+
+    def test_happy_0507_missed_bookings_report_one_would_generate_cluster(self):
+        bookings = [
+            mk_booking(
+                booking_id=1,
+                reference="TAG-MGM34049",
+                dropoff_dt=datetime(2026, 7, 5, 10, 40),
+                pickup_dt=datetime(2026, 7, 12, 12, 0),
+                created_at=datetime(2026, 6, 1, 9, 0),
+            ),
+            mk_booking(
+                booking_id=2,
+                reference="TAG-NHT62398",
+                dropoff_dt=datetime(2026, 7, 5, 11, 20),
+                pickup_dt=datetime(2026, 7, 12, 12, 0),
+            ),
+            mk_booking(
+                booking_id=3,
+                reference="TAG-FIQ67754",
+                dropoff_dt=datetime(2026, 6, 28, 8, 0),
+                pickup_dt=datetime(2026, 7, 5, 13, 5),
+                flight_arrival_date=date(2026, 7, 5),
+                flight_arrival_time=time(12, 35),
+            ),
+            mk_booking(
+                booking_id=4,
+                reference="TAG-FUI38132",
+                dropoff_dt=datetime(2026, 6, 28, 8, 0),
+                pickup_dt=datetime(2026, 7, 5, 14, 45),
+                flight_arrival_date=date(2026, 7, 5),
+                flight_arrival_time=time(14, 15),
+                paid_at=datetime(2026, 6, 2, 10, 15),
+            ),
+            mk_booking(
+                booking_id=5,
+                reference="TAG-JAG72584",
+                dropoff_dt=datetime(2026, 6, 28, 8, 0),
+                pickup_dt=datetime(2026, 7, 5, 14, 45),
+                flight_arrival_date=date(2026, 7, 5),
+                flight_arrival_time=time(14, 15),
+            ),
+        ]
+
+        report = self._plan([date(2026, 7, 5)], bookings)
+
+        assert report["clusters_missing_coverage"] == 1
+        assert report["clusters_would_generate"] == 1
+        assert report["focus_rebuild_count"] == 1
+        cluster = report["dates"][0]["clusters"][0]
+        assert cluster["action"] == "would_generate"
+        assert cluster["focus_booking_id"] == 1
+        assert cluster["would_call_kwargs"] == {
+            "target_dates": ["2026-07-05"],
+            "focus_booking_id": 1,
+        }
+        assert [e["event_time"] for e in cluster["missing_events"]] == [
+            "10:40",
+            "11:20",
+            "12:35",
+            "14:15",
+            "14:15",
+        ]
+        assert cluster["missing_events"][0]["confirmation_source"] == "booking.created_at"
+        assert cluster["missing_events"][3]["confirmation_source"] == "payment.paid_at"
+
+    def test_unhappy_suppressed_cluster_does_not_block_unrelated_cluster(self):
+        blocked = mk_booking(
+            booking_id=10,
+            reference="TAG-BLOCKED",
+            dropoff_dt=datetime(2026, 7, 5, 10, 0),
+        )
+        unblocked = mk_booking(
+            booking_id=11,
+            reference="TAG-UNBLOCKED",
+            dropoff_dt=datetime(2026, 7, 5, 18, 0),
+        )
+        suppressed = mk_assigned_shift(
+            id=700,
+            shift_date=date(2026, 7, 5),
+            start_time=time(9, 0),
+            end_time=time(11, 0),
+            staff_id=None,
+            created_source="auto",
+            bookings=[blocked],
+        )
+        suppressed.status = ShiftStatus.CANCELLED
+        suppressed.suppressed_at = datetime(2026, 7, 1, 9, 0)
+
+        report = self._plan([date(2026, 7, 5)], [blocked, unblocked], suppressed_shifts=[suppressed])
+
+        actions = [c["action"] for c in report["dates"][0]["clusters"]]
+        assert actions == ["skip_suppressed", "would_generate"]
+        assert report["clusters_skipped_suppressed"] == 1
+        assert report["clusters_would_generate"] == 1
+        assert report["focus_rebuild_count"] == 1
+
+    def test_edge_owned_manual_shift_reports_skip_without_write_action(self):
+        booking = mk_booking(
+            booking_id=20,
+            reference="TAG-COVERED",
+            dropoff_dt=datetime(2026, 7, 5, 10, 40),
+        )
+        manual = mk_assigned_shift(
+            id=800,
+            shift_date=date(2026, 7, 5),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            staff_id=42,
+            created_source="manual",
+        )
+
+        report = self._plan([date(2026, 7, 5)], [booking], live_shifts=[manual])
+
+        cluster = report["dates"][0]["clusters"][0]
+        assert cluster["action"] == "skip_owned_coverage"
+        assert cluster["owned_coverage"]["shift_ids"] == [800]
+        assert cluster["would_call"] is None
+        assert report["focus_rebuild_count"] == 0
+
+    def test_edge_one_focus_rebuild_call_per_missing_cluster_not_event(self):
+        a = mk_booking(
+            booking_id=30,
+            reference="TAG-CLUSTER-A",
+            dropoff_dt=datetime(2026, 7, 5, 10, 0),
+        )
+        b = mk_booking(
+            booking_id=31,
+            reference="TAG-CLUSTER-B",
+            dropoff_dt=datetime(2026, 7, 5, 11, 0),
+        )
+
+        report = self._plan([date(2026, 7, 5)], [a, b])
+
+        assert report["dates"][0]["missing_review_count"] == 2
+        assert report["clusters_missing_coverage"] == 1
+        assert report["focus_rebuild_count"] == 1
+
+    def test_boundary_gap_just_under_and_exact_group_but_just_over_splits(self):
+        settings = mk_settings(gap_max_minutes=150, mixed_gap_max_minutes=150)
+        bookings = [
+            mk_booking(booking_id=40, reference="TAG-GAP-0", dropoff_dt=datetime(2026, 7, 5, 10, 0)),
+            mk_booking(booking_id=41, reference="TAG-GAP-149", dropoff_dt=datetime(2026, 7, 5, 12, 29)),
+            mk_booking(booking_id=42, reference="TAG-GAP-150", dropoff_dt=datetime(2026, 7, 5, 14, 59)),
+            mk_booking(booking_id=43, reference="TAG-GAP-151", dropoff_dt=datetime(2026, 7, 5, 17, 30)),
+        ]
+
+        report = self._plan([date(2026, 7, 5)], bookings, settings=settings)
+
+        clusters = report["dates"][0]["clusters"]
+        assert len(clusters) == 2
+        assert [len(c["missing_events"]) for c in clusters] == [3, 1]
+
+    def test_boundary_cross_midnight_cluster_at_horizon_edge_is_reported_on_prior_operational_day(self):
+        booking = mk_booking(
+            booking_id=50,
+            reference="TAG-MIDNIGHT",
+            dropoff_dt=datetime(2026, 6, 28, 8, 0),
+            pickup_dt=datetime(2026, 7, 6, 0, 31),
+            flight_arrival_date=date(2026, 7, 6),
+            flight_arrival_time=time(0, 1),
+        )
+
+        report = self._plan([date(2026, 7, 5)], [booking])
+
+        cluster = report["dates"][0]["clusters"][0]
+        assert cluster["operational_date"] == "2026-07-05"
+        assert cluster["would_shift"]["date"] == "2026-07-05"
+        assert cluster["would_shift"]["end_date"] == "2026-07-06"
+        assert cluster["missing_events"][0]["event_time"] == "00:01"
+
+    def test_boundary_uk_dst_transition_date_does_not_drop_review_event(self):
+        booking = mk_booking(
+            booking_id=60,
+            reference="TAG-DST2026",
+            dropoff_dt=datetime(2026, 3, 29, 1, 30),
+        )
+
+        report = self._plan([date(2026, 3, 29)], [booking])
+
+        assert report["dates"][0]["missing_review_count"] == 1
+        assert report["dates"][0]["clusters"][0]["missing_events"][0]["booking_reference"] == "TAG-DST2026"
+
+    def test_edge_hbd80857_neighbour_day_event_stays_in_target_cluster(self):
+        previous = mk_booking(
+            booking_id=70,
+            reference="TAG-PRIOR",
+            dropoff_dt=datetime(2026, 7, 8, 23, 30),
+        )
+        hbd = mk_booking(
+            booking_id=71,
+            reference="TAG-HBD80857",
+            dropoff_dt=datetime(2026, 6, 30, 8, 0),
+            pickup_dt=datetime(2026, 7, 9, 2, 30),
+            flight_arrival_date=date(2026, 7, 9),
+            flight_arrival_time=time(2, 0),
+        )
+
+        report = self._plan([date(2026, 7, 9)], [previous, hbd], settings=mk_settings(gap_max_minutes=190, mixed_gap_max_minutes=190))
+
+        cluster = report["dates"][0]["clusters"][0]
+        assert cluster["focus_booking_id"] == 71
+        assert [e["booking_reference"] for e in cluster["all_cluster_events"]] == [
+            "TAG-PRIOR",
+            "TAG-HBD80857",
+        ]
+
+    def test_edge_fleet_shift_does_not_satisfy_jockey_auto_roster_coverage(self):
+        booking = mk_booking(
+            booking_id=80,
+            reference="TAG-JOCKEY-WORK",
+            dropoff_dt=datetime(2026, 7, 5, 10, 40),
+        )
+        fleet = mk_assigned_shift(
+            id=900,
+            shift_date=date(2026, 7, 5),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            intended_driver_type="fleet",
+        )
+
+        report = self._plan([date(2026, 7, 5)], [booking], live_shifts=[fleet])
+
+        cluster = report["dates"][0]["clusters"][0]
+        assert cluster["action"] == "would_generate"
+        assert cluster["owned_coverage"]["shift_ids"] == []
+
+    def test_edge_parallel_fleet_and_jockey_pair_preserves_jockey_coverage_only(self):
+        booking = mk_booking(
+            booking_id=81,
+            reference="TAG-PARALLEL",
+            dropoff_dt=datetime(2026, 7, 5, 10, 40),
+        )
+        fleet = mk_assigned_shift(
+            id=901,
+            shift_date=date(2026, 7, 5),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            intended_driver_type="fleet",
+        )
+        jockey = mk_assigned_shift(
+            id=902,
+            shift_date=date(2026, 7, 5),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            intended_driver_type="jockey",
+        )
+
+        report = self._plan([date(2026, 7, 5)], [booking], live_shifts=[fleet, jockey])
+
+        cluster = report["dates"][0]["clusters"][0]
+        assert cluster["action"] == "skip_owned_coverage"
+        assert cluster["owned_coverage"]["shift_ids"] == [902]
+
+    def test_integration_loader_uses_read_only_queries_and_returns_plan(self):
+        booking = mk_booking(
+            booking_id=90,
+            reference="TAG-DRYLOAD",
+            dropoff_dt=datetime(2026, 7, 5, 10, 40),
+        )
+        db = make_db(bookings=[booking])
+
+        report = dry_run_auto_roster_sweep(
+            db,
+            date(2026, 7, 5),
+            date(2026, 7, 5),
+            mk_settings(),
+        )
+
+        assert report["write"] is False
+        assert report["dates_scanned"] == 1
+        assert report["clusters_would_generate"] == 1
+        db.add.assert_not_called()
+        db.delete.assert_not_called()
+        db.commit.assert_not_called()
 
 
 # ===========================================================================

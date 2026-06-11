@@ -4903,6 +4903,42 @@ async def get_roster_review_generate_gates(
     }
 
 
+@router.get("/admin/qa/roster-planner/auto-sweep/dry-run")
+async def dry_run_auto_roster_sweep_endpoint(
+    date_from: Optional[date_type] = Query(
+        None,
+        description="First operational date to scan (YYYY-MM-DD). Defaults to tomorrow UK.",
+    ),
+    date_to: Optional[date_type] = Query(
+        None,
+        description="Last operational date to scan (YYYY-MM-DD). Defaults from planner window_days.",
+    ),
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    try:
+        from auto_roster import dry_run_auto_roster_sweep
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Auto-roster module unavailable on the current backend deploy "
+                f"({e}). Ask an engineer to redeploy the backend service."
+            ),
+        )
+
+    if date_from and date_to and date_to < date_from:
+        raise HTTPException(status_code=422, detail="date_to must be >= date_from")
+    if date_from and date_to and (date_to - date_from).days > 62:
+        raise HTTPException(status_code=422, detail="Date range must be 63 days or fewer")
+
+    settings = PlannerSettings.from_kv(_load_planner_settings_rows(db))
+    try:
+        return dry_run_auto_roster_sweep(db, date_from, date_to, settings)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.post("/admin/roster/generate-date")
 async def generate_roster_for_date(
     req: GenerateRosterForDateRequest,
