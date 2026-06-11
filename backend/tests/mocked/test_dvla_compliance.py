@@ -871,9 +871,13 @@ class TestCheckAndAlertForBooking:
     ):
         import pytz
         from dvla_compliance import check_and_alert_for_booking
-        # Mark as already alerted 30 minutes ago
+        # Mark as already alerted just now. (Not "30 minutes ago": between
+        # 00:00 and 00:29 UK that lands before today_start_uk and the dedup
+        # correctly does NOT fire — the test was failing nightly in that
+        # window. test_boundary_yesterday_alert_does_not_dedup covers the
+        # cross-midnight case explicitly.)
         uk_tz = pytz.timezone("Europe/London")
-        db_test_booking.last_compliance_alert_sent_at = datetime.now(uk_tz) - timedelta(minutes=30)
+        db_test_booking.last_compliance_alert_sent_at = datetime.now(uk_tz)
         db_session.commit()
 
         with patch("config.get_settings", return_value=fake_settings_factory("production")):

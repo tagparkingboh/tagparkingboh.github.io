@@ -6534,27 +6534,193 @@ async def get_fun_facts(
     return result
 
 
+def _subscriber_attribution_for_booking(db: Session, booking_id: int):
+    """Return (code, source) if the booking is attributed via one of the
+    single-slot MarketingSubscriber columns, else None. The financial-override
+    promo edit only manages promotions-system attribution; subscriber-column
+    attribution must be resolved in the marketing admin first."""
+    from db_models import MarketingSubscriber
+
+    sub_sources = [
+        (MarketingSubscriber.promo_10_used_booking_id, "promo_10_code"),
+        (MarketingSubscriber.promo_free_used_booking_id, "promo_free_code"),
+        (MarketingSubscriber.founder_promo_used_booking_id, "founder_promo_code"),
+        (MarketingSubscriber.promo_code_used_booking_id, "promo_code"),
+    ]
+    for column, code_attr in sub_sources:
+        sub = db.query(MarketingSubscriber).filter(column == booking_id).first()
+        if sub:
+            return getattr(sub, code_attr), code_attr
+    return None
+
+
+def _unmark_promotions_attribution(db: Session, booking_id: int) -> list:
+    """Reverse any promotions-system attribution for a booking — the inverse
+    of mark_promo_code_used(). Returns the list of cleared code strings.
+
+    Multi-use codes: delete this booking's PromoCodeUsage rows, decrement
+    use_count, recompute is_used. Single-use codes: reset the usage flags.
+    Promotion.codes_used is decremented per cleared use."""
+    from db_models import PromoCodeUsage, Promotion as DbPromotion
+
+    cleared = []
+
+    usages = db.query(PromoCodeUsage).filter(PromoCodeUsage.booking_id == booking_id).all()
+    for usage in usages:
+        code = usage.promo_code
+        if code is not None:
+            code.use_count = max(0, (code.use_count or 0) - 1)
+            if code.max_uses is not None and code.max_uses > 0:
+                code.is_used = code.use_count >= code.max_uses
+            if code.booking_id == booking_id:
+                code.booking_id = None
+            promotion = db.query(DbPromotion).filter(DbPromotion.id == code.promotion_id).first()
+            if promotion:
+                promotion.codes_used = max(0, (promotion.codes_used or 0) - 1)
+            cleared.append(code.code)
+        db.delete(usage)
+
+    single_use_codes = db.query(PromoCode).filter(
+        PromoCode.booking_id == booking_id,
+        PromoCode.max_uses.is_(None),
+    ).all()
+    for code in single_use_codes:
+        code.is_used = False
+        code.booking_id = None
+        code.used_at = None
+        code.use_count = max(0, (code.use_count or 0) - 1)
+        promotion = db.query(DbPromotion).filter(DbPromotion.id == code.promotion_id).first()
+        if promotion:
+            promotion.codes_used = max(0, (promotion.codes_used or 0) - 1)
+        cleared.append(code.code)
+
+    return cleared
+
+
 @app.put("/api/admin/bookings/{booking_id}/financial-override")
 async def update_booking_financial_override(
     booking_id: int,
     gross_pence: int = Query(..., description="Original price in pence"),
     discount_pence: int = Query(..., description="Discount amount in pence"),
+    promo_code: Optional[str] = Query(
+        None,
+        description=(
+            "Promotions-system code to attribute to this booking. Omit to "
+            "leave attribution untouched; pass an empty string to clear it. "
+            "Replaces any existing promotions-system attribution."
+        ),
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Update the financial override values for a booking.
-    Used for bookings where gross/discount can't be calculated (e.g. 100% off promos).
+    Update the financial override values (and optionally the promo
+    attribution) for a booking. Originally for bookings where gross/discount
+    can't be calculated (100% off promos); also used to record the real
+    figures and promo attribution on manual/admin/phone bookings.
     """
     from db_models import Booking as DbBookingModel
+
+    if gross_pence < 0 or discount_pence < 0:
+        raise HTTPException(status_code=400, detail="Amounts cannot be negative")
+    if discount_pence > gross_pence:
+        raise HTTPException(status_code=400, detail="Discount cannot exceed the gross price")
 
     booking = db.query(DbBookingModel).filter(DbBookingModel.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
+    old_gross = booking.override_gross_pence
+    old_discount = booking.override_discount_pence
+
+    promo_result = None
+    # isinstance check (not `is not None`): when this function is invoked
+    # directly in tests the FastAPI Query default object is passed through;
+    # only an explicit string is an attribution instruction.
+    if isinstance(promo_code, str):
+        requested = promo_code.strip().upper()
+
+        subscriber_attr = _subscriber_attribution_for_booking(db, booking_id)
+        if subscriber_attr:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Booking is attributed to marketing-subscriber code "
+                    f"{subscriber_attr[0]} — that attribution must be resolved "
+                    f"in the marketing admin before it can be changed here."
+                ),
+            )
+
+        if requested == "":
+            cleared = _unmark_promotions_attribution(db, booking_id)
+            promo_result = {"cleared": cleared, "attributed": None}
+        else:
+            code_record = db.query(PromoCode).filter(
+                func.upper(PromoCode.code) == requested
+            ).first()
+            if not code_record:
+                raise HTTPException(status_code=404, detail=f"Promo code {requested} not found")
+
+            already_this_booking = (
+                code_record.booking_id == booking_id and code_record.max_uses is None
+            )
+            if (
+                code_record.max_uses is None
+                and code_record.is_used
+                and not already_this_booking
+            ):
+                other = db.query(DbBookingModel).filter(
+                    DbBookingModel.id == code_record.booking_id
+                ).first()
+                other_ref = other.reference if other else "another booking"
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Promo code {code_record.code} is single-use and already "
+                        f"attributed to {other_ref}."
+                    ),
+                )
+
+            cleared = _unmark_promotions_attribution(db, booking_id)
+            promotion = code_record.promotion
+            discount_percent = promotion.discount_percent if promotion else None
+            if not discount_percent and gross_pence:
+                discount_percent = round(discount_pence / gross_pence * 100)
+            # allow_exhausted: retro-attribution records a use that really
+            # happened; a multi-use code at its limit must still be recordable.
+            marked = mark_promo_code_used(
+                db,
+                code_record,
+                booking_id,
+                discount_percent or 0,
+                discount_amount_pence=discount_pence,
+                allow_exhausted=True,
+            )
+            if not marked:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Promo code {code_record.code} could not be attributed.",
+                )
+            promo_result = {"cleared": cleared, "attributed": code_record.code}
+
     booking.override_gross_pence = gross_pence
     booking.override_discount_pence = discount_pence
+
+    log_audit_event(
+        db=db,
+        event=AuditLogEvent.BOOKING_UPDATED,
+        booking_reference=booking.reference,
+        event_data={
+            "action": "financial_override",
+            "admin": current_user.email if current_user else None,
+            "old_gross_pence": old_gross,
+            "old_discount_pence": old_discount,
+            "new_gross_pence": gross_pence,
+            "new_discount_pence": discount_pence,
+            "promo": promo_result,
+        },
+    )
     db.commit()
 
     return {
@@ -6562,6 +6728,7 @@ async def update_booking_financial_override(
         "booking_id": booking_id,
         "override_gross_pence": gross_pence,
         "override_discount_pence": discount_pence,
+        "promo": promo_result,
     }
 
 
@@ -6915,6 +7082,11 @@ async def get_financial_report(
             )
         )
         has_override = booking.override_gross_pence is not None
+        # Manual-source bookings (manual / admin / phone / walk-in) are
+        # editable even when nothing is flagged: admins record the real
+        # gross/discount and promo attribution after the fact.
+        is_manual_source = bool(booking.booking_source) and booking.booking_source != "online"
+        can_edit_financials = needs_override or has_override or is_manual_source
 
         bookings_by_month[month_key].append({
             "id": booking.id,
@@ -6939,6 +7111,8 @@ async def get_financial_report(
             "paymentStatus": booking.payment.status.value if booking.payment.status else "unknown",
             "needsOverride": needs_override,
             "hasOverride": has_override,
+            "bookingSource": booking.booking_source,
+            "canEditFinancials": can_edit_financials,
         })
 
     # Sort bookings within each month by date ASC
@@ -17383,7 +17557,7 @@ def check_promo_modal_code_used(db: Session, promo_code: str):
         print(f"Auto-deactivated promo modal '{modal.title}' - single-use promo code '{promo_code}' used")
 
 
-def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discount_percent: int, discount_amount_pence: int = None):
+def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discount_percent: int, discount_amount_pence: int = None, allow_exhausted: bool = False):
     """
     Mark a promo code as used. Handles both single-use and multi-use codes.
 
@@ -17404,8 +17578,10 @@ def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discou
     if not promo_code_record:
         return False
 
-    # Check if code can still be used
-    if not promo_code_record.can_be_used:
+    # Check if code can still be used. allow_exhausted skips the limit check
+    # for admin retro-attribution (recording a use that already happened),
+    # never for live redemption.
+    if not allow_exhausted and not promo_code_record.can_be_used:
         log_promo("MARK_USED code cannot be used", {
             "code": promo_code_record.code,
             "is_used": promo_code_record.is_used,

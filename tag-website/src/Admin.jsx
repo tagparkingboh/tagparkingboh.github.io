@@ -2264,31 +2264,45 @@ function Admin() {
     }
   }
 
-  const saveFinancialOverride = async (bookingId, grossPounds, discountPounds) => {
+  const saveFinancialOverride = async (bookingId, grossPounds, discountPounds, promoValue, initialPromo) => {
     setSavingFinancialOverride(true)
     try {
       const grossPence = Math.round(parseFloat(grossPounds) * 100)
-      const discountPence = Math.round(parseFloat(discountPounds) * 100)
+      const discountPence = Math.round(parseFloat(discountPounds || '0') * 100)
 
-      const response = await fetch(
-        `${API_URL}/api/admin/bookings/${bookingId}/financial-override?gross_pence=${grossPence}&discount_pence=${discountPence}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      )
+      let url = `${API_URL}/api/admin/bookings/${bookingId}/financial-override?gross_pence=${grossPence}&discount_pence=${discountPence}`
+      // Only send promo_code when the admin changed it — omitting it leaves
+      // attribution untouched; an empty value clears it.
+      const trimmedPromo = (promoValue ?? '').trim()
+      if (trimmedPromo !== (initialPromo ?? '').trim()) {
+        url += `&promo_code=${encodeURIComponent(trimmedPromo)}`
+      }
+
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
 
       if (response.ok) {
         setEditingFinancialBooking(null)
         // Refresh the financial report to show updated values (force refresh to bypass cache)
         await fetchFinancialReport(true)
       } else {
-        console.error('Failed to save financial override')
+        const data = await response.json().catch(() => ({}))
+        console.error('Failed to save financial override', data)
+        setEditingFinancialBooking(prev => prev ? {
+          ...prev,
+          error: data.detail || 'Failed to save financial override.',
+        } : prev)
       }
     } catch (err) {
       console.error('Error saving financial override:', err)
+      setEditingFinancialBooking(prev => prev ? {
+        ...prev,
+        error: 'Network error saving financial override.',
+      } : prev)
     } finally {
       setSavingFinancialOverride(false)
     }
@@ -14198,16 +14212,32 @@ function Admin() {
                                         </td>
                                         <td>
                                           <span className="financial-promo-cell">
-                                            <span className="financial-promo-text">
-                                              {booking.promoCode || '-'}
-                                            </span>
-                                            {booking.needsOverride && editingFinancialBooking?.id !== booking.id && (
+                                            {editingFinancialBooking?.id === booking.id ? (
+                                              <input
+                                                type="text"
+                                                className="financial-edit-input"
+                                                value={editingFinancialBooking.promo}
+                                                onChange={(e) => setEditingFinancialBooking({
+                                                  ...editingFinancialBooking,
+                                                  promo: e.target.value
+                                                })}
+                                                placeholder="Promo code"
+                                                title="Promotions-system code — clear to remove attribution"
+                                              />
+                                            ) : (
+                                              <span className="financial-promo-text">
+                                                {booking.promoCode || '-'}
+                                              </span>
+                                            )}
+                                            {(booking.canEditFinancials ?? booking.needsOverride) && editingFinancialBooking?.id !== booking.id && (
                                               <button
                                                 className="edit-btn-inline"
                                                 onClick={() => setEditingFinancialBooking({
                                                   id: booking.id,
-                                                  gross: '',
-                                                  discount: ''
+                                                  gross: booking.grossPence ? (booking.grossPence / 100).toFixed(2) : '',
+                                                  discount: booking.discountPence ? (booking.discountPence / 100).toFixed(2) : '',
+                                                  promo: booking.promoCode || '',
+                                                  initialPromo: booking.promoCode || '',
                                                 })}
                                                 title="Edit financial values"
                                               >
@@ -14248,7 +14278,9 @@ function Admin() {
                                                 onClick={() => saveFinancialOverride(
                                                   booking.id,
                                                   editingFinancialBooking.gross,
-                                                  editingFinancialBooking.discount
+                                                  editingFinancialBooking.discount,
+                                                  editingFinancialBooking.promo,
+                                                  editingFinancialBooking.initialPromo
                                                 )}
                                                 disabled={savingFinancialOverride || !editingFinancialBooking.gross}
                                                 title="Save"
@@ -14262,6 +14294,15 @@ function Admin() {
                                               >
                                                 ✕
                                               </button>
+                                              {editingFinancialBooking.error && (
+                                                <span
+                                                  className="financial-edit-error"
+                                                  style={{ color: '#ef4444', fontSize: '11px', display: 'block' }}
+                                                  title={editingFinancialBooking.error}
+                                                >
+                                                  {editingFinancialBooking.error}
+                                                </span>
+                                              )}
                                             </div>
                                           ) : (
                                             <span className={`status-badge status-${booking.status}`}>

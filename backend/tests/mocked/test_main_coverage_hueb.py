@@ -379,6 +379,7 @@ class TestFinancialReportAdditionalCoverage:
                 ),
                 override_gross_pence=None,
                 override_discount_pence=None,
+                booking_source="online",
             ),
             SimpleNamespace(
                 id=2,
@@ -395,6 +396,7 @@ class TestFinancialReportAdditionalCoverage:
                 ),
                 override_gross_pence=None,
                 override_discount_pence=None,
+                booking_source="online",
             ),
         ]
         promo = SimpleNamespace(
@@ -1171,7 +1173,10 @@ class TestParkingSeedSmsAndReferralCoverage:
         monkeypatch.setattr("pathlib.Path.exists", lambda self: False)
         assert main.load_flight_schedule_json() is None
 
-        booking = SimpleNamespace(id=20, override_gross_pence=None, override_discount_pence=None)
+        booking = SimpleNamespace(
+            id=20, reference="TAG-COV20",
+            override_gross_pence=None, override_discount_pence=None,
+        )
         result = await main.update_booking_financial_override(
             booking_id=20,
             gross_pence=15000,
