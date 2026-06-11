@@ -10,6 +10,7 @@ Per SPEC.md every subject covers Happy / Unhappy / Edge / Boundary.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -2046,14 +2047,80 @@ class TestAutoRosterCoverageEdges:
             "skipped": 0,
         }
 
-    def test_auto_create_async_swallows_query_and_rollback_failures(self, monkeypatch):
+    def test_auto_create_async_logs_start_loaded_and_success(self, monkeypatch, caplog):
+        booking = mk_booking(
+            booking_id=123,
+            reference="TAG-LOG0123",
+            dropoff_dt=datetime(2026, 7, 5, 10, 40),
+            pickup_dt=datetime(2026, 7, 12, 14, 15),
+        )
+        db = MagicMock()
+        chain = MagicMock()
+        chain.filter.return_value = chain
+        chain.first.return_value = booking
+        db.query.return_value = chain
+        monkeypatch.setattr("database.SessionLocal", lambda: db)
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda db: {})
+        monkeypatch.setattr(
+            "auto_roster.auto_create_or_extend_for_booking",
+            lambda db, booking, settings: {"created": 2, "deleted": 1, "skipped": 0},
+        )
+        caplog.set_level(logging.INFO, logger="auto_roster")
+
+        auto_create_or_extend_async(123)
+
+        messages = "\n".join(record.getMessage() for record in caplog.records)
+        assert "auto_create_or_extend_async outcome=start booking_id=123" in messages
+        assert "outcome=loaded booking_id=123 ref=TAG-LOG0123" in messages
+        assert "affected_dates=['2026-07-05', '2026-07-12']" in messages
+        assert "outcome=success booking_id=123 ref=TAG-LOG0123" in messages
+        assert "'created': 2" in messages
+        db.close.assert_called_once()
+
+    def test_auto_create_async_logs_not_found(self, monkeypatch, caplog):
+        db = MagicMock()
+        chain = MagicMock()
+        chain.filter.return_value = chain
+        chain.first.return_value = None
+        db.query.return_value = chain
+        monkeypatch.setattr("database.SessionLocal", lambda: db)
+        caplog.set_level(logging.INFO, logger="auto_roster")
+
+        auto_create_or_extend_async(404)
+
+        messages = "\n".join(record.getMessage() for record in caplog.records)
+        assert "auto_create_or_extend_async outcome=start booking_id=404" in messages
+        assert "auto_create_or_extend_async outcome=not_found booking_id=404" in messages
+        db.rollback.assert_not_called()
+        db.close.assert_called_once()
+
+    def test_auto_create_async_logs_session_creation_failure(self, monkeypatch, caplog):
+        def fail_session():
+            raise RuntimeError("session unavailable")
+
+        monkeypatch.setattr("database.SessionLocal", fail_session)
+        caplog.set_level(logging.INFO, logger="auto_roster")
+
+        auto_create_or_extend_async(123)
+
+        messages = "\n".join(record.getMessage() for record in caplog.records)
+        assert "auto_create_or_extend_async outcome=start booking_id=123" in messages
+        assert "auto_create_or_extend_async outcome=failure booking_id=123" in messages
+        assert "session unavailable" in messages
+
+    def test_auto_create_async_swallows_query_and_rollback_failures(self, monkeypatch, caplog):
         db = MagicMock()
         db.query.side_effect = RuntimeError("query exploded")
         db.rollback.side_effect = RuntimeError("rollback exploded")
         monkeypatch.setattr("database.SessionLocal", lambda: db)
+        caplog.set_level(logging.INFO, logger="auto_roster")
 
         auto_create_or_extend_async(123)
 
+        messages = "\n".join(record.getMessage() for record in caplog.records)
+        assert "auto_create_or_extend_async outcome=start booking_id=123" in messages
+        assert "auto_create_or_extend_async outcome=failure booking_id=123" in messages
+        assert "query exploded" in messages
         db.rollback.assert_called_once()
         db.close.assert_called_once()
 

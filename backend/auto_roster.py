@@ -63,6 +63,10 @@ from roster_planner import (
 logger = logging.getLogger(__name__)
 
 
+def _scalar_value(value):
+    return value.value if hasattr(value, "value") else value
+
+
 # ---------------------------------------------------------------------------
 # Event extraction (pure)
 # ---------------------------------------------------------------------------
@@ -662,31 +666,57 @@ def delete_all_auto_shifts(
 
 def auto_create_or_extend_async(booking_id: int) -> None:
     """BackgroundTask entry — owns its own DB session, swallows errors."""
-    from database import SessionLocal
-    from routers.roster import _load_planner_settings_rows
-
-    db = SessionLocal()
+    db = None
+    booking_ref = None
+    affected_dates: list[str] = []
+    logger.info("auto_create_or_extend_async outcome=start booking_id=%s", booking_id)
     try:
+        from database import SessionLocal
+        from routers.roster import _load_planner_settings_rows
+
+        db = SessionLocal()
         booking = db.query(Booking).filter(Booking.id == booking_id).first()
         if booking is None:
-            logger.warning("auto_create_or_extend_async: booking %s not found", booking_id)
+            logger.warning(
+                "auto_create_or_extend_async outcome=not_found booking_id=%s",
+                booking_id,
+            )
             return
+        booking_ref = booking.reference
+        affected_dates = sorted(d.isoformat() for d in _affected_dates_for_booking(booking))
+        logger.info(
+            "auto_create_or_extend_async outcome=loaded booking_id=%s ref=%s status=%s service_type=%s affected_dates=%s",
+            booking.id,
+            booking_ref,
+            _scalar_value(getattr(booking, "status", None)),
+            _scalar_value(getattr(booking, "service_type", None)),
+            affected_dates,
+        )
         settings = PlannerSettings.from_kv(_load_planner_settings_rows(db))
         result = auto_create_or_extend_for_booking(db, booking, settings)
         logger.info(
-            "auto_create_or_extend_async booking=%s ref=%s result=%s",
-            booking.id, booking.reference, result,
+            "auto_create_or_extend_async outcome=success booking_id=%s ref=%s affected_dates=%s result=%s",
+            booking.id,
+            booking_ref,
+            affected_dates,
+            result,
         )
     except Exception as e:
         logger.exception(
-            "auto_create_or_extend_async failed booking_id=%s: %s", booking_id, e
+            "auto_create_or_extend_async outcome=failure booking_id=%s ref=%s affected_dates=%s error=%s",
+            booking_id,
+            booking_ref,
+            affected_dates,
+            e,
         )
-        try:
-            db.rollback()
-        except Exception:
-            pass
+        if db is not None:
+            try:
+                db.rollback()
+            except Exception:
+                pass
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 def handle_booking_cancelled_async(booking_id: int) -> None:
