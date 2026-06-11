@@ -36,7 +36,10 @@ class _FakeResp:
 
 def _patch_sendgrid(monkeypatch, status_code=202):
     """Patch the SendGridAPIClient used by email_service so .send() returns
-    a controllable status without touching the network."""
+    a controllable status without touching the network. Also pins ENVIRONMENT
+    to non-staging so the staging email guard never short-circuits these
+    send-path tests when the developer's shell has ENVIRONMENT=staging."""
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
     sg_class = MagicMock()
     instance = MagicMock()
     instance.send.return_value = _FakeResp(status_code)
@@ -766,3 +769,89 @@ class TestBounceAlertEmail:
             event_type="bounce",
             reason="why",
         ) is False
+
+
+# ============================================================================
+# Staging email guard (2026-06-11 incident: staging E2E runs delivered real
+# SendGrid email to example.com addresses and CC'd the founder's inbox)
+# ============================================================================
+
+class TestStagingEmailGuard:
+    """Every direct SendGrid sender must suppress in staging, return True
+    (pretend-sent, so transactional flows don't retry-loop), and never touch
+    the SendGrid client."""
+
+    def _arm(self, monkeypatch, environment="staging"):
+        _set_api_key(monkeypatch)
+        sg = _patch_sendgrid(monkeypatch)  # pins ENVIRONMENT off first
+        if environment is not None:
+            monkeypatch.setenv("ENVIRONMENT", environment)
+        return sg
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_send_email_suppressed_in_staging(self, monkeypatch):
+        sg = self._arm(monkeypatch)
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_not_called()
+
+    def test_H_send_founder_followup_suppressed_in_staging(self, monkeypatch):
+        sg = self._arm(monkeypatch)
+        assert email_service.send_founder_followup_email("cust@example.com", "Jo") is True
+        sg.send.assert_not_called()
+
+    def test_H_send_founder_thank_you_suppressed_in_staging(self, monkeypatch):
+        sg = self._arm(monkeypatch)
+        assert email_service.send_founder_thank_you_email("cust@example.com", "Jo", "TAG-AAAA-BBBB") is True
+        sg.send.assert_not_called()
+
+    def test_H_send_promo_10_reminder_suppressed_in_staging(self, monkeypatch):
+        sg = self._arm(monkeypatch)
+        assert email_service.send_promo_10_reminder_email("cust@example.com", "Jo", "TAG-AAAA-BBBB") is True
+        sg.send.assert_not_called()
+
+    def test_H_send_promo_free_reminder_suppressed_in_staging(self, monkeypatch):
+        sg = self._arm(monkeypatch)
+        assert email_service.send_promo_free_reminder_email("cust@example.com", "Jo", "TAG-AAAA-BBBB") is True
+        sg.send.assert_not_called()
+
+    def test_H_send_marketing_campaign_suppressed_in_staging(self, monkeypatch):
+        sg = self._arm(monkeypatch)
+        assert email_service.send_marketing_campaign_email(
+            "cust@example.com", "Jo", "subj", "msg",
+        ) is True
+        sg.send.assert_not_called()
+
+    # --- UNHAPPY / EDGE --------------------------------------------------------
+
+    def test_U_guard_inactive_without_environment(self, monkeypatch):
+        sg = self._arm(monkeypatch, environment=None)
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_called_once()
+
+    def test_U_guard_inactive_in_production(self, monkeypatch):
+        sg = self._arm(monkeypatch, environment="production")
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_called_once()
+
+    def test_E_guard_inactive_in_development(self, monkeypatch):
+        sg = self._arm(monkeypatch, environment="development")
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_called_once()
+
+    # --- BOUNDARY ----------------------------------------------------------------
+
+    def test_B_environment_value_is_case_insensitive(self, monkeypatch):
+        sg = self._arm(monkeypatch, environment="Staging")
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_not_called()
+
+    def test_B_environment_value_is_whitespace_tolerant(self, monkeypatch):
+        sg = self._arm(monkeypatch, environment="  staging  ")
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_not_called()
+
+    def test_B_similar_but_different_value_does_not_trigger_guard(self, monkeypatch):
+        sg = self._arm(monkeypatch, environment="staging2")
+        assert email_service.send_email("real@example.com", "subj", "<p>x</p>") is True
+        sg.send.assert_called_once()

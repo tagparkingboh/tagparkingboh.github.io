@@ -274,49 +274,62 @@ def process_pending_2day_reminders(db: Session):
         pending = pending[:10]
 
         for booking in pending:
-            # Get customer details
-            customer = db.query(Customer).filter(Customer.id == booking.customer_id).first()
-            if not customer:
-                logger.error(f"Customer not found for booking {booking.reference}")
-                continue
+            # Per-booking isolation: one stale/deleted row must not abort the
+            # rest of the batch (2026-06-11: a row deleted between query and
+            # commit raised "UPDATE … 0 were matched" and killed the run).
+            try:
+                # Get customer details
+                customer = db.query(Customer).filter(Customer.id == booking.customer_id).first()
+                if not customer:
+                    logger.error(f"Customer not found for booking {booking.reference}")
+                    continue
 
-            # Get flight departure time from the booking's stored column
-            # We no longer use FlightDeparture lookup - all times are stored directly on the booking
-            flight_departure_time = "TBC"
-            if booking.flight_departure_time:
-                flight_departure_time = booking.flight_departure_time.strftime("%H:%M")
+                # Get flight departure time from the booking's stored column
+                # We no longer use FlightDeparture lookup - all times are stored directly on the booking
+                flight_departure_time = "TBC"
+                if booking.flight_departure_time:
+                    flight_departure_time = booking.flight_departure_time.strftime("%H:%M")
 
-            # Format dropoff date
-            dropoff_date_formatted = booking.dropoff_date.strftime("%A, %d %B %Y")
-            dropoff_time_formatted = booking.dropoff_time.strftime("%H:%M")
+                # Format dropoff date
+                dropoff_date_formatted = booking.dropoff_date.strftime("%A, %d %B %Y")
+                dropoff_time_formatted = booking.dropoff_time.strftime("%H:%M")
 
-            logger.info(f"Sending 2-day reminder to {customer.email} for booking {booking.reference}")
+                logger.info(f"Sending 2-day reminder to {customer.email} for booking {booking.reference}")
 
-            success = send_2_day_reminder_email(
-                email=customer.email,
-                first_name=customer.first_name,
-                last_name=customer.last_name,
-                booking_reference=booking.reference,
-                dropoff_date=dropoff_date_formatted,
-                dropoff_time=dropoff_time_formatted,
-                flight_departure_time=flight_departure_time,
-            )
+                success = send_2_day_reminder_email(
+                    email=customer.email,
+                    first_name=customer.first_name,
+                    last_name=customer.last_name,
+                    booking_reference=booking.reference,
+                    dropoff_date=dropoff_date_formatted,
+                    dropoff_time=dropoff_time_formatted,
+                    flight_departure_time=flight_departure_time,
+                )
 
-            if success:
-                booking.reminder_2day_sent = True
-                booking.reminder_2day_sent_at = datetime.utcnow()
-                db.commit()
-                logger.info(f"2-day reminder sent to {customer.email} for booking {booking.reference}")
+                if success:
+                    booking.reminder_2day_sent = True
+                    booking.reminder_2day_sent_at = datetime.utcnow()
+                    db.commit()
+                    logger.info(f"2-day reminder sent to {customer.email} for booking {booking.reference}")
 
-                # Also send SMS reminder if enabled
-                if sms_service.is_sms_enabled():
-                    try:
-                        asyncio.run(sms_service.send_reminder_2day_sms(booking, db))
-                        logger.info(f"2-day reminder SMS sent for booking {booking.reference}")
-                    except Exception as sms_error:
-                        logger.error(f"Failed to send 2-day reminder SMS: {str(sms_error)}")
-            else:
-                logger.error(f"Failed to send 2-day reminder to {customer.email}")
+                    # Also send SMS reminder if enabled
+                    if sms_service.is_sms_enabled():
+                        try:
+                            asyncio.run(sms_service.send_reminder_2day_sms(booking, db))
+                            logger.info(f"2-day reminder SMS sent for booking {booking.reference}")
+                        except Exception as sms_error:
+                            logger.error(f"Failed to send 2-day reminder SMS: {str(sms_error)}")
+                else:
+                    logger.error(f"Failed to send 2-day reminder to {customer.email}")
+            except Exception as booking_error:
+                logger.error(
+                    f"Error processing 2-day reminder for booking "
+                    f"{getattr(booking, 'reference', '?')}: {booking_error}"
+                )
+                try:
+                    db.rollback()
+                except Exception:
+                    logger.exception("Rollback after 2-day reminder failure also failed")
 
     except Exception as e:
         logger.error(f"Error processing 2-day reminders: {str(e)}")

@@ -221,3 +221,28 @@ class TestCapacitySettingsApi:
         assert body["daily_capacity"]["2026-06-11"]["online_spaces"] == 73
         assert body["daily_capacity"]["2026-06-12"]["online_spaces"] == 88
         assert body["daily_occupancy"]["2026-06-12"] == 1
+
+
+class TestCapacityReadFailureRollback:
+    """2026-06-11 staging incident: the capacity read failed (table missing),
+    the fallback kicked in, but the aborted Postgres transaction poisoned
+    every later query in the same request. The fallback must roll back."""
+
+    def test_U_read_failure_rolls_back_and_returns_fallback(self):
+        db = MagicMock()
+        db.query.side_effect = RuntimeError('relation "parking_capacity_settings" does not exist')
+
+        schedule = db_service.get_parking_capacity_schedule(db)
+
+        assert schedule == db_service._fallback_capacity_schedule()
+        db.rollback.assert_called_once()
+
+    def test_U_rollback_failure_is_swallowed_and_fallback_still_returned(self):
+        db = MagicMock()
+        db.query.side_effect = RuntimeError("read exploded")
+        db.rollback.side_effect = RuntimeError("rollback exploded")
+
+        schedule = db_service.get_parking_capacity_schedule(db)
+
+        assert schedule == db_service._fallback_capacity_schedule()
+        db.rollback.assert_called_once()

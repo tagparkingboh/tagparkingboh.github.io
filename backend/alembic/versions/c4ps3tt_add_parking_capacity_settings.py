@@ -19,6 +19,22 @@ depends_on = None
 
 
 def upgrade():
+    # Idempotent: the table may already exist outside alembic's bookkeeping —
+    # main.py startup runs Base.metadata.create_all(), which creates any
+    # missing model table without stamping a revision. That collision
+    # crash-looped the staging deploy on 2026-06-11 (DuplicateTable). When the
+    # table pre-exists we skip DDL (create_all also built the indexes) and
+    # only top up the seed rows, which create_all does NOT insert.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "parking_capacity_settings" in inspector.get_table_names():
+        existing = bind.execute(
+            sa.text("SELECT COUNT(*) FROM parking_capacity_settings")
+        ).scalar()
+        if not existing:
+            _seed_capacity_rows()
+        return
+
     op.create_table(
         "parking_capacity_settings",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -42,6 +58,10 @@ def upgrade():
         unique=True,
     )
 
+    _seed_capacity_rows()
+
+
+def _seed_capacity_rows():
     # Preserve historical reporting semantics, then apply the June 2026
     # operational change requested for production rollout.
     op.bulk_insert(

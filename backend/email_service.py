@@ -30,6 +30,16 @@ def is_email_enabled() -> bool:
     return bool(SENDGRID_API_KEY)
 
 
+def is_staging_email_guard_active() -> bool:
+    """Staging must never deliver real email (2026-06-11 incident: E2E runs
+    pushed SendGrid sends to example.com addresses and CC'd the founder's
+    real inbox). Guarded at the base senders so every caller — current and
+    future — inherits it. Same env contract as
+    db_service.should_exclude_staging_e2e_capacity_bookings().
+    """
+    return os.environ.get("ENVIRONMENT", "").strip().lower() == "staging"
+
+
 def generate_promo_code() -> str:
     """
     Generate a unique promo code in format TAG-XXXX-XXXX.
@@ -54,6 +64,16 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
     Returns True if sent successfully, False otherwise.
     """
     print(f"[EMAIL] send_email called for: {to_email}, subject: {subject}")
+    if is_staging_email_guard_active():
+        # Return True (not False) so transactional flows mark the email as
+        # handled instead of retry-looping against a send that will never
+        # happen in staging.
+        print(f"[EMAIL] staging guard active — suppressed send to {to_email}")
+        logger.info(
+            "[staging] would send email to %s (subject=%s) — staging guard active",
+            to_email, subject,
+        )
+        return True
     if not SENDGRID_API_KEY:
         print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")
@@ -787,6 +807,10 @@ def send_founder_thank_you_email(
         return False
 
     print(f"[EMAIL] send_founder_thank_you_email called for: {email}, subject: {subject}")
+    if is_staging_email_guard_active():
+        print(f"[EMAIL] staging guard active — suppressed founder thank-you to {email}")
+        logger.info("[staging] would send founder thank-you to %s — staging guard active", email)
+        return True
     if not SENDGRID_API_KEY:
         print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")
@@ -857,6 +881,10 @@ def send_promo_10_reminder_email(
         return False
 
     print(f"[EMAIL] send_promo_10_reminder_email called for: {email}, subject: {subject}")
+    if is_staging_email_guard_active():
+        print(f"[EMAIL] staging guard active — suppressed promo-10 reminder to {email}")
+        logger.info("[staging] would send promo-10 reminder to %s — staging guard active", email)
+        return True
     if not SENDGRID_API_KEY:
         print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")
@@ -927,6 +955,10 @@ def send_promo_free_reminder_email(
         return False
 
     print(f"[EMAIL] send_promo_free_reminder_email called for: {email}, subject: {subject}")
+    if is_staging_email_guard_active():
+        print(f"[EMAIL] staging guard active — suppressed promo-free reminder to {email}")
+        logger.info("[staging] would send promo-free reminder to %s — staging guard active", email)
+        return True
     if not SENDGRID_API_KEY:
         print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")
@@ -993,6 +1025,14 @@ def send_founder_followup_email(
     html_content = html_content.replace("{{founder_name}}", founder_name)
 
     print(f"[EMAIL] send_founder_followup_email called for: {email}, subject: {subject}")
+    if is_staging_email_guard_active():
+        # Suppress in staging — these CC the founder's real inbox.
+        print(f"[EMAIL] staging guard active — suppressed founder followup to {email}")
+        logger.info(
+            "[staging] would send founder followup to %s (CC %s) — staging guard active",
+            email, founder_email,
+        )
+        return True
     if not SENDGRID_API_KEY:
         print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")
@@ -1091,6 +1131,10 @@ def send_marketing_campaign_email(
     html_content = html_content.replace("{{PREVIEW_TEXT}}", subject[:100])
 
     print(f"[EMAIL] send_marketing_campaign_email called for: {email}, subject: {subject}")
+    if is_staging_email_guard_active():
+        print(f"[EMAIL] staging guard active — suppressed marketing campaign email to {email}")
+        logger.info("[staging] would send marketing campaign email to %s — staging guard active", email)
+        return True
     if not SENDGRID_API_KEY:
         print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")

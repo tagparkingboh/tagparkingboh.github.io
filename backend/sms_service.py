@@ -207,6 +207,16 @@ async def send_sms(
     """
     from db_models import SMSMessage, SMSDirection, SMSStatus
 
+    if os.environ.get("ENVIRONMENT", "").strip().lower() == "staging":
+        # Staging must never deliver real SMS (same contract as the email
+        # staging guard, 2026-06-11 incident). send_bulk_sms delegates here,
+        # so this covers every outbound path.
+        logger.info(
+            "[staging] would send SMS to %s (tag=%s) — staging guard active",
+            phone, tag,
+        )
+        return {"success": True, "staging_guard": True}
+
     if not is_sms_enabled():
         logger.warning("SMS sending disabled - message not sent")
         return {"success": False, "error": "SMS sending is disabled"}

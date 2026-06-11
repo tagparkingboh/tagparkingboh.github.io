@@ -1228,3 +1228,52 @@ class Test48HourBoundary:
         process_pending_2day_reminders(mock_db)
 
         mock_send.assert_called_once()
+
+
+class TestProcess2DayRemindersBatchIsolation:
+    """2026-06-11 staging incident: one booking deleted between query and
+    commit raised "UPDATE … 0 were matched" and aborted the whole batch."""
+
+    @patch('email_scheduler.send_2_day_reminder_email')
+    @patch('email_scheduler.is_email_enabled')
+    def test_stale_booking_does_not_abort_rest_of_batch(self, mock_enabled, mock_send):
+        mock_enabled.return_value = True
+        mock_send.return_value = True
+
+        tomorrow = date.today() + timedelta(days=1)
+        stale = create_mock_booking(reference="TAG-STALE001", dropoff_date=tomorrow)
+        healthy = create_mock_booking(reference="TAG-OK000002", dropoff_date=tomorrow)
+        customer = create_mock_customer()
+
+        booking_query = MagicMock()
+        booking_query.filter.return_value.limit.return_value.all.return_value = [stale, healthy]
+        customer_query = MagicMock()
+        customer_query.filter.return_value.first.return_value = customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return booking_query
+            if model == Customer:
+                return customer_query
+            return MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.query.side_effect = query_side_effect
+        # First commit (stale booking) raises the incident error; second succeeds.
+        mock_db.commit.side_effect = [
+            RuntimeError(
+                "UPDATE statement on table 'bookings' expected to update 1 row(s); 0 were matched."
+            ),
+            None,
+        ]
+
+        with patch('email_scheduler.sms_service') as mock_sms:
+            mock_sms.is_sms_enabled.return_value = False
+            from email_scheduler import process_pending_2day_reminders
+            process_pending_2day_reminders(mock_db)
+
+        # Both bookings were attempted — the stale one no longer kills the batch.
+        assert mock_send.call_count == 2
+        assert healthy.reminder_2day_sent is True
+        mock_db.rollback.assert_called_once()

@@ -781,3 +781,38 @@ class TestGetTemplateVariablesList:
         assert "google_review_link" in names
         for item in out:
             assert "description" in item
+
+
+class TestStagingSmsGuard:
+    """Staging must never deliver real SMS — mirrors the email staging guard
+    (2026-06-11 incident)."""
+
+    def test_H_staging_suppresses_send_before_any_io(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        client_cls = MagicMock()
+        monkeypatch.setattr(sms_service.httpx, "AsyncClient", client_cls)
+        db = MagicMock()
+
+        result = asyncio.run(sms_service.send_sms("07700900123", "hello", db_session=db))
+
+        assert result == {"success": True, "staging_guard": True}
+        client_cls.assert_not_called()
+        db.add.assert_not_called()
+
+    def test_U_non_staging_reaches_enabled_check(self, monkeypatch):
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.setattr(sms_service, "is_sms_enabled", lambda: False)
+
+        result = asyncio.run(sms_service.send_sms("07700900123", "hello"))
+
+        assert result == {"success": False, "error": "SMS sending is disabled"}
+
+    def test_B_environment_case_and_whitespace_tolerant(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "  Staging ")
+        client_cls = MagicMock()
+        monkeypatch.setattr(sms_service.httpx, "AsyncClient", client_cls)
+
+        result = asyncio.run(sms_service.send_sms("07700900123", "hello"))
+
+        assert result.get("staging_guard") is True
+        client_cls.assert_not_called()

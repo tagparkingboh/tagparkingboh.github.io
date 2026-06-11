@@ -156,6 +156,14 @@ def get_parking_capacity_schedule(db: Session) -> list[dict]:
         )
     except Exception:
         logger.exception("Failed to load parking capacity settings; using fallback capacity schedule")
+        # On Postgres a failed statement aborts the whole transaction; without
+        # this rollback every later query in the same request dies with
+        # "current transaction is aborted" (seen in staging 2026-06-11 when
+        # the table did not exist yet), defeating the fallback entirely.
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Rollback after capacity settings read failure also failed")
         rows = []
 
     if not rows:
