@@ -3539,8 +3539,8 @@ function RosterCalendar({
                             const secondaryCount = [...dayBookings.dropoffs, ...dayBookings.pickups]
                               .filter(b => b.secondary_carpark?.qualifies).length
                             return secondaryCount > 0 ? (
-                              <div className="day-badge badge-carpark" title="Bookings qualifying for the secondary car park (09:00–21:00 rule)">
-                                P2 {secondaryCount}
+                              <div className="day-badge badge-carpark" title="Secondary car park bookings active this day (09:00–21:00 rule)">
+                                P2
                               </div>
                             ) : null
                           })()}
@@ -4252,6 +4252,9 @@ function RosterCalendar({
                                       {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                     </span>
                                     <span className="shift-booking-ref">{booking.reference}</span>
+                                    {booking.secondary_carpark_qualifies && (
+                                      <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                                    )}
                                     {getBookingRegistration(booking) && (
                                       <span className="shift-booking-reg">
                                         {getBookingRegistration(booking)}
@@ -4372,6 +4375,9 @@ function RosterCalendar({
                                         {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                       </span>
                                       <span className="shift-booking-ref">{booking.reference}</span>
+                                    {booking.secondary_carpark_qualifies && (
+                                      <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                                    )}
                                       {getBookingRegistration(booking) && (
                                         <span className="shift-booking-reg">
                                           {getBookingRegistration(booking)}
@@ -5396,6 +5402,9 @@ function RosterCalendar({
                     <div key={booking.id} className="claim-booking-item">
                       <span className="booking-type-icon">{booking.type === 'dropoff' ? '🚗' : '🛬'}</span>
                       <span className="booking-ref">{booking.reference}</span>
+                      {booking.secondary_carpark_qualifies && (
+                        <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                      )}
                       <span className="booking-customer">{booking.customer_name}</span>
                     </div>
                   ))}

@@ -14572,12 +14572,14 @@ async def get_employee_bookings(
 
     bookings = query.order_by(Booking.dropoff_date.asc()).all()
 
+    secondary_settings = db_service.get_secondary_carpark_settings()
     result = []
     for b in bookings:
         result.append({
             "id": b.id,
             "reference": b.reference,
             "status": b.status.value if b.status else None,
+            "secondary_carpark": db_service.secondary_carpark_info(b, secondary_settings),
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "flight_departure_time": b.flight_departure_time.strftime("%H:%M") if b.flight_departure_time else None,

@@ -303,6 +303,12 @@ def _booking_vehicle_registration(booking):
 
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
+    import db_service as _db_service
+    _secondary_settings = _db_service.get_secondary_carpark_settings()
+
+    def _qualifies_secondary(b) -> bool:
+        return _db_service.booking_qualifies_for_secondary_carpark(b, _secondary_settings)
+
     # Build list of linked bookings
     linked_bookings = []
 
@@ -329,7 +335,8 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 vehicle_registration=_booking_vehicle_registration(booking),
                 time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
                 flight_number=booking.dropoff_flight_number,
-                destination=booking.dropoff_destination
+                destination=booking.dropoff_destination,
+                secondary_carpark_qualifies=_qualifies_secondary(booking),
             ))
         elif pickup_event in shift_dates:
             # Pickup card shows the flight LANDING time (what the jockey
@@ -349,7 +356,8 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 vehicle_registration=_booking_vehicle_registration(booking),
                 time=pickup_card_time,
                 flight_number=booking.pickup_flight_number,
-                destination=booking.pickup_origin
+                destination=booking.pickup_origin,
+                secondary_carpark_qualifies=_qualifies_secondary(booking),
             ))
 
     # Also check legacy single booking_id (for backwards compatibility)
@@ -369,7 +377,8 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     vehicle_registration=_booking_vehicle_registration(booking),
                     time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
                     flight_number=booking.dropoff_flight_number,
-                    destination=booking.dropoff_destination
+                    destination=booking.dropoff_destination,
+                    secondary_carpark_qualifies=_qualifies_secondary(booking),
                 ))
             elif pickup_event in shift_dates:
                 pickup_card_time = (
@@ -385,7 +394,8 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     vehicle_registration=_booking_vehicle_registration(booking),
                     time=pickup_card_time,
                     flight_number=booking.pickup_flight_number,
-                    destination=booking.pickup_origin
+                    destination=booking.pickup_origin,
+                    secondary_carpark_qualifies=_qualifies_secondary(booking),
                 ))
 
     # For backwards compatibility, populate the single booking fields with first booking

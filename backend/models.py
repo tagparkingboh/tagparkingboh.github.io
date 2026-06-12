@@ -625,6 +625,7 @@ class LinkedBookingInfo(BaseModel):
     time: Optional[str] = None  # The dropoff/pickup time
     flight_number: Optional[str] = None
     destination: Optional[str] = None  # destination for dropoff, origin for pickup
+    secondary_carpark_qualifies: bool = False  # 09:00-21:00 window rule
 
 
 class RosterShiftResponse(BaseModel):
