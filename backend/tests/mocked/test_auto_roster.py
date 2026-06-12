@@ -1307,11 +1307,11 @@ class TestRebuildSkipsCoveredClusters:
         assert result["skipped_covered"] == 0
         assert result["created"] == 1
 
-    def test_E_mixed_partial_frozen_coverage_materialises_cluster(self):
-        """Edge: two events in the same generated cluster sit in different
-        fixed shifts, but neither fixed shift covers the generated cluster
-        window. Rebuild must materialise fresh coverage rather than treating
-        partial coverage as enough."""
+    def test_E_combined_frozen_coverage_skips_cluster(self):
+        """Edge (flipped 2026-06-12, shift 5505 / TAG-XTD95525 incident):
+        two events in the same generated cluster sit in DIFFERENT fixed
+        shifts, each fully buffered within its own shift. Combined coverage
+        across multiple owned shifts now counts — no redundant auto shift."""
         frozen1 = mk_assigned_shift(
             id=99, shift_date=date(2026, 6, 10),
             start_time=time(9, 0), end_time=time(12, 0),  # covers 10:00 dropoff
@@ -1333,6 +1333,44 @@ class TestRebuildSkipsCoveredClusters:
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
         db = make_db(bookings=[b1, b2], assigned_shifts=[frozen1, frozen2])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 0
+        assert result["skipped_covered"] == 1
+        assert result["created"] == 0
+
+    def test_E_combined_coverage_with_one_escaping_event_still_materialises(self):
+        """Edge: combined coverage only counts when EVERY event is inside an
+        owned shift with full buffers. The 16:00 drop-off escapes both fixed
+        shifts, so the cluster must still be materialised."""
+        frozen1 = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+            staff_id=10,
+        )
+        frozen2 = mk_assigned_shift(
+            id=100, shift_date=date(2026, 6, 10),
+            start_time=time(11, 0), end_time=time(14, 0),
+            staff_id=11,
+        )
+        b1 = mk_booking(
+            booking_id=600, reference="TAG-MIXED0001",
+            dropoff_dt=datetime(2026, 6, 10, 10, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b2 = mk_booking(
+            booking_id=601, reference="TAG-MIXED0002",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b3 = mk_booking(
+            booking_id=602, reference="TAG-MIXED0003",
+            dropoff_dt=datetime(2026, 6, 10, 16, 0),  # outside both
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b1, b2, b3], assigned_shifts=[frozen1, frozen2])
         result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
 
         from db_models import RosterShift
@@ -2354,6 +2392,7 @@ class TestAutoRosterCoverageEdges:
             "skipped_suppressed": 0,
             "bookings_in_scope": 0,
             "events": 0,
+            "rescued": 0,
         }
         db.query.assert_not_called()
 
@@ -2603,3 +2642,303 @@ class TestAutoRosterCoverageEdges:
 
         db.rollback.assert_called_once()
         db.close.assert_called_once()
+
+
+class TestFocusRebuildOrphanRescue:
+    """Orphan rescue (2026-06-12 incident, TAG-GIR11546 → shift 5263).
+
+    The focus-delete pass may remove a shift via a SHARED booking whose
+    other event lives on it alongside other bookings. Before the fix, only
+    clusters containing the focus booking were re-materialised, so the
+    shared shift's remaining events were orphaned. The rescue pass must
+    re-materialise exactly the clusters that lost coverage — no more, no
+    less — honouring suppression and frozen coverage."""
+
+    def _incident_fixtures(self):
+        """GIR11546-shaped triple:
+          - F (focus, new booking): drop 16/07 09:50, pickup arrival 20/07 23:05
+          - A (QDB-shaped):         drop 17/07 10:10, pickup arrival 20/07 23:05
+                                    (same return flight as F)
+          - B (QBP-shaped):         pickup arrival 17/07 11:50
+          - S1: untouched auto shift 17/07 09:40-13:30 linked to A + B
+        """
+        f = mk_booking(
+            booking_id=900, reference="TAG-FOCUS001",
+            dropoff_dt=datetime(2026, 7, 16, 9, 50),
+            pickup_dt=datetime(2026, 7, 20, 23, 35),
+            flight_arrival_time=time(23, 5),
+            flight_arrival_date=date(2026, 7, 20),
+        )
+        a = mk_booking(
+            booking_id=901, reference="TAG-SHARED01",
+            dropoff_dt=datetime(2026, 7, 17, 10, 10),
+            pickup_dt=datetime(2026, 7, 20, 23, 35),
+            flight_arrival_time=time(23, 5),
+            flight_arrival_date=date(2026, 7, 20),
+        )
+        b = mk_booking(
+            booking_id=902, reference="TAG-ORPHAN01",
+            dropoff_dt=datetime(2026, 7, 12, 12, 50),
+            pickup_dt=datetime(2026, 7, 17, 12, 20),
+            flight_arrival_time=time(11, 50),
+            flight_arrival_date=date(2026, 7, 17),
+        )
+        s1 = SimpleNamespace(
+            id=5263,
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 17), end_date=None,
+            start_time=time(9, 40), end_time=time(13, 30),
+            booking_id=None,
+            bookings=[a, b],
+        )
+        return f, a, b, s1
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_orphaned_cluster_is_rematerialised_after_shared_shift_delete(self):
+        f, a, b, s1 = self._incident_fixtures()
+        db = make_db(bookings=[f, a, b], untouched_auto_shifts=[s1])
+
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            focus_booking_id=f.id,
+        )
+
+        from db_models import RosterShift, ShiftBookingLink
+        assert s1 in db._deleted, "shared shift should be deleted via booking A"
+        new_shifts = [x for x in db._added if isinstance(x, RosterShift)]
+        new_dates = sorted(s.date for s in new_shifts)
+        # 16/07 (focus drop), 17/07 (RESCUED orphan cluster), 20/07 (focus+A pickup)
+        assert new_dates == [date(2026, 7, 16), date(2026, 7, 17), date(2026, 7, 20)]
+        assert result["rescued"] == 1
+        assert result["deleted"] == 1
+        assert result["created"] == 3
+        # The rescued 17/07 shift must carry BOTH orphaned bookings.
+        linked_ids = {l.booking_id for l in db._added if isinstance(l, ShiftBookingLink)}
+        assert {a.id, b.id} <= linked_ids
+
+    def test_H_rescue_does_not_touch_unrelated_clusters_of_rescued_booking(self):
+        """B also has a drop-off on 12/07 (covered elsewhere, outside the
+        delete scope). The rescue must NOT re-materialise that cluster —
+        only the one whose coverage was deleted."""
+        f, a, b, s1 = self._incident_fixtures()
+        db = make_db(bookings=[f, a, b], untouched_auto_shifts=[s1])
+
+        rebuild_auto_for_dates(
+            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            focus_booking_id=f.id,
+        )
+
+        from db_models import RosterShift
+        new_dates = [x.date for x in db._added if isinstance(x, RosterShift)]
+        assert date(2026, 7, 12) not in new_dates, (
+            "rescue over-reached into a cluster that never lost coverage"
+        )
+
+    # --- UNHAPPY -------------------------------------------------------------
+
+    def test_U_suppressed_orphan_cluster_is_not_rescued(self):
+        """If an admin had suppressed the orphaned window, the rescue must
+        honour it — suppression outranks rescue."""
+        f, a, b, s1 = self._incident_fixtures()
+        suppressed = SimpleNamespace(
+            id=7800,
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.CANCELLED,
+            suppressed_at=datetime(2026, 7, 1, 9, 0),
+            date=date(2026, 7, 17), end_date=None,
+            start_time=time(9, 0), end_time=time(14, 0),
+            booking_id=None,
+            bookings=[],
+        )
+        db = make_db(
+            bookings=[f, a, b],
+            untouched_auto_shifts=[s1],
+            suppressed_shifts=[suppressed],
+        )
+
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            focus_booking_id=f.id,
+        )
+
+        from db_models import RosterShift
+        new_dates = [x.date for x in db._added if isinstance(x, RosterShift)]
+        assert date(2026, 7, 17) not in new_dates
+        assert result["skipped_suppressed"] == 1
+
+    # --- EDGE ----------------------------------------------------------------
+
+    def test_E_orphan_cluster_covered_by_frozen_shift_is_skipped(self):
+        """If an admin-shaped shift already covers the orphaned events, the
+        rescue recognises the coverage (combined-coverage rules) and does
+        not create a duplicate."""
+        f, a, b, s1 = self._incident_fixtures()
+        frozen = mk_assigned_shift(
+            id=4250, shift_date=date(2026, 7, 17),
+            start_time=time(9, 0), end_time=time(14, 0),
+            staff_id=16, admin_shaped_at=datetime(2026, 7, 1, 8, 0),
+        )
+        db = make_db(
+            bookings=[f, a, b],
+            untouched_auto_shifts=[s1],
+            assigned_shifts=[frozen],
+        )
+
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            focus_booking_id=f.id,
+        )
+
+        from db_models import RosterShift
+        new_dates = [x.date for x in db._added if isinstance(x, RosterShift)]
+        assert date(2026, 7, 17) not in new_dates
+        assert result["skipped_covered"] == 1
+        assert result["rescued"] == 1  # attempted, recognised as covered
+
+    def test_E_cascading_rescue_repairs_secondary_orphans(self):
+        """A rescued cluster's own materialisation can delete ANOTHER
+        untouched shift (window overlap) — its bookings must be rescued in
+        turn, until nothing new is orphaned."""
+        f, a, b, s1 = self._incident_fixtures()
+        c = mk_booking(
+            booking_id=903, reference="TAG-CASCADE1",
+            dropoff_dt=datetime(2026, 7, 17, 16, 0),  # > 190min after 11:50
+            pickup_dt=datetime(2026, 7, 24, 14, 0),
+        )
+        s2 = SimpleNamespace(
+            id=5300,
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 17), end_date=None,
+            start_time=time(11, 0), end_time=time(17, 0),  # overlaps rescued window
+            booking_id=None,
+            bookings=[c],
+        )
+        db = make_db(bookings=[f, a, b, c], untouched_auto_shifts=[s1, s2])
+
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            focus_booking_id=f.id,
+        )
+
+        from db_models import RosterShift, ShiftBookingLink
+        assert s1 in db._deleted and s2 in db._deleted
+        linked_ids = {l.booking_id for l in db._added if isinstance(l, ShiftBookingLink)}
+        assert c.id in linked_ids, "secondary orphan must be rescued too"
+        assert result["rescued"] == 2
+
+    # --- BOUNDARY ------------------------------------------------------------
+
+    def test_B_shift_linked_only_to_focus_booking_triggers_no_rescue(self):
+        """Deleting a shift linked only to the focus booking (the ordinary
+        reschedule case) queues no one else — rescue is a no-op and no
+        extra shifts appear."""
+        f, _, _, _ = self._incident_fixtures()
+        own_old_shift = SimpleNamespace(
+            id=5400,
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 16), end_date=None,
+            start_time=time(9, 0), end_time=time(10, 30),
+            booking_id=None,
+            bookings=[f],
+        )
+        db = make_db(bookings=[f], untouched_auto_shifts=[own_old_shift])
+
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            focus_booking_id=f.id,
+        )
+
+        from db_models import RosterShift
+        new_dates = sorted(x.date for x in db._added if isinstance(x, RosterShift))
+        assert new_dates == [date(2026, 7, 16), date(2026, 7, 20)]
+        assert result["rescued"] == 0
+
+
+class TestCombinedCoverageDriverTypeAndSweep:
+    """Combined-coverage guard rails: fleet shifts still don't satisfy
+    jockey work, and the sweep's dry-run sees combined coverage the same
+    way the rebuild does (shared helper)."""
+
+    def test_U_fleet_half_of_combined_coverage_does_not_count(self):
+        """Two frozen shifts jointly span the events, but one is FLEET —
+        its event is uncovered for jockey work, so the cluster must still
+        be materialised (jockeys are a superset; fleet is not)."""
+        frozen_fleet = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+            staff_id=10, intended_driver_type="fleet",
+        )
+        frozen_jockey = mk_assigned_shift(
+            id=100, shift_date=date(2026, 6, 10),
+            start_time=time(11, 0), end_time=time(14, 0),
+            staff_id=11, intended_driver_type="jockey",
+        )
+        b1 = mk_booking(
+            booking_id=600, reference="TAG-FLEET0001",
+            dropoff_dt=datetime(2026, 6, 10, 10, 0),  # only fleet shift spans this
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b2 = mk_booking(
+            booking_id=601, reference="TAG-FLEET0002",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b1, b2], assigned_shifts=[frozen_fleet, frozen_jockey])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        assert result["skipped_covered"] == 0
+        assert result["created"] == 1
+
+    def test_E_sweep_dry_run_sees_combined_coverage_as_owned(self):
+        """The sweep shares _cluster_fully_covered_by_shifts: a missing
+        cluster whose events are jointly covered by two admin-shaped shifts
+        reports skip_owned_coverage, not would_generate."""
+        b1 = mk_booking(
+            booking_id=700, reference="TAG-SWEEPCOMB1",
+            dropoff_dt=datetime(2026, 7, 17, 10, 0),
+            pickup_dt=datetime(2026, 8, 10, 14, 0),
+        )
+        b2 = mk_booking(
+            booking_id=701, reference="TAG-SWEEPCOMB2",
+            dropoff_dt=datetime(2026, 7, 17, 13, 0),
+            pickup_dt=datetime(2026, 8, 10, 14, 0),
+        )
+        frozen1 = mk_assigned_shift(
+            id=99, shift_date=date(2026, 7, 17),
+            start_time=time(9, 0), end_time=time(12, 0),
+            staff_id=10, admin_shaped_at=datetime(2026, 7, 1, 8, 0),
+        )
+        frozen2 = mk_assigned_shift(
+            id=100, shift_date=date(2026, 7, 17),
+            start_time=time(11, 0), end_time=time(14, 0),
+            staff_id=11, admin_shaped_at=datetime(2026, 7, 1, 8, 0),
+        )
+
+        plan = build_auto_roster_sweep_plan(
+            {date(2026, 7, 17)},
+            [b1, b2],
+            [frozen1, frozen2],
+            [],
+            mk_settings(),
+        )
+
+        assert plan["clusters_skipped_owned_coverage"] == 1
+        assert plan["clusters_would_generate"] == 0
+        day = plan["dates"][0]
+        assert day["clusters"][0]["action"] == "skip_owned_coverage"
+        assert sorted(day["clusters"][0]["owned_coverage"]["shift_ids"]) == [99, 100]

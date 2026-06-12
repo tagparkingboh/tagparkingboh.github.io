@@ -53,6 +53,7 @@ from db_models import (
 from roster_planner import (
     ARRIVAL_OVERNIGHT_CUTOFF,
     Event,
+    EventCluster,
     PlannerSettings,
     UK_TZ,
     compute_cluster_shift_window,
@@ -275,22 +276,66 @@ def _cluster_shift_plan(cluster, settings: PlannerSettings) -> dict:
 
 def _cluster_fully_covered_by_shifts(
     cluster_events,
-    required_start: datetime,
-    required_end: datetime,
     frozen_shifts: list[RosterShift],
+    settings: PlannerSettings,
 ) -> list[RosterShift]:
-    """Return frozen shifts that cover the full generated window."""
+    """Return the frozen shifts that jointly cover every event in the cluster.
+
+    Combined coverage counts: events may be split across several owned,
+    jockey-capable shifts (2026-06-12 incident: a day hand-staffed with three
+    admin-shaped shifts grew a redundant 10-booking auto shift because the
+    old check demanded ONE shift spanning the entire cluster window —
+    shift 5505 / TAG-XTD95525).
+
+    The buffer rules are preserved by re-running the engine's own window
+    math per covering shift: each event is assigned to the first owned shift
+    (by start time) whose window contains its anchors, then every shift must
+    span `compute_cluster_shift_window` of its OWN subset of events — so
+    start/end buffers, tight-pair extensions, and the min-shift floor apply
+    exactly as they would if that subset were generated. A single shift
+    covering the whole cluster therefore behaves identically to the old
+    whole-window check. Returns [] when any event is uncovered or any
+    covering shift fails its subset's buffered window.
+    """
     if not frozen_shifts:
         return []
-    covering = []
-    for fs in frozen_shifts:
-        if not _shift_can_cover_jockey_work(fs):
-            continue
-        fs_start, fs_end = _shift_window(fs)
-        if fs_start <= required_start and required_end <= fs_end:
-            covering.append(fs)
-    if not covering:
+    eligible = [
+        (fs, _shift_window(fs))
+        for fs in frozen_shifts
+        if _shift_can_cover_jockey_work(fs)
+    ]
+    if not eligible:
         return []
+    eligible.sort(key=lambda pair: pair[1][0])
+
+    assigned: dict = {}
+    for event in sorted(cluster_events, key=lambda e: e.event_time):
+        event_start = event.event_time.replace(tzinfo=None)
+        event_end = (event.end_anchor_time or event.event_time).replace(tzinfo=None)
+        for fs, (fs_start, fs_end) in eligible:
+            if fs_start <= event_start and event_end <= fs_end:
+                key = getattr(fs, "id", None) or id(fs)
+                bucket = assigned.setdefault(key, (fs, (fs_start, fs_end), []))
+                bucket[2].append(event)
+                break
+        else:
+            # This event has no owned shift containing it — cluster must be
+            # materialised.
+            return []
+
+    covering: list[RosterShift] = []
+    for fs, (fs_start, fs_end), subset_events in assigned.values():
+        sub_start, sub_end = compute_cluster_shift_window(
+            EventCluster(events=subset_events),
+            start_buffer_minutes=settings.start_buffer_minutes,
+            end_buffer_minutes=settings.end_buffer_minutes,
+            min_shift_minutes=settings.min_shift_minutes,
+        )
+        sub_start = sub_start.replace(tzinfo=None)
+        sub_end = sub_end.replace(tzinfo=None)
+        if not (fs_start <= sub_start and sub_end <= fs_end):
+            return []
+        covering.append(fs)
     return covering
 
 
@@ -374,6 +419,7 @@ def rebuild_auto_for_dates(
     summary = {
         "deleted": 0, "created": 0, "skipped_covered": 0,
         "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
+        "rescued": 0,
     }
     target_set = set(target_dates)
     if not target_set:
@@ -564,12 +610,41 @@ def rebuild_auto_for_dates(
     # Usually that owner is the event anchor date. For arrivals before the
     # 02:00 operational cutoff, the owner is the prior operational day, so a
     # 26 Jun rebuild must recreate a 27 Jun 00:35 pickup shift dated 26 Jun.
-    for cluster in clusters:
-        if (
-            focus_booking_id is not None
-            and all(e.booking_id != focus_booking_id for e in cluster.events)
-        ):
-            continue
+    #
+    # Orphan rescue (2026-06-12 incident, TAG-GIR11546 → shift 5263): the
+    # focus-delete pass may remove a shift via a SHARED booking whose other
+    # event lives on it alongside other bookings. Those bookings' clusters
+    # don't contain the focus booking, so they were never re-materialised —
+    # leaving covered events orphaned. Every booking that loses a shift in a
+    # delete goes into `rescue_pool`; after the focus clusters are built, any
+    # unprocessed cluster containing a rescued booking is materialised too,
+    # cascading until nothing new is orphaned. Suppression is still honoured.
+    materialised_keys: set = set()
+    rescue_pool: set[int] = set()
+    deleted_windows: list = []
+
+    def _cluster_key(cluster):
+        return tuple(sorted((e.booking_id, e.event_type) for e in cluster.events))
+
+    def _cluster_lost_coverage(cluster) -> bool:
+        """A cluster qualifies for rescue when it shares a booking with a
+        deleted shift AND one of its events sits inside a deleted shift's
+        window — i.e. the delete actually removed coverage this cluster's
+        events were relying on. Without the window condition, a rescued
+        booking's UNRELATED clusters (its other event days away, already
+        covered by shifts outside the delete scope) would be re-materialised
+        as duplicates."""
+        if not ({e.booking_id for e in cluster.events} & rescue_pool):
+            return False
+        for event in cluster.events:
+            event_naive = event.event_time.replace(tzinfo=None)
+            for w_start, w_end in deleted_windows:
+                if w_start <= event_naive <= w_end:
+                    return True
+        return False
+
+    def _materialise_cluster(cluster):
+        materialised_keys.add(_cluster_key(cluster))
 
         plan = _cluster_shift_plan(cluster, settings)
         cluster_start = plan["cluster_start"]
@@ -585,7 +660,7 @@ def rebuild_auto_for_dates(
             and shift_date_val not in target_set
         ):
             # Adjacent-day rebuilds will own this cluster — don't double-write.
-            continue
+            return
 
         booking_ids = sorted({e.booking_id for e in cluster.events})
         booking_id_set = set(booking_ids)
@@ -597,7 +672,7 @@ def rebuild_auto_for_dates(
             suppressed_shifts,
         ):
             summary["skipped_suppressed"] += 1
-            continue
+            return
 
         if focus_booking_id is not None:
             cluster_window = (shift_start, shift_end)
@@ -609,6 +684,10 @@ def rebuild_auto_for_dates(
                     _windows_overlap(_shift_window(s), cluster_window)
                     or bool(_shift_linked_booking_ids(s) & booking_id_set)
                 ):
+                    # Anyone on this shift loses coverage for the event it
+                    # served — queue them for the rescue pass.
+                    rescue_pool.update(_shift_linked_booking_ids(s))
+                    deleted_windows.append(_shift_window(s))
                     db.delete(s)
                     if sid is not None:
                         deleted_shift_ids.add(sid)
@@ -617,19 +696,19 @@ def rebuild_auto_for_dates(
                 db.flush()
 
         # Skip-if-covered: when every event in this cluster falls inside
-        # an existing frozen shift's window, do NOT materialise a new
+        # an existing frozen shift's window (combined coverage across
+        # multiple owned shifts counts), do NOT materialise a new
         # auto-shift over the same hours. `auto_link_booking_to_shifts`
         # is the bridge that writes the ShiftBookingLink rows — it runs
         # on confirmation and only links bookings whose event time the
         # shift window actually covers. (Driver-trust pivot 2026-05-28.)
         if _cluster_fully_covered_by_shifts(
             cluster.events,
-            shift_start,
-            shift_end,
             frozen_shifts,
+            settings,
         ):
             summary["skipped_covered"] += 1
-            continue
+            return
 
         new_shift = RosterShift(
             staff_id=None,
@@ -647,6 +726,26 @@ def rebuild_auto_for_dates(
         for bid in booking_ids:
             db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=bid))
         summary["created"] += 1
+
+    for cluster in clusters:
+        if (
+            focus_booking_id is not None
+            and all(e.booking_id != focus_booking_id for e in cluster.events)
+        ):
+            continue
+        _materialise_cluster(cluster)
+
+    if focus_booking_id is not None and rescue_pool:
+        progressed = True
+        while progressed:
+            progressed = False
+            for cluster in clusters:
+                if _cluster_key(cluster) in materialised_keys:
+                    continue
+                if _cluster_lost_coverage(cluster):
+                    _materialise_cluster(cluster)
+                    summary["rescued"] += 1
+                    progressed = True
 
     db.commit()
     return summary
@@ -807,9 +906,8 @@ def build_auto_roster_sweep_plan(
         )
         covering_shifts = _cluster_fully_covered_by_shifts(
             cluster.events,
-            shift_start,
-            shift_end,
             frozen_shifts,
+            settings,
         )
 
         if suppression_blockers:
