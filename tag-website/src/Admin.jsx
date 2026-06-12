@@ -17086,8 +17086,8 @@ function Admin() {
               <p><strong>Reference:</strong> {bookingToRefund.reference}</p>
               <p><strong>Customer:</strong> {bookingToRefund.customer?.first_name} {bookingToRefund.customer?.last_name}</p>
             </div>
-            <label style={{ display: 'block', margin: '12px 0' }}>
-              <span style={{ display: 'block', marginBottom: '4px' }}><strong>Reason</strong></span>
+            <div className="modal-form-group" style={{ margin: '12px 0' }}>
+              <label>Reason</label>
               <select
                 value={refundReason}
                 onChange={(e) => setRefundReason(e.target.value)}
@@ -17097,7 +17097,7 @@ function Admin() {
                 <option value="duplicate">Duplicate payment</option>
                 <option value="fraudulent">Fraudulent</option>
               </select>
-            </label>
+            </div>
             {refundModalError && (
               <p style={{ color: '#ef4444', fontSize: '13px' }}>{refundModalError}</p>
             )}
