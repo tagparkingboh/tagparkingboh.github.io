@@ -7260,9 +7260,16 @@ async def get_financial_report(
         has_override = booking.override_gross_pence is not None
         # Manual-source bookings (manual / admin / phone / walk-in) are
         # editable even when nothing is flagged: admins record the real
-        # gross/discount and promo attribution after the fact.
+        # gross/discount and promo attribution after the fact. Cancelled and
+        # refunded bookings are editable regardless of source — recording the
+        # refund on a cancelled online trip is the main use of the edit.
         is_manual_source = bool(booking.booking_source) and booking.booking_source != "online"
-        can_edit_financials = needs_override or has_override or is_manual_source
+        is_cancelled_or_refunded = booking.status in (
+            BookingStatus.CANCELLED, BookingStatus.REFUNDED,
+        )
+        can_edit_financials = (
+            needs_override or has_override or is_manual_source or is_cancelled_or_refunded
+        )
 
         bookings_by_month[month_key].append({
             "id": booking.id,

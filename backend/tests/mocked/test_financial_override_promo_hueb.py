@@ -414,3 +414,48 @@ class TestFinancialReportEditFields:
         assert rows
         assert rows[0]["bookingSource"] == "online"
         assert rows[0]["canEditFinancials"] is False
+
+
+class TestFinancialReportCancelledEditable:
+    """Cancelled/refunded bookings must be editable regardless of source —
+    recording the refund on a cancelled ONLINE trip is the primary use
+    (2026-06-12: cancelled online rows had no edit affordance at all)."""
+
+    def setup_method(self):
+        main._financial_cache = {"data": None, "cached_at": None}
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+        main._financial_cache = {"data": None, "cached_at": None}
+
+    def _report(self, booking):
+        db = _model_db({
+            Booking: {"first": booking, "all": [booking]},
+            PromoCode: {"all": []},
+            MarketingSubscriber: {"all": []},
+            PromoCodeUsage: {"all": []},
+        })
+        _override(db)
+        return TestClient(app).get("/api/admin/reports/financial?refresh=true")
+
+    def _rows(self, resp):
+        return [b for m in resp.json()["monthlyData"] for b in m["bookings"]]
+
+    def test_H_cancelled_online_booking_is_editable(self):
+        from db_models import BookingStatus
+        booking = _booking_stub(booking_source="online", status=BookingStatus.CANCELLED)
+        rows = self._rows(self._report(booking))
+        assert rows and rows[0]["canEditFinancials"] is True
+
+    def test_H_refunded_online_booking_is_editable(self):
+        from db_models import BookingStatus, PaymentStatus
+        booking = _booking_stub(booking_source="online", status=BookingStatus.REFUNDED)
+        booking.payment.status = PaymentStatus.REFUNDED
+        rows = self._rows(self._report(booking))
+        assert rows and rows[0]["canEditFinancials"] is True
+
+    def test_B_confirmed_online_booking_still_not_editable(self):
+        from db_models import BookingStatus
+        booking = _booking_stub(booking_source="online", status=BookingStatus.CONFIRMED)
+        rows = self._rows(self._report(booking))
+        assert rows and rows[0]["canEditFinancials"] is False
