@@ -217,6 +217,7 @@ def _wire(bookings):
     def _query(model):
         chain = MagicMock()
         chain.filter.return_value = chain
+        chain.options.return_value = chain
         chain.order_by.return_value = chain
         name = model.__name__ if hasattr(model, "__name__") else str(model)
         chain.all.return_value = bookings if name == "Booking" else []
@@ -317,3 +318,83 @@ class TestOccupancyReportSecondarySplit:
         body = resp.json()
         assert body["secondary_carpark"]["capacity"] == 20
         assert all("avg_secondary_occupied" in row for row in body["data"])
+
+
+class TestSecondaryCarparkReportEndpoint:
+    """GET /api/admin/reports/secondary-carpark — the dedicated Occupancy
+    panel: future eligible bookings (drop-off today onward, UK) with
+    ref / name / car / reg / drop-off / pickup."""
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    def _full_booking(self, **kw):
+        from datetime import timedelta
+        today = date_type.today()
+        base = dict(
+            id=10,
+            reference="TAG-P2ROW0001",
+            status=BookingStatus.CONFIRMED,
+            dropoff_date=today + timedelta(days=2),
+            dropoff_time=time(10, 0),
+            pickup_date=today + timedelta(days=9),
+            pickup_time=time(18, 30),
+            customer_first_name="Hazel",
+            customer_last_name="Firth",
+            customer=SimpleNamespace(first_name="Hazel", last_name="Firth"),
+            vehicle=SimpleNamespace(colour="Blue", make="Ford", registration="SV68 HPO"),
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def _get(self, bookings, monkeypatch):
+        _clear_env(monkeypatch)
+        _override(_wire(bookings))
+        return TestClient(app).get("/api/admin/reports/secondary-carpark")
+
+    def test_H_returns_row_fields_for_eligible_booking(self, monkeypatch):
+        resp = self._get([self._full_booking()], monkeypatch)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["capacity"] == 20
+        assert body["window_start"] == "09:00"
+        assert body["window_end"] == "21:00"
+        assert body["count"] == 1
+        row = body["bookings"][0]
+        assert row["reference"] == "TAG-P2ROW0001"
+        assert row["customer_name"] == "Hazel Firth"
+        assert row["car"] == "Blue Ford"
+        assert row["registration"] == "SV68 HPO"
+        assert row["dropoff_time"] == "10:00"
+        assert row["pickup_time"] == "18:30"
+        assert "/" in row["dropoff_display"] and "/" in row["pickup_display"]
+
+    def test_U_non_qualifying_booking_excluded(self, monkeypatch):
+        late_pickup = self._full_booking(id=11, reference="TAG-LATEPICK", pickup_time=time(22, 15))
+        resp = self._get([late_pickup], monkeypatch)
+        assert resp.json()["count"] == 0
+
+    def test_B_dropoff_today_included(self, monkeypatch):
+        today_booking = self._full_booking(
+            id=12, reference="TAG-TODAY0001", dropoff_date=date_type.today(),
+        )
+        resp = self._get([today_booking], monkeypatch)
+        assert resp.json()["count"] == 1
+
+    def test_B_dropoff_yesterday_excluded(self, monkeypatch):
+        from datetime import timedelta
+        parked = self._full_booking(
+            id=13, reference="TAG-PARKED001",
+            dropoff_date=date_type.today() - timedelta(days=1),
+        )
+        resp = self._get([parked], monkeypatch)
+        # Already parked — eligibility is arrivals from today onward.
+        assert resp.json()["count"] == 0
+
+    def test_E_missing_vehicle_renders_nulls(self, monkeypatch):
+        no_vehicle = self._full_booking(id=14, reference="TAG-NOVEHICLE", vehicle=None)
+        resp = self._get([no_vehicle], monkeypatch)
+        row = resp.json()["bookings"][0]
+        assert row["car"] is None
+        assert row["registration"] is None

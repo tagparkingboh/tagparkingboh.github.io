@@ -690,6 +690,9 @@ function Admin() {
   const [occupancyData, setOccupancyData] = useState(null)
   const [loadingOccupancy, setLoadingOccupancy] = useState(false)
   const [occupancyView, setOccupancyView] = useState('daily') // 'daily', 'weekly', 'monthly'
+  const [secondaryReport, setSecondaryReport] = useState(null)
+  const [loadingSecondaryReport, setLoadingSecondaryReport] = useState(false)
+  const [secondaryGroup, setSecondaryGroup] = useState('daily') // grouping for the P2 panel
   const [occupancyChartOffset, setOccupancyChartOffset] = useState(0) // 0 = centered on today, negative = past, positive = future
   const todayInputValue = formatUkTimestampInput()
   const [capacitySettings, setCapacitySettings] = useState(null)
@@ -1186,6 +1189,7 @@ function Admin() {
         fetchFunFacts()
       } else if (reportsSubTab === 'occupancy') {
         fetchCapacitySettings()
+        fetchSecondaryCarparkReport()
         fetchOccupancyReport(occupancyView)
       } else if (reportsSubTab === 'popular') {
         fetchPopularReport()
@@ -2083,6 +2087,22 @@ function Admin() {
       console.error('Failed to fetch capacity settings:', err)
     } finally {
       setLoadingCapacitySettings(false)
+    }
+  }
+
+  const fetchSecondaryCarparkReport = async () => {
+    setLoadingSecondaryReport(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/secondary-carpark`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setSecondaryReport(await response.json())
+      }
+    } catch (err) {
+      console.error('Failed to fetch secondary car park report:', err)
+    } finally {
+      setLoadingSecondaryReport(false)
     }
   }
 
@@ -13276,6 +13296,90 @@ function Admin() {
                   )}
                 </div>
 
+                {/* Secondary Car Park (P2) — future eligible bookings */}
+                <div className="capacity-settings-panel secondary-carpark-panel">
+                  <div className="capacity-settings-header">
+                    <div>
+                      <h4>Secondary Car Park (P2)</h4>
+                      <p>
+                        Future bookings (from today) with drop-off and pickup within{' '}
+                        {secondaryReport ? `${secondaryReport.window_start}–${secondaryReport.window_end}` : 'the operating window'}
+                        {secondaryReport ? ` — ${secondaryReport.count} eligible, capacity ${secondaryReport.capacity}` : ''}
+                      </p>
+                    </div>
+                    <div className="chart-controls" style={{ margin: 0 }}>
+                      <select value={secondaryGroup} onChange={e => setSecondaryGroup(e.target.value)}>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+                  </div>
+                  {loadingSecondaryReport ? (
+                    <div className="admin-loading-inline"><div className="spinner-small"></div><span>Loading...</span></div>
+                  ) : !secondaryReport || secondaryReport.bookings.length === 0 ? (
+                    <p style={{ opacity: 0.7 }}>No eligible future bookings.</p>
+                  ) : (() => {
+                    const groupKey = (b) => {
+                      const d = new Date(b.dropoff_date + 'T00:00:00')
+                      if (secondaryGroup === 'monthly') {
+                        return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                      }
+                      if (secondaryGroup === 'weekly') {
+                        const monday = new Date(d)
+                        monday.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+                        const sunday = new Date(monday)
+                        sunday.setDate(monday.getDate() + 6)
+                        const fmt = (x) => x.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                        return `Week ${fmt(monday)} – ${fmt(sunday)}`
+                      }
+                      return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+                    }
+                    const groups = {}
+                    secondaryReport.bookings.forEach(b => {
+                      const key = groupKey(b)
+                      if (!groups[key]) groups[key] = []
+                      groups[key].push(b)
+                    })
+                    return Object.entries(groups).map(([label, rows]) => (
+                      <details key={label} className="occupancy-month-group" open>
+                        <summary className="occupancy-month-header">
+                          <span className="month-title">{label}</span>
+                          <span className="month-stats">
+                            <span className="month-days">{rows.length} booking{rows.length !== 1 ? 's' : ''}</span>
+                          </span>
+                        </summary>
+                        <div className="occupancy-table-wrapper">
+                          <table className="occupancy-table">
+                            <thead>
+                              <tr>
+                                <th>Ref</th>
+                                <th>Name</th>
+                                <th>Car</th>
+                                <th>Reg</th>
+                                <th>Drop-off</th>
+                                <th>Pickup</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map(b => (
+                                <tr key={b.reference}>
+                                  <td className="date-cell">{b.reference}</td>
+                                  <td>{b.customer_name || '-'}</td>
+                                  <td>{b.car || '-'}</td>
+                                  <td><span className="reg-plate" style={{ color: 'inherit' }}>{b.registration || '-'}</span></td>
+                                  <td className="number-cell">{b.dropoff_display}{b.dropoff_time ? ` ${b.dropoff_time}` : ''}</td>
+                                  <td className="number-cell">{b.pickup_display || '-'}{b.pickup_time ? ` ${b.pickup_time}` : ''}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    ))
+                  })()}
+                </div>
+
                 {loadingOccupancy ? (
                   <div className="admin-loading-inline">
                     <div className="spinner-small"></div>
@@ -13308,20 +13412,6 @@ function Admin() {
                                 <span className="occupancy-stat-value">{displayEntry.occupancy_percent || displayEntry.avg_occupancy_percent}%</span>
                                 <span className="occupancy-stat-label">{todayEntry ? 'Utilization Today' : 'Current Utilization'}</span>
                               </div>
-                              {occupancyData.secondary_carpark && (
-                                <div
-                                  className="occupancy-stat"
-                                  title={`Bookings with drop-off AND pickup within ${occupancyData.secondary_carpark.window_start}–${occupancyData.secondary_carpark.window_end}`}
-                                >
-                                  <span
-                                    className="occupancy-stat-value"
-                                    style={(displayEntry.secondary_occupied ?? displayEntry.avg_secondary_occupied ?? 0) > occupancyData.secondary_carpark.capacity ? { color: '#ef4444' } : undefined}
-                                  >
-                                    {displayEntry.secondary_occupied ?? displayEntry.avg_secondary_occupied ?? 0}/{occupancyData.secondary_carpark.capacity}
-                                  </span>
-                                  <span className="occupancy-stat-label">{todayEntry ? 'Secondary Park Today' : 'Secondary Park Avg'}</span>
-                                </div>
-                              )}
                             </>
                           );
                         }
@@ -13548,8 +13638,6 @@ function Admin() {
                                     <tr>
                                       <th>Date</th>
                                       <th>Occupied</th>
-                                      <th title="Bookings qualifying for the secondary car park (drop-off & pickup within the operating window)">Secondary</th>
-                                      <th>Main</th>
                                       <th>Available</th>
                                       <th>Utilization</th>
                                       <th>Status</th>
@@ -13562,22 +13650,11 @@ function Admin() {
                                       const percent = item.occupancy_percent ?? item.avg_occupancy_percent;
                                       const isHighlight = item.is_today;
                                       const isPast = item.is_past;
-                                      const secondaryCap = occupancyData.secondary_carpark?.capacity;
 
                                       return (
                                         <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
                                           <td className="date-cell">{item.display_date}</td>
                                           <td className="number-cell">{typeof occupied === 'number' ? occupied.toFixed(0) : '-'}</td>
-                                          <td
-                                            className="number-cell"
-                                            style={item.secondary_over_capacity ? { color: '#ef4444', fontWeight: 700 } : undefined}
-                                            title={(item.secondary_bookings || []).join(', ') || 'No qualifying bookings'}
-                                          >
-                                            {typeof item.secondary_occupied === 'number'
-                                              ? `${item.secondary_occupied}${typeof secondaryCap === 'number' ? `/${secondaryCap}` : ''}`
-                                              : '-'}
-                                          </td>
-                                          <td className="number-cell">{typeof item.main_occupied === 'number' ? item.main_occupied : '-'}</td>
                                           <td className="number-cell">{typeof available === 'number' ? available.toFixed(0) : '-'}</td>
                                           <td className="util-cell">
                                             <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>
@@ -13608,7 +13685,6 @@ function Admin() {
                               <tr>
                                 <th>{occupancyView === 'weekly' ? 'Week' : 'Month'}</th>
                                 <th>Avg Occupied</th>
-                                <th title="Average bookings qualifying for the secondary car park">Avg Secondary</th>
                                 <th>Avg Available</th>
                                 <th>Utilization</th>
                                 <th>Status</th>
@@ -13626,7 +13702,6 @@ function Admin() {
                                   <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
                                     <td className="date-cell">{item.display_week || item.display_month}</td>
                                     <td className="number-cell">{typeof occupied === 'number' ? occupied.toFixed(1) : '-'}</td>
-                                    <td className="number-cell">{typeof item.avg_secondary_occupied === 'number' ? item.avg_secondary_occupied.toFixed(1) : '-'}</td>
                                     <td className="number-cell">{typeof available === 'number' ? available.toFixed(1) : '-'}</td>
                                     <td className="util-cell">
                                       <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>

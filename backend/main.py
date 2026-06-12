@@ -5709,6 +5709,71 @@ async def upsert_admin_capacity_setting(
     }
 
 
+@app.get("/api/admin/reports/secondary-carpark")
+async def get_secondary_carpark_report(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Future bookings (drop-off today onward, UK) eligible for the secondary
+    car park under the 09:00-21:00 window rule. Powers the dedicated panel in
+    Admin/Reports/Occupancy; grouping (daily/weekly/monthly) happens
+    client-side off dropoff_date. Cars already parked are NOT included —
+    eligibility applies to arrivals from now on."""
+    from sqlalchemy.orm import joinedload
+
+    secondary_settings = db_service.get_secondary_carpark_settings()
+    today_uk = get_uk_now().date()
+
+    candidates = (
+        db.query(DbBooking)
+        .options(joinedload(DbBooking.customer), joinedload(DbBooking.vehicle))
+        .filter(
+            DbBooking.status == BookingStatus.CONFIRMED,
+            DbBooking.dropoff_date >= today_uk,
+        )
+        .order_by(DbBooking.dropoff_date.asc(), DbBooking.dropoff_time.asc())
+        .all()
+    )
+
+    eligible = []
+    for b in candidates:
+        if not b.dropoff_date or b.dropoff_date < today_uk:
+            continue
+        if not db_service.booking_qualifies_for_secondary_carpark(b, secondary_settings):
+            continue
+        customer = b.customer
+        vehicle = b.vehicle
+        eligible.append({
+            "reference": b.reference,
+            "customer_name": (
+                f"{b.customer_first_name or (customer.first_name if customer else '')} "
+                f"{b.customer_last_name or (customer.last_name if customer else '')}"
+            ).strip(),
+            "car": " ".join(
+                part for part in [
+                    getattr(vehicle, "colour", None),
+                    getattr(vehicle, "make", None),
+                ] if part
+            ) or None,
+            "registration": getattr(vehicle, "registration", None),
+            "dropoff_date": b.dropoff_date.isoformat(),
+            "dropoff_display": b.dropoff_date.strftime("%d/%m/%Y"),
+            "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
+            "pickup_display": b.pickup_date.strftime("%d/%m/%Y") if b.pickup_date else None,
+            "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+        })
+
+    return {
+        "capacity": secondary_settings["capacity"],
+        "window_start": secondary_settings["window_start"].strftime("%H:%M"),
+        "window_end": secondary_settings["window_end"].strftime("%H:%M"),
+        "from_date": today_uk.isoformat(),
+        "count": len(eligible),
+        "bookings": eligible,
+    }
+
+
 @app.get("/api/admin/reports/occupancy")
 async def get_occupancy_report(
     view: str = Query("daily", description="View type: 'daily', 'weekly', or 'monthly'"),

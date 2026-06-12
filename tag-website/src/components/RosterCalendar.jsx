@@ -4242,14 +4242,16 @@ function RosterCalendar({
                                       {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                     </span>
                                     <span className="shift-booking-ref">{booking.reference}</span>
-                                    {getBookingRegistration(booking) && (
+                                    {getBookingRegistration(booking) ? (
                                       <span className="shift-booking-reg">
                                         {getBookingRegistration(booking)}
+                                        {booking.secondary_carpark_qualifies && (
+                                          <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                                        )}
                                       </span>
-                                    )}
-                                    {booking.secondary_carpark_qualifies && (
+                                    ) : booking.secondary_carpark_qualifies ? (
                                       <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
-                                    )}
+                                    ) : null}
                                     <span className="shift-booking-customer">{booking.customer_name}</span>
                                   </div>
                                   <div className="shift-booking-details">
@@ -4365,14 +4367,16 @@ function RosterCalendar({
                                         {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                       </span>
                                       <span className="shift-booking-ref">{booking.reference}</span>
-                                      {getBookingRegistration(booking) && (
+                                      {getBookingRegistration(booking) ? (
                                         <span className="shift-booking-reg">
                                           {getBookingRegistration(booking)}
+                                          {booking.secondary_carpark_qualifies && (
+                                            <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                                          )}
                                         </span>
-                                      )}
-                                      {booking.secondary_carpark_qualifies && (
+                                      ) : booking.secondary_carpark_qualifies ? (
                                         <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
-                                      )}
+                                      ) : null}
                                       <span className="shift-booking-customer">{booking.customer_name}</span>
                                     </div>
                                   </div>
