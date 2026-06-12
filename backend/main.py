@@ -5735,7 +5735,8 @@ async def get_secondary_carpark_report(
         .all()
     )
 
-    eligible = []
+    eligible_count = 0
+    events = []
     for b in candidates:
         if not b.dropoff_date or b.dropoff_date < today_uk:
             continue
@@ -5743,7 +5744,8 @@ async def get_secondary_carpark_report(
             continue
         customer = b.customer
         vehicle = b.vehicle
-        eligible.append({
+        eligible_count += 1
+        base = {
             "reference": b.reference,
             "customer_name": (
                 f"{b.customer_first_name or (customer.first_name if customer else '')} "
@@ -5756,21 +5758,34 @@ async def get_secondary_carpark_report(
                 ] if part
             ) or None,
             "registration": getattr(vehicle, "registration", None),
-            "dropoff_date": b.dropoff_date.isoformat(),
-            "dropoff_display": b.dropoff_date.strftime("%d/%m/%Y"),
-            "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
-            "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
-            "pickup_display": b.pickup_date.strftime("%d/%m/%Y") if b.pickup_date else None,
-            "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+        }
+        # One row per EVENT — the panel groups by event date and shows only
+        # the event relevant to that date (ops feedback 2026-06-13).
+        events.append({
+            **base,
+            "event": "dropoff",
+            "date": b.dropoff_date.isoformat(),
+            "display_date": b.dropoff_date.strftime("%d/%m/%Y"),
+            "time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
         })
+        if b.pickup_date and b.pickup_date >= today_uk:
+            events.append({
+                **base,
+                "event": "pickup",
+                "date": b.pickup_date.isoformat(),
+                "display_date": b.pickup_date.strftime("%d/%m/%Y"),
+                "time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            })
+
+    events.sort(key=lambda e: (e["date"], e["time"] or "99:99"))
 
     return {
         "capacity": secondary_settings["capacity"],
         "window_start": secondary_settings["window_start"].strftime("%H:%M"),
         "window_end": secondary_settings["window_end"].strftime("%H:%M"),
         "from_date": today_uk.isoformat(),
-        "count": len(eligible),
-        "bookings": eligible,
+        "count": eligible_count,
+        "events": events,
     }
 
 

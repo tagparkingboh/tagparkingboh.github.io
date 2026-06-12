@@ -13296,90 +13296,6 @@ function Admin() {
                   )}
                 </div>
 
-                {/* Secondary Car Park (P2) — future eligible bookings */}
-                <div className="capacity-settings-panel secondary-carpark-panel">
-                  <div className="capacity-settings-header">
-                    <div>
-                      <h4>Secondary Car Park (P2)</h4>
-                      <p>
-                        Future bookings (from today) with drop-off and pickup within{' '}
-                        {secondaryReport ? `${secondaryReport.window_start}–${secondaryReport.window_end}` : 'the operating window'}
-                        {secondaryReport ? ` — ${secondaryReport.count} eligible, capacity ${secondaryReport.capacity}` : ''}
-                      </p>
-                    </div>
-                    <div className="chart-controls" style={{ margin: 0 }}>
-                      <select value={secondaryGroup} onChange={e => setSecondaryGroup(e.target.value)}>
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                      </select>
-                    </div>
-                  </div>
-                  {loadingSecondaryReport ? (
-                    <div className="admin-loading-inline"><div className="spinner-small"></div><span>Loading...</span></div>
-                  ) : !secondaryReport || secondaryReport.bookings.length === 0 ? (
-                    <p style={{ opacity: 0.7 }}>No eligible future bookings.</p>
-                  ) : (() => {
-                    const groupKey = (b) => {
-                      const d = new Date(b.dropoff_date + 'T00:00:00')
-                      if (secondaryGroup === 'monthly') {
-                        return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-                      }
-                      if (secondaryGroup === 'weekly') {
-                        const monday = new Date(d)
-                        monday.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-                        const sunday = new Date(monday)
-                        sunday.setDate(monday.getDate() + 6)
-                        const fmt = (x) => x.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                        return `Week ${fmt(monday)} – ${fmt(sunday)}`
-                      }
-                      return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
-                    }
-                    const groups = {}
-                    secondaryReport.bookings.forEach(b => {
-                      const key = groupKey(b)
-                      if (!groups[key]) groups[key] = []
-                      groups[key].push(b)
-                    })
-                    return Object.entries(groups).map(([label, rows]) => (
-                      <details key={label} className="occupancy-month-group" open>
-                        <summary className="occupancy-month-header">
-                          <span className="month-title">{label}</span>
-                          <span className="month-stats">
-                            <span className="month-days">{rows.length} booking{rows.length !== 1 ? 's' : ''}</span>
-                          </span>
-                        </summary>
-                        <div className="occupancy-table-wrapper">
-                          <table className="occupancy-table">
-                            <thead>
-                              <tr>
-                                <th>Ref</th>
-                                <th>Name</th>
-                                <th>Car</th>
-                                <th>Reg</th>
-                                <th>Drop-off</th>
-                                <th>Pickup</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.map(b => (
-                                <tr key={b.reference}>
-                                  <td className="date-cell">{b.reference}</td>
-                                  <td>{b.customer_name || '-'}</td>
-                                  <td>{b.car || '-'}</td>
-                                  <td><span className="reg-plate" style={{ color: 'inherit' }}>{b.registration || '-'}</span></td>
-                                  <td className="number-cell">{b.dropoff_display}{b.dropoff_time ? ` ${b.dropoff_time}` : ''}</td>
-                                  <td className="number-cell">{b.pickup_display || '-'}{b.pickup_time ? ` ${b.pickup_time}` : ''}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </details>
-                    ))
-                  })()}
-                </div>
-
                 {loadingOccupancy ? (
                   <div className="admin-loading-inline">
                     <div className="spinner-small"></div>
@@ -13720,6 +13636,92 @@ function Admin() {
                           </table>
                         </div>
                       )}
+
+                      {/* Secondary Car Park (P2) — future eligible events */}
+                      <div className="capacity-settings-panel secondary-carpark-panel">
+                        <div className="capacity-settings-header">
+                          <div>
+                            <h4>Secondary Car Park (P2)</h4>
+                            <p>
+                              Future drop-offs and pickups (from today) for bookings within{' '}
+                              {secondaryReport ? `${secondaryReport.window_start}–${secondaryReport.window_end}` : 'the operating window'}
+                              {secondaryReport ? ` — ${secondaryReport.count} eligible bookings, capacity ${secondaryReport.capacity}` : ''}
+                            </p>
+                          </div>
+                          <div className="chart-controls" style={{ margin: 0 }}>
+                            <select value={secondaryGroup} onChange={e => setSecondaryGroup(e.target.value)}>
+                              <option value="daily">Daily</option>
+                              <option value="weekly">Weekly</option>
+                              <option value="monthly">Monthly</option>
+                            </select>
+                          </div>
+                        </div>
+                        {loadingSecondaryReport ? (
+                          <div className="admin-loading-inline"><div className="spinner-small"></div><span>Loading...</span></div>
+                        ) : !secondaryReport || (secondaryReport.events || []).length === 0 ? (
+                          <p style={{ opacity: 0.7 }}>No eligible future bookings.</p>
+                        ) : (() => {
+                          const groupKey = (ev) => {
+                            const d = new Date(ev.date + 'T00:00:00')
+                            if (secondaryGroup === 'monthly') {
+                              return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                            }
+                            if (secondaryGroup === 'weekly') {
+                              const monday = new Date(d)
+                              monday.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+                              const sunday = new Date(monday)
+                              sunday.setDate(monday.getDate() + 6)
+                              const fmt = (x) => x.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                              return `Week ${fmt(monday)} – ${fmt(sunday)}`
+                            }
+                            return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+                          }
+                          const groups = {}
+                          secondaryReport.events.forEach(ev => {
+                            const key = groupKey(ev)
+                            if (!groups[key]) groups[key] = []
+                            groups[key].push(ev)
+                          })
+                          return Object.entries(groups).map(([label, rows]) => (
+                            <details key={label} className="occupancy-month-group">
+                              <summary className="occupancy-month-header">
+                                <span className="month-title">{label}</span>
+                                <span className="month-stats">
+                                  <span className="month-days">{rows.length} event{rows.length !== 1 ? 's' : ''}</span>
+                                </span>
+                              </summary>
+                              <div className="occupancy-table-wrapper">
+                                <table className="occupancy-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Ref</th>
+                                      <th>Name</th>
+                                      <th>Car</th>
+                                      <th>Reg</th>
+                                      <th>Event</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rows.map((ev, i) => (
+                                      <tr key={`${ev.reference}-${ev.event}-${i}`}>
+                                        <td className="date-cell">{ev.reference}</td>
+                                        <td>{ev.customer_name || '-'}</td>
+                                        <td>{ev.car || '-'}</td>
+                                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ev.registration || '-'}</td>
+                                        <td className="number-cell">
+                                          {ev.event === 'dropoff' ? 'Drop-off' : 'Pickup'}
+                                          {secondaryGroup === 'daily' ? '' : ` ${ev.display_date}`}
+                                          {ev.time ? ` @ ${ev.time}` : ''}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          ))
+                        })()}
+                      </div>
                     </div>
                   </>
                 ) : (

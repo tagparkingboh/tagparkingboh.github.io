@@ -3921,6 +3921,12 @@
     row-gap: 6px;
   }
 
+  /* Icon shares column 1 with the reg plate below; don't let the wider
+     plate stretch the icon's pill. */
+  .shift-booking-header .shift-booking-type {
+    justify-self: start;
+  }
+
   .shift-booking-header .shift-booking-ref {
     white-space: nowrap;
     overflow: hidden;

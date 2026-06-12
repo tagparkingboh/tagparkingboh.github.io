@@ -352,7 +352,7 @@ class TestSecondaryCarparkReportEndpoint:
         _override(_wire(bookings))
         return TestClient(app).get("/api/admin/reports/secondary-carpark")
 
-    def test_H_returns_row_fields_for_eligible_booking(self, monkeypatch):
+    def test_H_emits_one_row_per_event_with_fields(self, monkeypatch):
         resp = self._get([self._full_booking()], monkeypatch)
 
         assert resp.status_code == 200
@@ -360,20 +360,42 @@ class TestSecondaryCarparkReportEndpoint:
         assert body["capacity"] == 20
         assert body["window_start"] == "09:00"
         assert body["window_end"] == "21:00"
-        assert body["count"] == 1
-        row = body["bookings"][0]
-        assert row["reference"] == "TAG-P2ROW0001"
-        assert row["customer_name"] == "Hazel Firth"
-        assert row["car"] == "Blue Ford"
-        assert row["registration"] == "SV68 HPO"
-        assert row["dropoff_time"] == "10:00"
-        assert row["pickup_time"] == "18:30"
-        assert "/" in row["dropoff_display"] and "/" in row["pickup_display"]
+        assert body["count"] == 1            # one eligible booking...
+        assert len(body["events"]) == 2      # ...two events (drop-off + pickup)
+        dropoff, pickup = body["events"]
+        assert dropoff["event"] == "dropoff"
+        assert dropoff["time"] == "10:00"
+        assert pickup["event"] == "pickup"
+        assert pickup["time"] == "18:30"
+        for row in body["events"]:
+            assert row["reference"] == "TAG-P2ROW0001"
+            assert row["customer_name"] == "Hazel Firth"
+            assert row["car"] == "Blue Ford"
+            assert row["registration"] == "SV68 HPO"
+            assert "/" in row["display_date"]
+
+    def test_H_events_sorted_by_date_then_time(self, monkeypatch):
+        from datetime import timedelta
+        today = date_type.today()
+        early = self._full_booking(
+            id=21, reference="TAG-EARLY0001",
+            dropoff_date=today + timedelta(days=1), dropoff_time=time(9, 30),
+            pickup_date=today + timedelta(days=3), pickup_time=time(10, 0),
+        )
+        late = self._full_booking(
+            id=22, reference="TAG-LATE00001",
+            dropoff_date=today + timedelta(days=1), dropoff_time=time(15, 0),
+            pickup_date=today + timedelta(days=2), pickup_time=time(11, 0),
+        )
+        resp = self._get([late, early], monkeypatch)
+        keys = [(e["date"], e["time"]) for e in resp.json()["events"]]
+        assert keys == sorted(keys)
 
     def test_U_non_qualifying_booking_excluded(self, monkeypatch):
         late_pickup = self._full_booking(id=11, reference="TAG-LATEPICK", pickup_time=time(22, 15))
         resp = self._get([late_pickup], monkeypatch)
         assert resp.json()["count"] == 0
+        assert resp.json()["events"] == []
 
     def test_B_dropoff_today_included(self, monkeypatch):
         today_booking = self._full_booking(
@@ -395,6 +417,6 @@ class TestSecondaryCarparkReportEndpoint:
     def test_E_missing_vehicle_renders_nulls(self, monkeypatch):
         no_vehicle = self._full_booking(id=14, reference="TAG-NOVEHICLE", vehicle=None)
         resp = self._get([no_vehicle], monkeypatch)
-        row = resp.json()["bookings"][0]
+        row = resp.json()["events"][0]
         assert row["car"] is None
         assert row["registration"] is None
