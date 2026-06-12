@@ -3856,25 +3856,8 @@
   margin-right: 4px;
 }
 
-/* Secondary car park (P2) badges — qualifying bookings under the
-   09:00-21:00 window rule */
-.booking-carpark-badge {
-  position: absolute;
-  top: 8px;
-  right: 90px;
-  background: #2563eb;
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-
-.detail-booking-card:not(.detail-booking-refunded) .booking-carpark-badge {
-  right: 12px;
-}
-
+/* Secondary car park (P2) chip — rendered inline immediately after the
+   reg plate wherever a qualifying booking appears */
 .day-badge.badge-carpark {
   background: rgba(37, 99, 235, 0.25);
   color: #93c5fd;
@@ -3889,4 +3872,6 @@
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 999px;
+  margin-left: 4px;
+  vertical-align: middle;
 }

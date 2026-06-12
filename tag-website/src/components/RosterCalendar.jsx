@@ -4004,14 +4004,6 @@ function RosterCalendar({
                         {booking.status === 'refunded' && (
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
                         )}
-                        {booking.secondary_carpark?.qualifies && (
-                          <span
-                            className="booking-carpark-badge"
-                            title={`Secondary car park — ${booking.secondary_carpark.reason}`}
-                          >
-                            P2
-                          </span>
-                        )}
                         <div className="booking-header-row">
                           <div className="booking-time">{formatTime(booking.dropoff_time)}</div>
                           <div className="booking-flight">
@@ -4045,6 +4037,9 @@ function RosterCalendar({
                           <span className="reg-plate">
                             {booking.vehicle?.registration || booking.vehicle_registration}
                           </span>
+                          {booking.secondary_carpark?.qualifies && (
+                            <span className="shift-booking-carpark" title={`Secondary car park — ${booking.secondary_carpark.reason}`}>P2</span>
+                          )}
                         </div>
                         {renderBookingActions && renderBookingActions(booking, 'dropoff')}
                       </div>
@@ -4078,14 +4073,6 @@ function RosterCalendar({
                       <div key={booking.id} className={`detail-booking-card ${booking.status === 'refunded' ? 'detail-booking-refunded' : ''}`}>
                         {booking.status === 'refunded' && (
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
-                        )}
-                        {booking.secondary_carpark?.qualifies && (
-                          <span
-                            className="booking-carpark-badge"
-                            title={`Secondary car park — ${booking.secondary_carpark.reason}`}
-                          >
-                            P2
-                          </span>
                         )}
                         <div className="booking-header-row">
                           {/* pickup_time leading cell removed 2026-05-20 —
@@ -4122,6 +4109,9 @@ function RosterCalendar({
                           <span className="reg-plate">
                             {booking.vehicle?.registration || booking.vehicle_registration}
                           </span>
+                          {booking.secondary_carpark?.qualifies && (
+                            <span className="shift-booking-carpark" title={`Secondary car park — ${booking.secondary_carpark.reason}`}>P2</span>
+                          )}
                         </div>
                         {renderBookingActions && renderBookingActions(booking, 'pickup')}
                       </div>
@@ -4252,13 +4242,13 @@ function RosterCalendar({
                                       {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                     </span>
                                     <span className="shift-booking-ref">{booking.reference}</span>
-                                    {booking.secondary_carpark_qualifies && (
-                                      <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
-                                    )}
                                     {getBookingRegistration(booking) && (
                                       <span className="shift-booking-reg">
                                         {getBookingRegistration(booking)}
                                       </span>
+                                    )}
+                                    {booking.secondary_carpark_qualifies && (
+                                      <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
                                     )}
                                     <span className="shift-booking-customer">{booking.customer_name}</span>
                                   </div>
@@ -4375,13 +4365,13 @@ function RosterCalendar({
                                         {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                       </span>
                                       <span className="shift-booking-ref">{booking.reference}</span>
-                                    {booking.secondary_carpark_qualifies && (
-                                      <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
-                                    )}
                                       {getBookingRegistration(booking) && (
                                         <span className="shift-booking-reg">
                                           {getBookingRegistration(booking)}
                                         </span>
+                                      )}
+                                      {booking.secondary_carpark_qualifies && (
+                                        <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
                                       )}
                                       <span className="shift-booking-customer">{booking.customer_name}</span>
                                     </div>
