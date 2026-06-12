@@ -7258,18 +7258,15 @@ async def get_financial_report(
             )
         )
         has_override = booking.override_gross_pence is not None
-        # Manual-source bookings (manual / admin / phone / walk-in) are
-        # editable even when nothing is flagged: admins record the real
-        # gross/discount and promo attribution after the fact. Cancelled and
-        # refunded bookings are editable regardless of source — recording the
-        # refund on a cancelled online trip is the main use of the edit.
-        is_manual_source = bool(booking.booking_source) and booking.booking_source != "online"
-        is_cancelled_or_refunded = booking.status in (
-            BookingStatus.CANCELLED, BookingStatus.REFUNDED,
-        )
-        can_edit_financials = (
-            needs_override or has_override or is_manual_source or is_cancelled_or_refunded
-        )
+        # Every row is editable. Earlier source/status gates (manual-only,
+        # then +cancelled/refunded) kept locking out real correction cases —
+        # the decisive one being an unsynced partial refund on a COMPLETED
+        # online booking (TAG-TQI18129, 2026-06-12), where no DB marker exists
+        # until the admin can sync it. Safety lives in the actions, not the
+        # gate: refund paste-sync writes verified Stripe data, manual amounts
+        # are blocked once a Stripe refund is on record, figure edits are
+        # prefilled/audit-logged, promo attribution has conflict checks.
+        can_edit_financials = True
 
         bookings_by_month[month_key].append({
             "id": booking.id,

@@ -407,13 +407,16 @@ class TestFinancialReportEditFields:
         assert rows[0]["bookingSource"] == "manual"
         assert rows[0]["canEditFinancials"] is True
 
-    def test_E_online_booking_without_flags_is_not_editable(self):
+    def test_E_online_booking_is_also_editable(self):
+        # Gate removed 2026-06-12: every row is editable — an unsynced
+        # refund leaves NO db marker, so no status/source gate can ever
+        # surface the recovery edit (TAG-TQI18129).
         resp = self._report(_booking_stub(booking_source="online"))
         assert resp.status_code == 200
         rows = [b for m in resp.json()["monthlyData"] for b in m["bookings"]]
         assert rows
         assert rows[0]["bookingSource"] == "online"
-        assert rows[0]["canEditFinancials"] is False
+        assert rows[0]["canEditFinancials"] is True
 
 
 class TestFinancialReportCancelledEditable:
@@ -454,8 +457,9 @@ class TestFinancialReportCancelledEditable:
         rows = self._rows(self._report(booking))
         assert rows and rows[0]["canEditFinancials"] is True
 
-    def test_B_confirmed_online_booking_still_not_editable(self):
+    def test_B_confirmed_online_booking_editable_too(self):
+        # Gate fully removed 2026-06-12 — see test_E_online_booking_is_also_editable.
         from db_models import BookingStatus
         booking = _booking_stub(booking_source="online", status=BookingStatus.CONFIRMED)
         rows = self._rows(self._report(booking))
-        assert rows and rows[0]["canEditFinancials"] is False
+        assert rows and rows[0]["canEditFinancials"] is True

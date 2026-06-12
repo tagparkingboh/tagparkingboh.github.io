@@ -14371,7 +14371,21 @@ function Admin() {
                                               title="Paste a Stripe refund id (re_…) or payment intent (pi_…) to sync from Stripe, or type a refund amount in pounds"
                                             />
                                           ) : (
-                                            booking.refundAmount || '-'
+                                            <>
+                                              {booking.refundAmount || '-'}
+                                              {/* Payment-state tag: booking status alone hides refund
+                                                  state (a completed trip can carry a partial refund) */}
+                                              {booking.paymentStatus === 'partially_refunded' && (
+                                                <span style={{ display: 'block', fontSize: '10px', color: '#f59e0b' }}>
+                                                  Partial refund
+                                                </span>
+                                              )}
+                                              {booking.paymentStatus === 'refunded' && (
+                                                <span style={{ display: 'block', fontSize: '10px', color: '#ef4444' }}>
+                                                  Refunded
+                                                </span>
+                                              )}
+                                            </>
                                           )}
                                         </td>
                                         <td style={{ color: '#22c55e' }}>{booking.netRevenue}</td>
