@@ -4038,7 +4038,10 @@ function RosterCalendar({
                             {booking.vehicle?.registration || booking.vehicle_registration}
                           </span>
                           {booking.secondary_carpark?.qualifies && (
-                            <span className="shift-booking-carpark" title={`Secondary car park — ${booking.secondary_carpark.reason}`}>P2</span>
+                            <>
+                              <span>|</span>
+                              <span className="shift-booking-carpark" title={`Secondary car park — ${booking.secondary_carpark.reason}`}>P2</span>
+                            </>
                           )}
                         </div>
                         {renderBookingActions && renderBookingActions(booking, 'dropoff')}
@@ -4110,7 +4113,10 @@ function RosterCalendar({
                             {booking.vehicle?.registration || booking.vehicle_registration}
                           </span>
                           {booking.secondary_carpark?.qualifies && (
-                            <span className="shift-booking-carpark" title={`Secondary car park — ${booking.secondary_carpark.reason}`}>P2</span>
+                            <>
+                              <span>|</span>
+                              <span className="shift-booking-carpark" title={`Secondary car park — ${booking.secondary_carpark.reason}`}>P2</span>
+                            </>
                           )}
                         </div>
                         {renderBookingActions && renderBookingActions(booking, 'pickup')}

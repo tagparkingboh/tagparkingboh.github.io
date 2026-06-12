@@ -3864,6 +3864,12 @@
   border: 1px solid rgba(37, 99, 235, 0.6);
 }
 
+/* Beat .booking-details-row span { color:#555 } — keep the chip text white */
+.booking-details-row .shift-booking-carpark,
+.shift-booking-header .shift-booking-carpark {
+  color: #fff;
+}
+
 .shift-booking-carpark {
   display: inline-flex;
   align-items: center;
