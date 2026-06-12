@@ -14008,36 +14008,116 @@ async def stripe_webhook(
     return {"status": "received", "type": event_type}
 
 
+STRIPE_REFUND_REASONS = {"requested_by_customer", "duplicate", "fraudulent"}
+
+
 @app.post("/api/admin/refund/{payment_intent_id}")
 async def admin_refund_payment(
     payment_intent_id: str,
     reason: str = Query("requested_by_customer", description="Refund reason"),
+    booking_id: Optional[int] = Query(
+        None,
+        description=(
+            "Cross-check: the booking this refund is for. When provided, the "
+            "payment intent must belong to that booking's payment."
+        ),
+    ),
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Refund a payment.
+    Admin endpoint: Refund a payment via the Stripe API (full refund).
 
-    Reasons:
+    Also writes the refund onto the local Payment row immediately so
+    Financials reflects it without waiting for the charge.refunded webhook
+    (which later writes the same fields — idempotent), and audit-logs who
+    refunded what.
+
+    Reasons (the three Stripe accepts):
     - requested_by_customer: Customer requested cancellation
     - duplicate: Duplicate payment
     - fraudulent: Fraudulent transaction
     """
+    from db_models import Payment as DbPaymentModel, Booking as DbBookingModel
+
     if not is_stripe_configured():
         raise HTTPException(
             status_code=503,
             detail="Payment system is not configured"
         )
+    if reason not in STRIPE_REFUND_REASONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"reason must be one of: {', '.join(sorted(STRIPE_REFUND_REASONS))}",
+        )
+
+    payment = db.query(DbPaymentModel).filter(
+        DbPaymentModel.stripe_payment_intent_id == payment_intent_id
+    ).first()
+
+    if isinstance(booking_id, int):
+        if payment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No payment with that payment intent on record",
+            )
+        if payment.booking_id != booking_id:
+            raise HTTPException(
+                status_code=409,
+                detail="That payment intent belongs to a different booking",
+            )
+
+    if payment is not None and payment.status == PaymentStatus.REFUNDED:
+        raise HTTPException(
+            status_code=409,
+            detail="This payment is already fully refunded",
+        )
 
     try:
         result = refund_payment(payment_intent_id, reason)
-        return {
-            "success": True,
-            "refund_id": result["refund_id"],
-            "status": result["status"],
-            "amount_refunded": f"£{result['amount'] / 100:.2f}",
-        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    booking_reference = None
+    if payment is not None:
+        refunded_amount = result.get("amount") or 0
+        payment.refund_id = result.get("refund_id")
+        payment.refund_amount_pence = refunded_amount
+        payment.refund_reason = reason
+        payment.refunded_at = datetime.utcnow()
+        if payment.amount_pence and refunded_amount >= payment.amount_pence:
+            payment.status = PaymentStatus.REFUNDED
+        else:
+            payment.status = PaymentStatus.PARTIALLY_REFUNDED
+
+        booking = db.query(DbBookingModel).filter(
+            DbBookingModel.id == payment.booking_id
+        ).first()
+        booking_reference = booking.reference if booking else None
+
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.BOOKING_REFUNDED,
+            booking_reference=booking_reference,
+            event_data={
+                "action": "admin_refund",
+                "admin": current_user.email if current_user else None,
+                "payment_intent_id": payment_intent_id,
+                "refund_id": result.get("refund_id"),
+                "refund_amount_pence": refunded_amount,
+                "reason": reason,
+            },
+        )
+        db.commit()
+
+    return {
+        "success": True,
+        "refund_id": result["refund_id"],
+        "status": result["status"],
+        "amount_refunded": f"£{result['amount'] / 100:.2f}",
+        "booking_reference": booking_reference,
+        "synced": payment is not None,
+    }
 
 
 # =============================================================================

@@ -373,6 +373,11 @@ function Admin() {
   const [sendingParkingUpdateId, setSendingParkingUpdateId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
+  const [showRefundModal, setShowRefundModal] = useState(false)
+  const [bookingToRefund, setBookingToRefund] = useState(null)
+  const [refundReason, setRefundReason] = useState('requested_by_customer')
+  const [processingRefund, setProcessingRefund] = useState(false)
+  const [refundModalError, setRefundModalError] = useState('')
   const [sendingCancellationEmailId, setSendingCancellationEmailId] = useState(null)
   const [showCancellationEmailModal, setShowCancellationEmailModal] = useState(false)
   const [bookingForCancellationEmail, setBookingForCancellationEmail] = useState(null)
@@ -4649,12 +4654,21 @@ function Admin() {
                booking.payment?.status?.toLowerCase() === 'succeeded' &&
                booking.status?.toLowerCase() !== 'refunded' &&
                booking.status?.toLowerCase() !== 'completed' && (
-                <button
-                  className="action-btn refund-btn"
-                  onClick={(e) => handleRefundClick(booking, e)}
-                >
-                  Process Refund
-                </button>
+                <>
+                  <button
+                    className="action-btn refund-btn"
+                    onClick={(e) => handleRefundBookingClick(booking, e)}
+                  >
+                    Refund Booking
+                  </button>
+                  <button
+                    className="action-btn"
+                    onClick={(e) => handleRefundClick(booking, e)}
+                    title="Open this payment in the Stripe dashboard (inspection or partial refunds)"
+                  >
+                    Open in Stripe ↗
+                  </button>
+                </>
               )}
               {booking.status?.toLowerCase() !== 'cancelled' &&
                booking.status?.toLowerCase() !== 'refunded' &&
@@ -5895,7 +5909,7 @@ function Admin() {
 
   const handleRefundClick = (booking, e) => {
     e.stopPropagation()
-    // Open Stripe dashboard to the payment intent
+    // Open Stripe dashboard to the payment intent (inspection / partial refunds)
     const paymentIntentId = booking.payment?.stripe_payment_intent_id
     if (paymentIntentId) {
       // Stripe dashboard URL for payment intent
@@ -5903,6 +5917,48 @@ function Admin() {
       window.open(stripeUrl, '_blank')
     } else {
       setError('No payment found for this booking')
+    }
+  }
+
+  const handleRefundBookingClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingToRefund(booking)
+    setRefundReason('requested_by_customer')
+    setRefundModalError('')
+    setShowRefundModal(true)
+  }
+
+  const handleConfirmRefundBooking = async () => {
+    if (!bookingToRefund) return
+    const paymentIntentId = bookingToRefund.payment?.stripe_payment_intent_id
+    if (!paymentIntentId) {
+      setRefundModalError('No payment intent on this booking.')
+      return
+    }
+
+    setProcessingRefund(true)
+    setRefundModalError('')
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/refund/${paymentIntentId}?booking_id=${bookingToRefund.id}&reason=${refundReason}`,
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        }
+      )
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        setShowRefundModal(false)
+        setBookingToRefund(null)
+        fetchBookings()
+      } else {
+        setRefundModalError(data.detail || 'Refund failed.')
+      }
+    } catch (err) {
+      console.error('Error processing refund:', err)
+      setRefundModalError('Network error processing refund.')
+    } finally {
+      setProcessingRefund(false)
     }
   }
 
@@ -16996,6 +17052,57 @@ function Admin() {
                 disabled={resendingEmailId}
               >
                 {resendingEmailId ? 'Sending...' : 'Yes, Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Booking Modal */}
+      {showRefundModal && bookingToRefund && (
+        <div className="modal-overlay" onClick={() => !processingRefund && setShowRefundModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Refund Booking</h3>
+            <p>
+              This issues a <strong>full refund of £{((bookingToRefund.payment?.amount_pence || 0) / 100).toFixed(2)}</strong> via
+              Stripe. It cannot be undone. Financials updates automatically;
+              the refund email stays a separate manual step.
+            </p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToRefund.reference}</p>
+              <p><strong>Customer:</strong> {bookingToRefund.customer?.first_name} {bookingToRefund.customer?.last_name}</p>
+            </div>
+            <label style={{ display: 'block', margin: '12px 0' }}>
+              <span style={{ display: 'block', marginBottom: '4px' }}><strong>Reason</strong></span>
+              <select
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                disabled={processingRefund}
+              >
+                <option value="requested_by_customer">Customer request</option>
+                <option value="duplicate">Duplicate payment</option>
+                <option value="fraudulent">Fraudulent</option>
+              </select>
+            </label>
+            {refundModalError && (
+              <p style={{ color: '#ef4444', fontSize: '13px' }}>{refundModalError}</p>
+            )}
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowRefundModal(false)}
+                disabled={processingRefund}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleConfirmRefundBooking}
+                disabled={processingRefund}
+              >
+                {processingRefund
+                  ? 'Refunding...'
+                  : `Refund £${((bookingToRefund.payment?.amount_pence || 0) / 100).toFixed(2)}`}
               </button>
             </div>
           </div>

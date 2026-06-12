@@ -560,11 +560,26 @@ class TestAdminRefund:
 
     @pytest.fixture(autouse=True)
     def override_admin_dependency(self, mock_admin_user):
-        """Override require_admin dependency for all tests in this class."""
+        """Override require_admin + get_db for all tests in this class.
+        The refund endpoint now reads/writes the local Payment row; these
+        tests cover the no-payment-on-record path (synced=False)."""
         from main import app, require_admin
+        from database import get_db
+
+        db = MagicMock()
+        chain = MagicMock()
+        chain.filter.return_value = chain
+        chain.first.return_value = None
+        db.query.return_value = chain
+
+        def gen():
+            yield db
+
         app.dependency_overrides[require_admin] = lambda: mock_admin_user
+        app.dependency_overrides[get_db] = gen
         yield
         app.dependency_overrides.pop(require_admin, None)
+        app.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
     async def test_refund_not_configured(self, client):

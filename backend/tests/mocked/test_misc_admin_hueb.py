@@ -267,20 +267,53 @@ class TestAdminRefund:
     def teardown_method(self):
         _clear()
 
+    def _refund_db(self, payment=None, booking=None):
+        """Model-aware db: the endpoint now reads Payment (by PI) and Booking."""
+        from db_models import Payment as DbPayment, Booking as DbBooking
+        db = MagicMock()
+
+        def _query(model, *args):
+            chain = MagicMock()
+            chain.filter.return_value = chain
+            if model is DbPayment:
+                chain.first.return_value = payment
+            elif model is DbBooking:
+                chain.first.return_value = booking
+            else:
+                chain.first.return_value = None
+            return chain
+
+        db.query.side_effect = _query
+        return db
+
     def test_H_refunds(self, monkeypatch):
+        from types import SimpleNamespace
+        from db_models import PaymentStatus
         monkeypatch.setattr(main, "is_stripe_configured", lambda: True)
         monkeypatch.setattr(main, "refund_payment", lambda pid, reason: {
             "refund_id": "re_1", "status": "succeeded", "amount": 9900,
         })
-        _override_admin(MagicMock())
+        payment = SimpleNamespace(
+            booking_id=42, amount_pence=9900, status=PaymentStatus.SUCCEEDED,
+            refund_id=None, refund_amount_pence=None, refund_reason=None,
+            refunded_at=None,
+        )
+        booking = SimpleNamespace(id=42, reference="TAG-1")
+        _override_admin(self._refund_db(payment, booking))
         resp = TestClient(app).post("/api/admin/refund/pi_123")
         assert resp.status_code == 200
         assert resp.json()["refund_id"] == "re_1"
         assert resp.json()["amount_refunded"] == "£99.00"
+        assert resp.json()["booking_reference"] == "TAG-1"
+        assert resp.json()["synced"] is True
+        # Write-through: local Payment row updated without waiting for webhook
+        assert payment.refund_id == "re_1"
+        assert payment.refund_amount_pence == 9900
+        assert payment.status == PaymentStatus.REFUNDED
 
     def test_U_stripe_not_configured(self, monkeypatch):
         monkeypatch.setattr(main, "is_stripe_configured", lambda: False)
-        _override_admin(MagicMock())
+        _override_admin(self._refund_db())
         resp = TestClient(app).post("/api/admin/refund/pi_123")
         assert resp.status_code == 503
 
@@ -289,7 +322,7 @@ class TestAdminRefund:
         def boom(pid, reason):
             raise RuntimeError("Stripe error: charge already refunded")
         monkeypatch.setattr(main, "refund_payment", boom)
-        _override_admin(MagicMock())
+        _override_admin(self._refund_db())
         resp = TestClient(app).post("/api/admin/refund/pi_123")
         assert resp.status_code == 400
         assert "already refunded" in resp.json()["detail"].lower()
@@ -301,10 +334,12 @@ class TestAdminRefund:
             captured["reason"] = reason
             return {"refund_id": "re_2", "status": "succeeded", "amount": 5000}
         monkeypatch.setattr(main, "refund_payment", fake)
-        _override_admin(MagicMock())
+        _override_admin(self._refund_db())
         resp = TestClient(app).post("/api/admin/refund/pi_123?reason=duplicate")
         assert resp.status_code == 200
         assert captured["reason"] == "duplicate"
+        # No payment row on record → Stripe refund still goes through, unsynced
+        assert resp.json()["synced"] is False
 
 
 # ============================================================================

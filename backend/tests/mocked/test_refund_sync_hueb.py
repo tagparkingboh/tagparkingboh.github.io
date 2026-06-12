@@ -372,3 +372,101 @@ class TestLookupRefund:
         assert result["refund_amount_pence"] == 3000
         assert result["charge_amount_pence"] is None
         assert result["fully_refunded"] is False
+
+
+class TestAdminRefundCta:
+    """POST /api/admin/refund/{pi} hardenings for the Refund Booking CTA:
+    booking cross-check, already-refunded guard, reason allowlist, and the
+    immediate local write-through."""
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    def _post(self, db, monkeypatch, pi="pi_456", refund_result=None, **params):
+        monkeypatch.setattr(main, "is_stripe_configured", lambda: True)
+        monkeypatch.setattr(
+            main, "refund_payment",
+            lambda _pi, _reason: refund_result or {
+                "refund_id": "re_cta", "status": "succeeded", "amount": 8100,
+            },
+        )
+        _override(db)
+        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        return TestClient(app).post(f"/api/admin/refund/{pi}?{qs}")
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_cross_checked_refund_writes_through(self, monkeypatch):
+        payment = _payment(stripe_payment_intent_id="pi_456")
+        db = _model_db({
+            Payment: {"first": payment},
+            Booking: {"first": _booking(payment)},
+        })
+
+        resp = self._post(db, monkeypatch, booking_id=42)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["synced"] is True
+        assert body["booking_reference"] == "TAG-2NSWW130"
+        assert payment.refund_id == "re_cta"
+        assert payment.refund_amount_pence == 8100
+        assert payment.refund_reason == "requested_by_customer"
+        assert payment.status == PaymentStatus.REFUNDED
+
+    def test_H_partial_stripe_amount_marks_partially_refunded(self, monkeypatch):
+        payment = _payment(stripe_payment_intent_id="pi_456")
+        db = _model_db({
+            Payment: {"first": payment},
+            Booking: {"first": _booking(payment)},
+        })
+
+        resp = self._post(
+            db, monkeypatch, booking_id=42,
+            refund_result={"refund_id": "re_cta", "status": "succeeded", "amount": 3000},
+        )
+
+        assert resp.status_code == 200
+        assert payment.status == PaymentStatus.PARTIALLY_REFUNDED
+
+    # --- UNHAPPY -------------------------------------------------------------
+
+    def test_U_booking_mismatch_conflicts(self, monkeypatch):
+        payment = _payment(stripe_payment_intent_id="pi_456", booking_id=99)
+        db = _model_db({Payment: {"first": payment}})
+
+        resp = self._post(db, monkeypatch, booking_id=42)
+
+        assert resp.status_code == 409
+        assert "different booking" in resp.json()["detail"]
+
+    def test_U_booking_id_with_no_payment_on_record(self, monkeypatch):
+        db = _model_db({Payment: {"first": None}})
+        resp = self._post(db, monkeypatch, booking_id=42)
+        assert resp.status_code == 404
+
+    def test_U_already_refunded_guard(self, monkeypatch):
+        payment = _payment(
+            stripe_payment_intent_id="pi_456", status=PaymentStatus.REFUNDED,
+        )
+        db = _model_db({Payment: {"first": payment}})
+
+        resp = self._post(db, monkeypatch, booking_id=42)
+
+        assert resp.status_code == 409
+        assert "already" in resp.json()["detail"].lower()
+
+    def test_U_invalid_reason_rejected(self, monkeypatch):
+        db = _model_db({Payment: {"first": None}})
+        resp = self._post(db, monkeypatch, reason="because")
+        assert resp.status_code == 400
+        assert "reason" in resp.json()["detail"]
+
+    # --- EDGE ----------------------------------------------------------------
+
+    def test_E_without_booking_id_no_payment_still_refunds_unsynced(self, monkeypatch):
+        db = _model_db({Payment: {"first": None}})
+        resp = self._post(db, monkeypatch)
+        assert resp.status_code == 200
+        assert resp.json()["synced"] is False
+        assert resp.json()["booking_reference"] is None
