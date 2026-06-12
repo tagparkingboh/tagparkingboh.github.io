@@ -181,7 +181,10 @@ _booking_locations_cache = {
     "bookings": {"data": None, "cached_at": None},
     "origins": {"data": None, "cached_at": None},
 }
-_occupancy_cache = {"data": None, "cached_at": None}
+# Keyed by view ('daily'/'weekly'/'monthly') — a single shared slot served
+# the cached DAILY payload to weekly/monthly requests for up to an hour,
+# making the view switcher appear dead (2026-06-13).
+_occupancy_cache = {}
 _popular_cache = {"data": None, "cached_at": None}
 _fun_facts_cache = {"data": None, "cached_at": None}
 _financial_cache = {"data": None, "cached_at": None}
@@ -5694,7 +5697,7 @@ async def upsert_admin_capacity_setting(
         raise HTTPException(status_code=400, detail=str(exc))
 
     global _occupancy_cache
-    _occupancy_cache = {"data": None, "cached_at": None}
+    _occupancy_cache = {}
     return {
         "success": True,
         "setting": db_service.serialize_capacity_setting(setting),
@@ -5735,10 +5738,11 @@ async def get_occupancy_report(
     # Check cache
     global _occupancy_cache
     if is_default_request and not refresh:
-        if _occupancy_cache.get("data") is not None and _occupancy_cache.get("cached_at") is not None:
-            cache_age = (now - _occupancy_cache["cached_at"]).total_seconds()
+        cache_slot = _occupancy_cache.get(view) or {}
+        if cache_slot.get("data") is not None and cache_slot.get("cached_at") is not None:
+            cache_age = (now - cache_slot["cached_at"]).total_seconds()
             if cache_age < REPORT_CACHE_DURATION_SECONDS:
-                cached_response = _occupancy_cache["data"].copy()
+                cached_response = cache_slot["data"].copy()
                 cached_response["cached"] = True
                 cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
                 return cached_response
@@ -5825,8 +5829,7 @@ async def get_occupancy_report(
             "data": data,
         }
         if is_default_request:
-            _occupancy_cache["data"] = result.copy()
-            _occupancy_cache["cached_at"] = now
+            _occupancy_cache[view] = {"data": result.copy(), "cached_at": now}
         result["cached"] = False
         return result
 
@@ -5903,8 +5906,7 @@ async def get_occupancy_report(
             "data": data,
         }
         if is_default_request:
-            _occupancy_cache["data"] = result.copy()
-            _occupancy_cache["cached_at"] = now
+            _occupancy_cache[view] = {"data": result.copy(), "cached_at": now}
         result["cached"] = False
         return result
 
@@ -5981,8 +5983,7 @@ async def get_occupancy_report(
             "data": data,
         }
         if is_default_request:
-            _occupancy_cache["data"] = result.copy()
-            _occupancy_cache["cached_at"] = now
+            _occupancy_cache[view] = {"data": result.copy(), "cached_at": now}
         result["cached"] = False
         return result
 

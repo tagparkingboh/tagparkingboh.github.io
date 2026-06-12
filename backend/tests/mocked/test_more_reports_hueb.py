@@ -44,7 +44,7 @@ def _reset_caches():
     except Exception:
         pass
     try:
-        main._occupancy_cache = {"data": None, "cached_at": None}
+        main._occupancy_cache = {}
     except Exception:
         pass
     try:
@@ -258,14 +258,44 @@ class TestOccupancyReport:
 
     def test_E_cache_hit(self):
         main._occupancy_cache = {
-            "data": {"view": "daily", "data": [], "max_capacity": 64,
-                     "start_date": "2026-05-15", "end_date": "2026-05-25"},
-            "cached_at": datetime.now(UK),
+            "daily": {
+                "data": {"view": "daily", "data": [], "max_capacity": 64,
+                         "start_date": "2026-05-15", "end_date": "2026-05-25"},
+                "cached_at": datetime.now(UK),
+            },
         }
         _override(self._wire([]))
         # No start_date/end_date params = default request → cache hit
         resp = TestClient(app).get("/api/admin/reports/occupancy")
         assert resp.json().get("cached") is True
+
+    def test_E_cache_is_per_view_so_switching_views_returns_fresh_data(self):
+        """Regression (2026-06-13): a single shared cache slot served the
+        cached DAILY payload to weekly/monthly requests, so the Occupancy
+        view switcher appeared to do nothing for up to an hour."""
+        main._occupancy_cache = {
+            "daily": {
+                "data": {"view": "daily", "data": [], "max_capacity": 64,
+                         "start_date": "2026-05-15", "end_date": "2026-05-25"},
+                "cached_at": datetime.now(UK),
+            },
+        }
+        _override(self._wire([]))
+        resp = TestClient(app).get("/api/admin/reports/occupancy?view=weekly")
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["view"] == "weekly"          # NOT the cached daily payload
+        assert body.get("cached") is not True    # freshly computed
+        # And the weekly result now occupies its own cache slot.
+        assert "weekly" in main._occupancy_cache
+
+    def test_B_second_request_for_same_view_hits_its_own_slot(self):
+        _override(self._wire([]))
+        first = TestClient(app).get("/api/admin/reports/occupancy?view=monthly")
+        assert first.json().get("cached") is not True
+        second = TestClient(app).get("/api/admin/reports/occupancy?view=monthly")
+        assert second.json().get("cached") is True
+        assert second.json()["view"] == "monthly"
 
 
 # ============================================================================
