@@ -204,6 +204,54 @@ def refund_payment(payment_intent_id: str, reason: str = "requested_by_customer"
     }
 
 
+def lookup_refund(stripe_id: str) -> dict:
+    """Resolve a refund id (re_...) or payment intent id (pi_...) pasted from
+    the Stripe dashboard into canonical refund facts for the financials
+    refund-sync edit.
+
+    Returns the CUMULATIVE refunded amount from the charge (partial refunds
+    accumulate on charge.amount_refunded), the payment intent so callers can
+    back-fill it onto the Payment row, and a fully_refunded flag derived from
+    the charge totals.
+
+    Raises ValueError for unusable ids; Stripe API errors propagate.
+    """
+    init_stripe()
+    stripe_id = (stripe_id or "").strip()
+
+    if stripe_id.startswith("re_"):
+        refund = stripe.Refund.retrieve(stripe_id)
+    elif stripe_id.startswith("pi_"):
+        refunds = stripe.Refund.list(payment_intent=stripe_id, limit=1)
+        if not refunds.data:
+            raise ValueError(f"No refunds found on payment intent {stripe_id}")
+        refund = refunds.data[0]
+    else:
+        raise ValueError("Stripe id must start with re_ (refund) or pi_ (payment intent)")
+
+    if refund.status != "succeeded":
+        raise ValueError(f"Refund {refund.id} has status '{refund.status}', not succeeded")
+
+    charge = None
+    charge_id = getattr(refund, "charge", None)
+    if charge_id:
+        charge = stripe.Charge.retrieve(charge_id)
+
+    total_refunded = charge.amount_refunded if charge is not None else refund.amount
+    charge_amount = charge.amount if charge is not None else None
+
+    return {
+        "refund_id": refund.id,
+        "payment_intent_id": getattr(refund, "payment_intent", None),
+        "refund_amount_pence": total_refunded,
+        "latest_refund_amount_pence": refund.amount,
+        "charge_amount_pence": charge_amount,
+        "reason": getattr(refund, "reason", None),
+        "refunded_at_ts": getattr(refund, "created", None),
+        "fully_refunded": bool(charge_amount and total_refunded >= charge_amount),
+    }
+
+
 def cancel_payment_intent(payment_intent_id: str) -> dict:
     """
     Cancel a PaymentIntent in Stripe.

@@ -2264,45 +2264,77 @@ function Admin() {
     }
   }
 
-  const saveFinancialOverride = async (bookingId, grossPounds, discountPounds, promoValue, initialPromo) => {
+  const saveFinancialOverride = async (bookingId, editing) => {
     setSavingFinancialOverride(true)
+    const fail = (message) => setEditingFinancialBooking(prev => prev ? { ...prev, error: message } : prev)
     try {
-      const grossPence = Math.round(parseFloat(grossPounds) * 100)
-      const discountPence = Math.round(parseFloat(discountPounds || '0') * 100)
-
-      let url = `${API_URL}/api/admin/bookings/${bookingId}/financial-override?gross_pence=${grossPence}&discount_pence=${discountPence}`
+      const grossPence = Math.round(parseFloat(editing.gross) * 100)
+      const discountPence = Math.round(parseFloat(editing.discount || '0') * 100)
       // Only send promo_code when the admin changed it — omitting it leaves
       // attribution untouched; an empty value clears it.
-      const trimmedPromo = (promoValue ?? '').trim()
-      if (trimmedPromo !== (initialPromo ?? '').trim()) {
-        url += `&promo_code=${encodeURIComponent(trimmedPromo)}`
+      const trimmedPromo = (editing.promo ?? '').trim()
+      const promoChanged = trimmedPromo !== (editing.initialPromo ?? '').trim()
+      const figuresChanged = grossPence !== editing.initialGrossPence
+        || discountPence !== editing.initialDiscountPence
+
+      if (figuresChanged || promoChanged) {
+        let url = `${API_URL}/api/admin/bookings/${bookingId}/financial-override?gross_pence=${grossPence}&discount_pence=${discountPence}`
+        if (promoChanged) {
+          url += `&promo_code=${encodeURIComponent(trimmedPromo)}`
+        }
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          console.error('Failed to save financial override', data)
+          fail(data.detail || 'Failed to save financial override.')
+          return
+        }
       }
 
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        setEditingFinancialBooking(null)
-        // Refresh the financial report to show updated values (force refresh to bypass cache)
-        await fetchFinancialReport(true)
-      } else {
+      // Refund sync: a Stripe id (re_/pi_) fetches verified figures from
+      // Stripe; a plain number records a manual refund amount in pounds.
+      const refundField = (editing.refund ?? '').trim()
+      let refundWarning = null
+      if (refundField) {
+        let url = `${API_URL}/api/admin/bookings/${bookingId}/refund-sync?`
+        if (/^(re_|pi_)/.test(refundField)) {
+          url += `stripe_id=${encodeURIComponent(refundField)}`
+        } else {
+          const pounds = parseFloat(refundField)
+          if (Number.isNaN(pounds)) {
+            fail('Refund must be a Stripe id (re_… / pi_…) or an amount in pounds.')
+            return
+          }
+          url += `refund_pence=${Math.round(pounds * 100)}`
+        }
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
         const data = await response.json().catch(() => ({}))
-        console.error('Failed to save financial override', data)
-        setEditingFinancialBooking(prev => prev ? {
-          ...prev,
-          error: data.detail || 'Failed to save financial override.',
-        } : prev)
+        if (!response.ok) {
+          console.error('Failed to sync refund', data)
+          fail(data.detail || 'Failed to record the refund.')
+          return
+        }
+        refundWarning = data.warning || null
+      }
+
+      // Refresh the financial report to show updated values (force refresh to bypass cache)
+      await fetchFinancialReport(true)
+      if (refundWarning) {
+        // Saved, but Stripe's charge total didn't match the recorded payment
+        // — keep the row open so the admin sees it.
+        fail(`Saved — ${refundWarning}`)
+      } else {
+        setEditingFinancialBooking(null)
       }
     } catch (err) {
       console.error('Error saving financial override:', err)
-      setEditingFinancialBooking(prev => prev ? {
-        ...prev,
-        error: 'Network error saving financial override.',
-      } : prev)
+      fail('Network error saving financial changes.')
     } finally {
       setSavingFinancialOverride(false)
     }
@@ -14236,8 +14268,11 @@ function Admin() {
                                                   id: booking.id,
                                                   gross: booking.grossPence ? (booking.grossPence / 100).toFixed(2) : '',
                                                   discount: booking.discountPence ? (booking.discountPence / 100).toFixed(2) : '',
+                                                  initialGrossPence: booking.grossPence || 0,
+                                                  initialDiscountPence: booking.discountPence || 0,
                                                   promo: booking.promoCode || '',
                                                   initialPromo: booking.promoCode || '',
+                                                  refund: '',
                                                 })}
                                                 title="Edit financial values"
                                               >
@@ -14267,7 +14302,21 @@ function Admin() {
                                         </td>
                                         <td>{booking.netPrice}</td>
                                         <td style={{ color: booking.refundAmount ? '#ef4444' : 'inherit' }}>
-                                          {booking.refundAmount || '-'}
+                                          {editingFinancialBooking?.id === booking.id ? (
+                                            <input
+                                              type="text"
+                                              className="financial-edit-input"
+                                              value={editingFinancialBooking.refund}
+                                              onChange={(e) => setEditingFinancialBooking({
+                                                ...editingFinancialBooking,
+                                                refund: e.target.value
+                                              })}
+                                              placeholder="re_… / £"
+                                              title="Paste a Stripe refund id (re_…) or payment intent (pi_…) to sync from Stripe, or type a refund amount in pounds"
+                                            />
+                                          ) : (
+                                            booking.refundAmount || '-'
+                                          )}
                                         </td>
                                         <td style={{ color: '#22c55e' }}>{booking.netRevenue}</td>
                                         <td>
@@ -14275,13 +14324,7 @@ function Admin() {
                                             <div className="edit-actions">
                                               <button
                                                 className="save-btn-inline"
-                                                onClick={() => saveFinancialOverride(
-                                                  booking.id,
-                                                  editingFinancialBooking.gross,
-                                                  editingFinancialBooking.discount,
-                                                  editingFinancialBooking.promo,
-                                                  editingFinancialBooking.initialPromo
-                                                )}
+                                                onClick={() => saveFinancialOverride(booking.id, editingFinancialBooking)}
                                                 disabled={savingFinancialOverride || !editingFinancialBooking.gross}
                                                 title="Save"
                                               >

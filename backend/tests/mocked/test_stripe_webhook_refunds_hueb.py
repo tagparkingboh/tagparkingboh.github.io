@@ -204,3 +204,116 @@ class TestRefundUpdated:
         resp = TestClient(app).post("/api/webhooks/stripe", json={},
                                      headers={"Stripe-Signature": "bad"})
         assert resp.status_code == 400
+
+
+class TestChargeRefundedManualBookingFallback:
+    """Manual bookings paid via Stripe Payment Link have no payment intent on
+    file, so the PI match finds nothing and dashboard refunds used to vanish.
+    The fallback matches the charge's booking_reference metadata and
+    back-fills the PI."""
+
+    def teardown_method(self):
+        _clear()
+
+    def _wire_models(self, booking):
+        from db_models import Booking, Payment
+        db = MagicMock()
+
+        def _query(model, *args):
+            chain = MagicMock()
+            chain.filter.return_value = chain
+            if model is Payment:
+                chain.first.return_value = None  # no PI match
+            elif model is Booking:
+                chain.first.return_value = booking
+            else:
+                chain.first.return_value = None
+            return chain
+
+        db.query.side_effect = _query
+        return db
+
+    def _post(self, monkeypatch, evt, db):
+        monkeypatch.setattr(main, "is_stripe_configured", lambda: True)
+        monkeypatch.setattr(main, "verify_webhook_signature", lambda payload, sig: evt)
+        monkeypatch.setattr(main, "log_audit_event", lambda **kw: None)
+        _override(db)
+        return TestClient(app).post("/api/webhooks/stripe", json={},
+                                    headers={"Stripe-Signature": "t=1,v1=s"})
+
+    def test_H_metadata_reference_matches_and_backfills_pi(self, monkeypatch):
+        from db_models import PaymentStatus
+        p = _payment(stripe_payment_intent_id=None)
+        booking = SimpleNamespace(id=42, reference="TAG-MANUAL1", payment=p)
+        evt = _stripe_event("charge.refunded", {
+            "id": "ch_9",
+            "amount": 9900,
+            "amount_refunded": 9900,
+            "payment_intent": "pi_manual_9",
+            "metadata": {"booking_reference": "TAG-MANUAL1"},
+            "refunds": SimpleNamespace(data=[{"id": "re_manual_9"}]),
+        })
+
+        resp = self._post(monkeypatch, evt, self._wire_models(booking))
+
+        assert resp.status_code == 200
+        assert p.stripe_payment_intent_id == "pi_manual_9"  # back-filled
+        assert p.refund_id == "re_manual_9"
+        assert p.refund_amount_pence == 9900
+        assert p.status == PaymentStatus.REFUNDED
+
+    def test_E_partial_refund_via_fallback(self, monkeypatch):
+        from db_models import PaymentStatus
+        p = _payment(stripe_payment_intent_id=None)
+        booking = SimpleNamespace(id=42, reference="TAG-MANUAL1", payment=p)
+        evt = _stripe_event("charge.refunded", {
+            "id": "ch_9",
+            "amount": 9900,
+            "amount_refunded": 2500,
+            "payment_intent": "pi_manual_9",
+            "metadata": {"booking_reference": "TAG-MANUAL1"},
+            "refunds": SimpleNamespace(data=[{"id": "re_manual_9"}]),
+        })
+
+        resp = self._post(monkeypatch, evt, self._wire_models(booking))
+
+        assert resp.status_code == 200
+        assert p.status == PaymentStatus.PARTIALLY_REFUNDED
+        assert p.refund_amount_pence == 2500
+
+    def test_U_no_metadata_reference_stays_unmatched(self, monkeypatch):
+        p = _payment(stripe_payment_intent_id=None)
+        booking = SimpleNamespace(id=42, reference="TAG-MANUAL1", payment=p)
+        evt = _stripe_event("charge.refunded", {
+            "id": "ch_9",
+            "amount": 9900,
+            "amount_refunded": 9900,
+            "payment_intent": "pi_manual_9",
+            "metadata": {},
+            "refunds": SimpleNamespace(data=[{"id": "re_manual_9"}]),
+        })
+
+        resp = self._post(monkeypatch, evt, self._wire_models(booking))
+
+        assert resp.status_code == 200
+        assert p.refund_amount_pence == 0  # untouched
+        assert p.stripe_payment_intent_id is None
+
+    def test_E_existing_pi_not_overwritten_by_fallback(self, monkeypatch):
+        """If the fallback booking's payment somehow has a different PI, the
+        refund still records but the stored PI is preserved."""
+        p = _payment(stripe_payment_intent_id="pi_already")
+        booking = SimpleNamespace(id=42, reference="TAG-MANUAL1", payment=p)
+        evt = _stripe_event("charge.refunded", {
+            "id": "ch_9",
+            "amount": 9900,
+            "amount_refunded": 9900,
+            "payment_intent": "pi_manual_9",
+            "metadata": {"booking_reference": "TAG-MANUAL1"},
+            "refunds": SimpleNamespace(data=[{"id": "re_manual_9"}]),
+        })
+
+        resp = self._post(monkeypatch, evt, self._wire_models(booking))
+
+        assert resp.status_code == 200
+        assert p.stripe_payment_intent_id == "pi_already"

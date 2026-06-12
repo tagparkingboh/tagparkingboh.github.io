@@ -6732,6 +6732,182 @@ async def update_booking_financial_override(
     }
 
 
+@app.put("/api/admin/bookings/{booking_id}/refund-sync")
+async def sync_booking_refund(
+    booking_id: int,
+    stripe_id: Optional[str] = Query(
+        None,
+        description="Stripe refund id (re_...) or payment intent id (pi_...) to sync from",
+    ),
+    refund_pence: Optional[int] = Query(
+        None,
+        description="Manual refund amount in pence — only when no Stripe object exists",
+    ),
+    refund_reason: Optional[str] = Query(None, description="Optional reason note"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Record a refund against a booking's payment in Financials.
+
+    Two modes:
+      - stripe_id: fetches the refund from Stripe, records the verified
+        cumulative amount, and back-fills the payment intent onto the Payment
+        row so future Stripe webhook events match this booking automatically.
+      - refund_pence: manual entry for refunds with no Stripe object.
+
+    Writes the same Payment fields the refund webhook writes (amount, id,
+    timestamp, REFUNDED/PARTIALLY_REFUNDED status). Booking status is not
+    touched — that stays owned by the cancel/refund flows.
+    """
+    from db_models import Booking as DbBookingModel, Payment as DbPaymentModel
+
+    has_stripe_id = isinstance(stripe_id, str) and stripe_id.strip() != ""
+    has_manual_amount = isinstance(refund_pence, int)
+    if has_stripe_id == has_manual_amount:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of stripe_id or refund_pence",
+        )
+
+    booking = db.query(DbBookingModel).filter(DbBookingModel.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    payment = booking.payment
+    if not payment:
+        raise HTTPException(status_code=404, detail="Booking has no payment record")
+
+    old = {
+        "refund_amount_pence": payment.refund_amount_pence,
+        "refund_id": payment.refund_id,
+        "status": payment.status.value if payment.status else None,
+    }
+
+    recorded = {}
+    warning = None
+
+    if has_manual_amount:
+        if payment.refund_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This payment already has a Stripe refund on record — "
+                    "paste the Stripe id to re-sync instead of entering an amount."
+                ),
+            )
+        if refund_pence <= 0:
+            raise HTTPException(status_code=400, detail="Refund amount must be positive")
+        if payment.amount_pence and refund_pence > payment.amount_pence:
+            raise HTTPException(
+                status_code=400,
+                detail="Refund cannot exceed the amount paid",
+            )
+
+        payment.refund_amount_pence = refund_pence
+        payment.refund_reason = refund_reason
+        payment.refunded_at = datetime.utcnow()
+        payment.status = (
+            PaymentStatus.REFUNDED
+            if payment.amount_pence and refund_pence >= payment.amount_pence
+            else PaymentStatus.PARTIALLY_REFUNDED
+        )
+        recorded = {"source": "manual", "refund_amount_pence": refund_pence}
+
+    else:
+        if not is_stripe_configured():
+            raise HTTPException(status_code=503, detail="Payment system is not configured")
+        from stripe_service import lookup_refund
+        try:
+            result = lookup_refund(stripe_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Stripe lookup failed: {exc}")
+
+        result_pi = result.get("payment_intent_id")
+        if (
+            payment.stripe_payment_intent_id
+            and result_pi
+            and payment.stripe_payment_intent_id != result_pi
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "That Stripe refund belongs to a different payment intent "
+                    "than the one on this booking."
+                ),
+            )
+        if result_pi:
+            other = db.query(DbPaymentModel).filter(
+                DbPaymentModel.stripe_payment_intent_id == result_pi,
+                DbPaymentModel.booking_id != booking_id,
+            ).first()
+            if other:
+                other_booking = db.query(DbBookingModel).filter(
+                    DbBookingModel.id == other.booking_id
+                ).first()
+                other_ref = other_booking.reference if other_booking else "another booking"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"That payment intent already belongs to {other_ref}.",
+                )
+            # Back-fill: future Stripe webhook events now match this booking.
+            payment.stripe_payment_intent_id = result_pi
+
+        payment.refund_id = result["refund_id"]
+        payment.refund_amount_pence = result["refund_amount_pence"]
+        payment.refund_reason = refund_reason or result.get("reason")
+        if result.get("refunded_at_ts"):
+            payment.refunded_at = datetime.utcfromtimestamp(result["refunded_at_ts"])
+        else:
+            payment.refunded_at = datetime.utcnow()
+        if result.get("fully_refunded"):
+            payment.status = PaymentStatus.REFUNDED
+        elif payment.amount_pence and result["refund_amount_pence"] >= payment.amount_pence:
+            payment.status = PaymentStatus.REFUNDED
+        else:
+            payment.status = PaymentStatus.PARTIALLY_REFUNDED
+
+        if (
+            result.get("charge_amount_pence") is not None
+            and payment.amount_pence
+            and result["charge_amount_pence"] != payment.amount_pence
+        ):
+            warning = (
+                f"Stripe charge total (£{result['charge_amount_pence'] / 100:.2f}) "
+                f"differs from the recorded payment (£{payment.amount_pence / 100:.2f})."
+            )
+        recorded = {
+            "source": "stripe_sync",
+            "refund_id": result["refund_id"],
+            "payment_intent_id": result_pi,
+            "refund_amount_pence": result["refund_amount_pence"],
+        }
+
+    log_audit_event(
+        db=db,
+        event=AuditLogEvent.BOOKING_REFUNDED,
+        booking_reference=booking.reference,
+        event_data={
+            "action": "refund_sync",
+            "admin": current_user.email if current_user else None,
+            "old": old,
+            "recorded": recorded,
+        },
+    )
+    db.commit()
+
+    return {
+        "success": True,
+        "booking_id": booking_id,
+        "refund_amount_pence": payment.refund_amount_pence,
+        "refund_id": payment.refund_id,
+        "payment_status": payment.status.value if payment.status else None,
+        "warning": warning,
+        **recorded,
+    }
+
+
 @app.get("/api/admin/reports/financial")
 async def get_financial_report(
     from_date: str = Query(None, description="Start date DD/MM/YYYY"),
@@ -13721,33 +13897,50 @@ async def stripe_webhook(
         refund_amount = data["amount_refunded"] if "amount_refunded" in data else 0
         original_amount = data["amount"] if "amount" in data else 0
         payment_intent_id = data["payment_intent"] if "payment_intent" in data else None
-        metadata = getattr(data, "metadata", {}) or {}
+        # StripeObject subclasses dict, so dict access works for real events
+        # AND plain-dict test payloads; getattr-only missed dict payloads.
+        metadata = (data.get("metadata") if isinstance(data, dict) else getattr(data, "metadata", None)) or {}
         booking_reference = metadata.get("booking_reference") if isinstance(metadata, dict) else getattr(metadata, "booking_reference", None)
 
-        # Get refund details from the refunds list
-        refunds_obj = getattr(data, "refunds", None)
-        refunds_list = refunds_obj.data if refunds_obj and hasattr(refunds_obj, 'data') else []
+        # Get refund details from the refunds list (dict-first access — same
+        # StripeObject/plain-dict duality as metadata above)
+        refunds_obj = data.get("refunds") if isinstance(data, dict) else getattr(data, "refunds", None)
+        refunds_list = refunds_obj.data if refunds_obj is not None and hasattr(refunds_obj, 'data') else []
         latest_refund_id = refunds_list[0]["id"] if refunds_list and len(refunds_list) > 0 else None
 
         # Update Payment record with refund information
+        payment = None
         if payment_intent_id:
             payment = db.query(Payment).filter(
                 Payment.stripe_payment_intent_id == payment_intent_id
             ).first()
 
-            if payment:
-                payment.refund_amount_pence = refund_amount
-                payment.refunded_at = datetime.utcnow()
-                if latest_refund_id:
-                    payment.refund_id = latest_refund_id
+        # Fallback for manual bookings paid via Stripe Payment Link: their
+        # Payment row never stored a payment intent, so the PI match above
+        # finds nothing and dashboard refunds used to vanish (2026-06-12
+        # financials sync gap). Payment-link charges carry the link's
+        # booking_reference metadata — match on that and back-fill the PI so
+        # future events for this charge match directly.
+        if payment is None and booking_reference:
+            fallback_booking = db_service.get_booking_by_reference(db, booking_reference)
+            if fallback_booking and fallback_booking.payment:
+                payment = fallback_booking.payment
+                if payment.stripe_payment_intent_id is None and payment_intent_id:
+                    payment.stripe_payment_intent_id = payment_intent_id
 
-                # Set status based on refund amount
-                if refund_amount >= original_amount:
-                    payment.status = PaymentStatus.REFUNDED
-                else:
-                    payment.status = PaymentStatus.PARTIALLY_REFUNDED
+        if payment:
+            payment.refund_amount_pence = refund_amount
+            payment.refunded_at = datetime.utcnow()
+            if latest_refund_id:
+                payment.refund_id = latest_refund_id
 
-                db.commit()
+            # Set status based on refund amount
+            if refund_amount >= original_amount:
+                payment.status = PaymentStatus.REFUNDED
+            else:
+                payment.status = PaymentStatus.PARTIALLY_REFUNDED
+
+            db.commit()
 
         # Log refund
         log_audit_event(
