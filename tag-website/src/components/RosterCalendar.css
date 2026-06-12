@@ -3911,3 +3911,19 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   border: 1px solid #11131c;
 }
+
+/* Mobile: stack the shift booking header — icon + booking ref get the full
+   first line (no more wrapped TAG- references), reg plate + customer name
+   take the second. */
+@media (max-width: 600px) {
+  .shift-booking-header {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 6px;
+  }
+
+  .shift-booking-header .shift-booking-ref {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
