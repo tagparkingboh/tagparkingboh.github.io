@@ -1861,6 +1861,7 @@ async def get_all_bookings(
             promo_usages[usage.booking_id] = usage
 
     # Format bookings for frontend
+    secondary_settings = db_service.get_secondary_carpark_settings()
     result = []
     for b in bookings:
         result.append({
@@ -1868,6 +1869,7 @@ async def get_all_bookings(
             "reference": b.reference,
             "status": b.status.value if b.status else None,
             "booking_source": b.booking_source,
+            "secondary_carpark": db_service.secondary_carpark_info(b, secondary_settings),
             "package": b.package if b.package else (
                 f"{(b.pickup_date - b.dropoff_date).days} Day{'s' if (b.pickup_date - b.dropoff_date).days != 1 else ''}"
                 if b.dropoff_date and b.pickup_date else None
@@ -5781,16 +5783,33 @@ async def get_occupancy_report(
         .all()
     )
 
+    secondary_settings = db_service.get_secondary_carpark_settings()
+    secondary_capacity = secondary_settings["capacity"]
+    secondary_summary = {
+        "capacity": secondary_capacity,
+        "window_start": secondary_settings["window_start"].strftime("%H:%M"),
+        "window_end": secondary_settings["window_end"].strftime("%H:%M"),
+    }
+
     if view == "daily":
-        # Calculate daily occupancy
+        # Calculate daily occupancy, split by secondary car park qualification
         daily_occupancy = defaultdict(int)
+        daily_secondary = defaultdict(int)
+        daily_secondary_refs = defaultdict(list)
 
         # For each booking, increment the count for each day the vehicle is parked
         for booking in bookings:
+            qualifies_secondary = db_service.booking_qualifies_for_secondary_carpark(
+                booking, secondary_settings
+            )
             current_date = max(booking.dropoff_date, report_start)
             end_date_for_booking = min(booking.pickup_date, report_end)
             while current_date <= end_date_for_booking:
-                daily_occupancy[current_date.isoformat()] += 1
+                date_key = current_date.isoformat()
+                daily_occupancy[date_key] += 1
+                if qualifies_secondary:
+                    daily_secondary[date_key] += 1
+                    daily_secondary_refs[date_key].append(booking.reference)
                 current_date += timedelta(days=1)
 
         # Build response - include all dates in range
@@ -5804,6 +5823,7 @@ async def get_occupancy_report(
             total_capacity = capacity["total_spaces"]
             # Format as dd/mm/yyyy for UK display
             display_date = current_date.strftime("%d/%m/%Y")
+            secondary_occupied = daily_secondary.get(date_str, 0)
             data.append({
                 "date": date_str,
                 "display_date": display_date,
@@ -5813,6 +5833,10 @@ async def get_occupancy_report(
                 "total_capacity": total_capacity,
                 "manual_capacity": capacity["manual_spaces"],
                 "occupancy_percent": round((occupied / online_capacity) * 100, 1),
+                "secondary_occupied": secondary_occupied,
+                "main_occupied": occupied - secondary_occupied,
+                "secondary_over_capacity": secondary_occupied > secondary_capacity,
+                "secondary_bookings": daily_secondary_refs.get(date_str, []),
                 "is_past": current_date < today,
                 "is_today": current_date == today,
             })
@@ -5824,6 +5848,7 @@ async def get_occupancy_report(
             "online_capacity": current_capacity["online_spaces"],
             "total_capacity": current_capacity["total_spaces"],
             "manual_capacity": current_capacity["manual_spaces"],
+            "secondary_carpark": secondary_summary,
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
@@ -5835,15 +5860,20 @@ async def get_occupancy_report(
 
     elif view == "weekly":
         # Calculate weekly occupancy (ISO week format)
-        weekly_occupancy = defaultdict(lambda: {"total_days": 0, "total_occupied": 0})
+        weekly_occupancy = defaultdict(lambda: {"total_days": 0, "total_occupied": 0, "total_secondary": 0})
 
         for booking in bookings:
+            qualifies_secondary = db_service.booking_qualifies_for_secondary_carpark(
+                booking, secondary_settings
+            )
             current_date = max(booking.dropoff_date, report_start)
             end_date_for_booking = min(booking.pickup_date, report_end)
             while current_date <= end_date_for_booking:
                 # ISO week key: YYYY-Www
                 week_key = current_date.strftime("%G-W%V")
                 weekly_occupancy[week_key]["total_occupied"] += 1
+                if qualifies_secondary:
+                    weekly_occupancy[week_key]["total_secondary"] += 1
                 current_date += timedelta(days=1)
 
         # Count days per week in our range
@@ -5891,6 +5921,9 @@ async def get_occupancy_report(
                 "avg_total_capacity": round(avg_total_capacity, 1),
                 "avg_manual_capacity": round(avg_total_capacity - avg_online_capacity, 1),
                 "avg_occupancy_percent": round((avg_occupied / avg_online_capacity) * 100, 1),
+                "avg_secondary_occupied": round(
+                    week_data["total_secondary"] / days_in_week if days_in_week > 0 else 0, 1
+                ),
                 "is_current_week": week_start <= today <= week_end,
                 "is_past": week_end < today,
             })
@@ -5901,6 +5934,7 @@ async def get_occupancy_report(
             "online_capacity": current_capacity["online_spaces"],
             "total_capacity": current_capacity["total_spaces"],
             "manual_capacity": current_capacity["manual_spaces"],
+            "secondary_carpark": secondary_summary,
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
@@ -5912,14 +5946,19 @@ async def get_occupancy_report(
 
     elif view == "monthly":
         # Calculate monthly occupancy
-        monthly_occupancy = defaultdict(lambda: {"total_days": 0, "total_occupied": 0})
+        monthly_occupancy = defaultdict(lambda: {"total_days": 0, "total_occupied": 0, "total_secondary": 0})
 
         for booking in bookings:
+            qualifies_secondary = db_service.booking_qualifies_for_secondary_carpark(
+                booking, secondary_settings
+            )
             current_date = max(booking.dropoff_date, report_start)
             end_date_for_booking = min(booking.pickup_date, report_end)
             while current_date <= end_date_for_booking:
                 month_key = current_date.strftime("%Y-%m")
                 monthly_occupancy[month_key]["total_occupied"] += 1
+                if qualifies_secondary:
+                    monthly_occupancy[month_key]["total_secondary"] += 1
                 current_date += timedelta(days=1)
 
         # Count days per month in our range
@@ -5968,6 +6007,9 @@ async def get_occupancy_report(
                 "avg_total_capacity": round(avg_total_capacity, 1),
                 "avg_manual_capacity": round(avg_total_capacity - avg_online_capacity, 1),
                 "avg_occupancy_percent": round((avg_occupied / avg_online_capacity) * 100, 1),
+                "avg_secondary_occupied": round(
+                    month_data["total_secondary"] / days_in_month if days_in_month > 0 else 0, 1
+                ),
                 "is_current_month": is_current,
                 "is_past": is_past and not is_current,
             })
@@ -5978,6 +6020,7 @@ async def get_occupancy_report(
             "online_capacity": current_capacity["online_spaces"],
             "total_capacity": current_capacity["total_spaces"],
             "manual_capacity": current_capacity["manual_spaces"],
+            "secondary_carpark": secondary_summary,
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,

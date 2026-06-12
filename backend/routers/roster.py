@@ -997,6 +997,9 @@ async def get_bookings_for_date(
         Booking.status == BookingStatus.CONFIRMED
     ).all()
 
+    import db_service
+    secondary_settings = db_service.get_secondary_carpark_settings()
+
     for b in dropoff_bookings:
         results.append({
             "id": b.id,
@@ -1007,7 +1010,8 @@ async def get_bookings_for_date(
             "customer_name": f"{b.customer_first_name or ''} {b.customer_last_name or ''}".strip(),
             "flight_number": b.dropoff_flight_number,
             "airline": b.dropoff_airline_name,
-            "destination": b.dropoff_destination
+            "destination": b.dropoff_destination,
+            "secondary_carpark_qualifies": db_service.booking_qualifies_for_secondary_carpark(b, secondary_settings),
         })
 
     # Find bookings with pickup on this date (only confirmed - pending means unpaid).
@@ -1039,7 +1043,8 @@ async def get_bookings_for_date(
             "customer_name": f"{b.customer_first_name or ''} {b.customer_last_name or ''}".strip(),
             "flight_number": b.pickup_flight_number,
             "airline": b.pickup_airline_name,
-            "origin": b.pickup_origin
+            "origin": b.pickup_origin,
+            "secondary_carpark_qualifies": db_service.booking_qualifies_for_secondary_carpark(b, secondary_settings),
         })
 
     # Sort by time

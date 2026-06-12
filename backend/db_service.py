@@ -255,6 +255,96 @@ def serialize_capacity_setting(row: dict) -> dict:
     return payload
 
 
+# ============== SECONDARY CAR PARK ==============
+
+SECONDARY_CARPARK_DEFAULT_WINDOW_START = time(9, 0)
+SECONDARY_CARPARK_DEFAULT_WINDOW_END = time(21, 0)
+SECONDARY_CARPARK_DEFAULT_CAPACITY = 20
+
+
+def _env_time(name: str, default: time) -> time:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        hours, minutes = raw.split(":")
+        return time(int(hours), int(minutes))
+    except (ValueError, TypeError):
+        logger.warning("Invalid %s=%r; using default %s", name, raw, default.strftime("%H:%M"))
+        return default
+
+
+def get_secondary_carpark_settings() -> dict:
+    """Secondary car park qualification window + capacity. Env-configured on
+    Railway (SECONDARY_CARPARK_WINDOW_START / _WINDOW_END as HH:MM, and
+    SECONDARY_CARPARK_CAPACITY) so ops can change them without a deploy;
+    defaults are the 2026-06 business rule: 09:00-21:00 inclusive, 20 spaces.
+    """
+    raw_capacity = os.environ.get("SECONDARY_CARPARK_CAPACITY", "").strip()
+    capacity = SECONDARY_CARPARK_DEFAULT_CAPACITY
+    if raw_capacity:
+        try:
+            capacity = max(0, int(raw_capacity))
+        except ValueError:
+            logger.warning(
+                "Invalid SECONDARY_CARPARK_CAPACITY=%r; using default %s",
+                raw_capacity, SECONDARY_CARPARK_DEFAULT_CAPACITY,
+            )
+    return {
+        "window_start": _env_time(
+            "SECONDARY_CARPARK_WINDOW_START", SECONDARY_CARPARK_DEFAULT_WINDOW_START
+        ),
+        "window_end": _env_time(
+            "SECONDARY_CARPARK_WINDOW_END", SECONDARY_CARPARK_DEFAULT_WINDOW_END
+        ),
+        "capacity": capacity,
+    }
+
+
+def booking_qualifies_for_secondary_carpark(booking, settings: Optional[dict] = None) -> bool:
+    """Business rule (2026-06): a booking qualifies for the secondary car
+    park when BOTH its drop-off and pickup handoff times fall inside the
+    operating window, boundaries inclusive. Bookings missing either time
+    never qualify (they follow the existing main-park process)."""
+    s = settings or get_secondary_carpark_settings()
+    dropoff_time = getattr(booking, "dropoff_time", None)
+    pickup_time = getattr(booking, "pickup_time", None)
+    if not dropoff_time or not pickup_time:
+        return False
+    return (
+        s["window_start"] <= dropoff_time <= s["window_end"]
+        and s["window_start"] <= pickup_time <= s["window_end"]
+    )
+
+
+def secondary_carpark_info(booking, settings: Optional[dict] = None) -> dict:
+    """Routing payload for booking detail views: assigned car park, whether
+    the window rule qualified it, and a human-readable reason."""
+    s = settings or get_secondary_carpark_settings()
+    window = f"{s['window_start'].strftime('%H:%M')}-{s['window_end'].strftime('%H:%M')}"
+    dropoff_time = getattr(booking, "dropoff_time", None)
+    pickup_time = getattr(booking, "pickup_time", None)
+
+    failures = []
+    if not dropoff_time or not pickup_time:
+        failures.append("booking is missing a drop-off or pickup time")
+    else:
+        if not (s["window_start"] <= dropoff_time <= s["window_end"]):
+            failures.append(f"drop-off {dropoff_time.strftime('%H:%M')} outside {window}")
+        if not (s["window_start"] <= pickup_time <= s["window_end"]):
+            failures.append(f"pickup {pickup_time.strftime('%H:%M')} outside {window}")
+
+    qualifies = not failures
+    return {
+        "qualifies": qualifies,
+        "assigned_carpark": "secondary" if qualifies else "main",
+        "reason": (
+            f"drop-off and pickup within {window}" if qualifies else "; ".join(failures)
+        ),
+        "window": window,
+    }
+
+
 def generate_booking_reference() -> str:
     """Generate a unique booking reference like TAG-ABC12345."""
     chars = ''.join(random.choices(string.ascii_uppercase, k=3))

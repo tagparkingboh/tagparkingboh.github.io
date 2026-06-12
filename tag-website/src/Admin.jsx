@@ -4374,6 +4374,16 @@ function Admin() {
                     })()}
                   </span>
                 </div>
+                {booking.secondary_carpark && (
+                  <div className="booking-detail">
+                    <span className="detail-label">Car Park</span>
+                    <span className="detail-value" title={booking.secondary_carpark.reason}>
+                      {booking.secondary_carpark.assigned_carpark === 'secondary'
+                        ? `Secondary (qualified — ${booking.secondary_carpark.reason})`
+                        : `Main (${booking.secondary_carpark.reason})`}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -13298,6 +13308,20 @@ function Admin() {
                                 <span className="occupancy-stat-value">{displayEntry.occupancy_percent || displayEntry.avg_occupancy_percent}%</span>
                                 <span className="occupancy-stat-label">{todayEntry ? 'Utilization Today' : 'Current Utilization'}</span>
                               </div>
+                              {occupancyData.secondary_carpark && (
+                                <div
+                                  className="occupancy-stat"
+                                  title={`Bookings with drop-off AND pickup within ${occupancyData.secondary_carpark.window_start}–${occupancyData.secondary_carpark.window_end}`}
+                                >
+                                  <span
+                                    className="occupancy-stat-value"
+                                    style={(displayEntry.secondary_occupied ?? displayEntry.avg_secondary_occupied ?? 0) > occupancyData.secondary_carpark.capacity ? { color: '#ef4444' } : undefined}
+                                  >
+                                    {displayEntry.secondary_occupied ?? displayEntry.avg_secondary_occupied ?? 0}/{occupancyData.secondary_carpark.capacity}
+                                  </span>
+                                  <span className="occupancy-stat-label">{todayEntry ? 'Secondary Park Today' : 'Secondary Park Avg'}</span>
+                                </div>
+                              )}
                             </>
                           );
                         }
@@ -13524,6 +13548,8 @@ function Admin() {
                                     <tr>
                                       <th>Date</th>
                                       <th>Occupied</th>
+                                      <th title="Bookings qualifying for the secondary car park (drop-off & pickup within the operating window)">Secondary</th>
+                                      <th>Main</th>
                                       <th>Available</th>
                                       <th>Utilization</th>
                                       <th>Status</th>
@@ -13536,11 +13562,22 @@ function Admin() {
                                       const percent = item.occupancy_percent ?? item.avg_occupancy_percent;
                                       const isHighlight = item.is_today;
                                       const isPast = item.is_past;
+                                      const secondaryCap = occupancyData.secondary_carpark?.capacity;
 
                                       return (
                                         <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
                                           <td className="date-cell">{item.display_date}</td>
                                           <td className="number-cell">{typeof occupied === 'number' ? occupied.toFixed(0) : '-'}</td>
+                                          <td
+                                            className="number-cell"
+                                            style={item.secondary_over_capacity ? { color: '#ef4444', fontWeight: 700 } : undefined}
+                                            title={(item.secondary_bookings || []).join(', ') || 'No qualifying bookings'}
+                                          >
+                                            {typeof item.secondary_occupied === 'number'
+                                              ? `${item.secondary_occupied}${typeof secondaryCap === 'number' ? `/${secondaryCap}` : ''}`
+                                              : '-'}
+                                          </td>
+                                          <td className="number-cell">{typeof item.main_occupied === 'number' ? item.main_occupied : '-'}</td>
                                           <td className="number-cell">{typeof available === 'number' ? available.toFixed(0) : '-'}</td>
                                           <td className="util-cell">
                                             <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>
@@ -13571,6 +13608,7 @@ function Admin() {
                               <tr>
                                 <th>{occupancyView === 'weekly' ? 'Week' : 'Month'}</th>
                                 <th>Avg Occupied</th>
+                                <th title="Average bookings qualifying for the secondary car park">Avg Secondary</th>
                                 <th>Avg Available</th>
                                 <th>Utilization</th>
                                 <th>Status</th>
@@ -13588,6 +13626,7 @@ function Admin() {
                                   <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
                                     <td className="date-cell">{item.display_week || item.display_month}</td>
                                     <td className="number-cell">{typeof occupied === 'number' ? occupied.toFixed(1) : '-'}</td>
+                                    <td className="number-cell">{typeof item.avg_secondary_occupied === 'number' ? item.avg_secondary_occupied.toFixed(1) : '-'}</td>
                                     <td className="number-cell">{typeof available === 'number' ? available.toFixed(1) : '-'}</td>
                                     <td className="util-cell">
                                       <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>

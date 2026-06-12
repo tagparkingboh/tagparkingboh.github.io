@@ -3855,3 +3855,28 @@
 .additional-staff-checkbox .holiday-indicator {
   margin-right: 4px;
 }
+
+/* Secondary car park (P2) badges — qualifying bookings under the
+   09:00-21:00 window rule */
+.booking-carpark-badge {
+  position: absolute;
+  top: 8px;
+  right: 90px;
+  background: #2563eb;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.detail-booking-card:not(.detail-booking-refunded) .booking-carpark-badge {
+  right: 12px;
+}
+
+.day-badge.badge-carpark {
+  background: rgba(37, 99, 235, 0.25);
+  color: #93c5fd;
+  border: 1px solid rgba(37, 99, 235, 0.6);
+}

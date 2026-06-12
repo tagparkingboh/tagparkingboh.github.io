@@ -3534,6 +3534,16 @@ function RosterCalendar({
                               🛬 {dayBookings.pickups.length}
                             </div>
                           )}
+                          {/* Secondary car park count: qualifying bookings active on this day */}
+                          {(() => {
+                            const secondaryCount = [...dayBookings.dropoffs, ...dayBookings.pickups]
+                              .filter(b => b.secondary_carpark?.qualifies).length
+                            return secondaryCount > 0 ? (
+                              <div className="day-badge badge-carpark" title="Bookings qualifying for the secondary car park (09:00–21:00 rule)">
+                                P2 {secondaryCount}
+                              </div>
+                            ) : null
+                          })()}
                           {/* Available shifts indicator (employee view) */}
                           {(() => {
                             // For non-admin users, count available shifts from the separate availableShifts state
@@ -3994,6 +4004,14 @@ function RosterCalendar({
                         {booking.status === 'refunded' && (
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
                         )}
+                        {booking.secondary_carpark?.qualifies && (
+                          <span
+                            className="booking-carpark-badge"
+                            title={`Secondary car park — ${booking.secondary_carpark.reason}`}
+                          >
+                            P2
+                          </span>
+                        )}
                         <div className="booking-header-row">
                           <div className="booking-time">{formatTime(booking.dropoff_time)}</div>
                           <div className="booking-flight">
@@ -4060,6 +4078,14 @@ function RosterCalendar({
                       <div key={booking.id} className={`detail-booking-card ${booking.status === 'refunded' ? 'detail-booking-refunded' : ''}`}>
                         {booking.status === 'refunded' && (
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
+                        )}
+                        {booking.secondary_carpark?.qualifies && (
+                          <span
+                            className="booking-carpark-badge"
+                            title={`Secondary car park — ${booking.secondary_carpark.reason}`}
+                          >
+                            P2
+                          </span>
                         )}
                         <div className="booking-header-row">
                           {/* pickup_time leading cell removed 2026-05-20 —
