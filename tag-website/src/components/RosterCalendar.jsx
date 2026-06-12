@@ -4249,10 +4249,12 @@ function RosterCalendar({
                                     </span>
                                     <span className="shift-booking-ref">{booking.reference}</span>
                                     {getBookingRegistration(booking) ? (
-                                      <span className="shift-booking-reg">
-                                        {getBookingRegistration(booking)}
+                                      <span className="shift-booking-reg-wrap">
+                                        <span className="shift-booking-reg">
+                                          {getBookingRegistration(booking)}
+                                        </span>
                                         {booking.secondary_carpark_qualifies && (
-                                          <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                                          <span className="shift-booking-carpark shift-booking-carpark--corner" title="Secondary car park (09:00–21:00 rule)">P2</span>
                                         )}
                                       </span>
                                     ) : booking.secondary_carpark_qualifies ? (
@@ -4374,10 +4376,12 @@ function RosterCalendar({
                                       </span>
                                       <span className="shift-booking-ref">{booking.reference}</span>
                                       {getBookingRegistration(booking) ? (
-                                        <span className="shift-booking-reg">
-                                          {getBookingRegistration(booking)}
+                                        <span className="shift-booking-reg-wrap">
+                                          <span className="shift-booking-reg">
+                                            {getBookingRegistration(booking)}
+                                          </span>
                                           {booking.secondary_carpark_qualifies && (
-                                            <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
+                                            <span className="shift-booking-carpark shift-booking-carpark--corner" title="Secondary car park (09:00–21:00 rule)">P2</span>
                                           )}
                                         </span>
                                       ) : booking.secondary_carpark_qualifies ? (

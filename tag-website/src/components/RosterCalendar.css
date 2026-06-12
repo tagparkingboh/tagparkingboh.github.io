@@ -3887,3 +3887,27 @@
   line-height: 1;
   flex: 0 0 auto;
 }
+
+/* Reg plate wrapper for the corner P2 badge: the wrapper is the grid child,
+   the plate keeps its exact size, and the badge overlaps the corner with
+   ZERO width contribution — so P2 rows lay out identically to others on
+   every screen size. */
+.shift-booking-reg-wrap {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.shift-booking-carpark--corner {
+  position: absolute;
+  top: -7px;
+  right: -9px;
+  height: 15px;
+  font-size: 0.58rem;
+  padding: 0 5px;
+  margin-left: 0;
+  vertical-align: baseline;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  border: 1px solid #11131c;
+}
