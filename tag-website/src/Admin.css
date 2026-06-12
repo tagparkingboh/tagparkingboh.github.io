@@ -7516,6 +7516,76 @@
   text-align: center;
 }
 
+/* Secondary car park (P2) events table — fixed layout so every collapsible
+   group's columns line up identically. */
+.p2-events-table {
+  table-layout: fixed;
+}
+
+.p2-events-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.p2-events-table .date-cell {
+  min-width: 0;
+}
+
+.p2-events-table .p2-reg-cell {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Mobile: stack each event row as a label/value card. */
+@media (max-width: 640px) {
+  .p2-events-table colgroup {
+    display: none;
+  }
+
+  .p2-events-table thead {
+    display: none;
+  }
+
+  .p2-events-table,
+  .p2-events-table tbody,
+  .p2-events-table tr,
+  .p2-events-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .p2-events-table tr {
+    padding: 8px 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .p2-events-table tr:last-child {
+    border-bottom: none;
+  }
+
+  .p2-events-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 4px 16px;
+    border-bottom: none;
+    white-space: normal;
+    text-align: right;
+  }
+
+  .p2-events-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-weight: 600;
+    font-size: 13px;
+    color: #6b7280;
+    text-align: left;
+  }
+}
+
 .occupancy-percent {
   display: inline-block;
   padding: 4px 12px;

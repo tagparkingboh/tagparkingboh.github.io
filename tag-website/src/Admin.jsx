@@ -13691,7 +13691,14 @@ function Admin() {
                                 </span>
                               </summary>
                               <div className="occupancy-table-wrapper">
-                                <table className="occupancy-table">
+                                <table className="occupancy-table p2-events-table">
+                                  <colgroup>
+                                    <col style={{ width: '17%' }} />
+                                    <col style={{ width: '24%' }} />
+                                    <col style={{ width: '21%' }} />
+                                    <col style={{ width: '15%' }} />
+                                    <col style={{ width: '23%' }} />
+                                  </colgroup>
                                   <thead>
                                     <tr>
                                       <th>Ref</th>
@@ -13704,11 +13711,11 @@ function Admin() {
                                   <tbody>
                                     {rows.map((ev, i) => (
                                       <tr key={`${ev.reference}-${ev.event}-${i}`}>
-                                        <td className="date-cell">{ev.reference}</td>
-                                        <td>{ev.customer_name || '-'}</td>
-                                        <td>{ev.car || '-'}</td>
-                                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ev.registration || '-'}</td>
-                                        <td className="number-cell">
+                                        <td className="date-cell" data-label="Ref">{ev.reference}</td>
+                                        <td data-label="Name">{ev.customer_name || '-'}</td>
+                                        <td data-label="Car">{ev.car || '-'}</td>
+                                        <td className="p2-reg-cell" data-label="Reg">{ev.registration || '-'}</td>
+                                        <td data-label="Event">
                                           {ev.event === 'dropoff' ? 'Drop-off' : 'Pickup'}
                                           {secondaryGroup === 'daily' ? '' : ` ${ev.display_date}`}
                                           {ev.time ? ` @ ${ev.time}` : ''}
