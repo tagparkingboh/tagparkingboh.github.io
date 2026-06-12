@@ -3865,15 +3865,19 @@
 }
 
 .shift-booking-carpark {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: #2563eb;
   color: #fff;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  padding: 1px 6px;
+  letter-spacing: 0.03em;
+  height: 19px;
+  padding: 0 8px;
   border-radius: 999px;
   margin-left: 6px;
-  vertical-align: middle;
-  line-height: 1.2;
+  vertical-align: -3px;
+  line-height: 1;
   flex: 0 0 auto;
 }
