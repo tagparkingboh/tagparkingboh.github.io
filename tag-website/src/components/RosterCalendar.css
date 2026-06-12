@@ -1251,13 +1251,27 @@
   margin-top: 4px;
 }
 
+/* Two-line stack at every width: icon + booking ref on the first line,
+   reg plate + customer name on the second. Column 1 is shared by the icon
+   and the plate, so the icon pins to its own width. */
 .shift-booking-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1.15fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
+  row-gap: 6px;
   margin-bottom: 6px;
   min-width: 0;
+}
+
+.shift-booking-header .shift-booking-type {
+  justify-self: start;
+}
+
+.shift-booking-header .shift-booking-ref {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shift-booking-type {
@@ -1315,6 +1329,8 @@
   font-weight: 500;
   min-width: 0;
   overflow-wrap: anywhere;
+  /* Always the second column, even when there's no reg plate before it. */
+  grid-column: 2;
 }
 
 .shift-booking-time {
@@ -3910,26 +3926,4 @@
   vertical-align: baseline;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   border: 1px solid #11131c;
-}
-
-/* Mobile: stack the shift booking header — icon + booking ref get the full
-   first line (no more wrapped TAG- references), reg plate + customer name
-   take the second. */
-@media (max-width: 600px) {
-  .shift-booking-header {
-    grid-template-columns: auto minmax(0, 1fr);
-    row-gap: 6px;
-  }
-
-  /* Icon shares column 1 with the reg plate below; don't let the wider
-     plate stretch the icon's pill. */
-  .shift-booking-header .shift-booking-type {
-    justify-self: start;
-  }
-
-  .shift-booking-header .shift-booking-ref {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
