@@ -463,3 +463,149 @@ class TestFinancialReportCancelledEditable:
         booking = _booking_stub(booking_source="online", status=BookingStatus.CONFIRMED)
         rows = self._rows(self._report(booking))
         assert rows and rows[0]["canEditFinancials"] is True
+
+
+class TestRetroReferralAttribution:
+    """Retro-attributing a REFERRAL code through the financial-override edit
+    (the 'retrospective referrals' question, 2026-06-13). Referral codes are
+    unlimited 10%% promotions-system codes; mark_promo_code_used fires
+    record_referral_attribution_for_booking, so the Financials promo edit is
+    the retro path. These tests pin what happens when the discount actually
+    given is equal to / less than / greater than the code's percentage, and
+    that the self-use guard still applies retroactively."""
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    def _referral_code(self):
+        promotion = SimpleNamespace(id=20, discount_percent=10, codes_used=4)
+        return SimpleNamespace(
+            id=77,
+            code="TAG-REF1-AAAA",
+            promotion_id=20,
+            promotion=promotion,
+            max_uses=0,           # unlimited referral code
+            use_count=4,
+            is_used=False,
+            booking_id=None,
+            used_at=None,
+            is_multi_use=True,
+            can_be_used=True,
+        )
+
+    def _wire(self, booking, code, program):
+        from db_models import ReferralProgram, ReferralAttribution
+        return _model_db({
+            Booking: {"first": booking},
+            PromoCode: {"first": code, "all": []},
+            MarketingSubscriber: {"first": None},
+            PromoCodeUsage: {"all": []},
+            Promotion: {"first": code.promotion},
+            ReferralProgram: {"first": program},
+            ReferralAttribution: {"first": None},
+        })
+
+    def _put(self, db, gross, discount, promo="TAG-REF1-AAAA"):
+        _override(db)
+        return TestClient(app).put(
+            f"/api/admin/bookings/42/financial-override"
+            f"?gross_pence={gross}&discount_pence={discount}&promo_code={promo}"
+        )
+
+    def _attributions(self, db):
+        from db_models import ReferralAttribution
+        return _added_instances(db, ReferralAttribution)
+
+    # --- HAPPY: discount EQUALS the referral percentage ----------------------
+
+    def test_H_discount_equal_to_referral_percent(self):
+        booking = _booking_stub(customer_id=500)   # friend, not the referrer
+        code = self._referral_code()
+        program = SimpleNamespace(id=9, customer_id=400, referral_code_id=77)
+        db = self._wire(booking, code, program)
+
+        resp = self._put(db, gross=9000, discount=900)  # exactly 10%
+
+        assert resp.status_code == 200
+        usage = _added_instances(db, PromoCodeUsage)[0]
+        assert usage.discount_percent == 10
+        assert usage.discount_amount_pence == 900
+        attributions = self._attributions(db)
+        assert len(attributions) == 1
+        att = attributions[0]
+        assert att.referrer_customer_id == 400
+        assert att.referred_customer_id == 500
+        assert att.is_self_use is False
+        assert att.status == "pending"  # qualifies when their trip COMPLETES
+
+    # --- EDGE: discount LESS than the referral percentage --------------------
+
+    def test_E_discount_less_than_referral_percent(self):
+        """5%% given against a 10%% code: the usage row keeps the CODE's
+        percent (10) alongside the actual amount (450) — they disagree, and
+        nothing validates or warns. Referral attribution is amount-agnostic,
+        so the referral still records and will still qualify."""
+        booking = _booking_stub(customer_id=500)
+        code = self._referral_code()
+        program = SimpleNamespace(id=9, customer_id=400, referral_code_id=77)
+        db = self._wire(booking, code, program)
+
+        resp = self._put(db, gross=9000, discount=450)  # 5%
+
+        assert resp.status_code == 200
+        usage = _added_instances(db, PromoCodeUsage)[0]
+        assert usage.discount_percent == 10        # code's percent, not 5
+        assert usage.discount_amount_pence == 450  # actual amount given
+        assert len(self._attributions(db)) == 1
+        assert self._attributions(db)[0].status == "pending"
+
+    # --- EDGE: discount GREATER than the referral percentage -----------------
+
+    def test_E_discount_greater_than_referral_percent(self):
+        """20%% given against a 10%% code: accepted silently, same shape —
+        percent stays 10, amount records 1800. Referral unaffected."""
+        booking = _booking_stub(customer_id=500)
+        code = self._referral_code()
+        program = SimpleNamespace(id=9, customer_id=400, referral_code_id=77)
+        db = self._wire(booking, code, program)
+
+        resp = self._put(db, gross=9000, discount=1800)  # 20%
+
+        assert resp.status_code == 200
+        usage = _added_instances(db, PromoCodeUsage)[0]
+        assert usage.discount_percent == 10
+        assert usage.discount_amount_pence == 1800
+        assert len(self._attributions(db)) == 1
+        assert self._attributions(db)[0].status == "pending"
+
+    # --- BOUNDARY: discount above gross is still rejected ---------------------
+
+    def test_B_discount_above_gross_still_rejected_before_attribution(self):
+        booking = _booking_stub(customer_id=500)
+        code = self._referral_code()
+        program = SimpleNamespace(id=9, customer_id=400, referral_code_id=77)
+        db = self._wire(booking, code, program)
+
+        resp = self._put(db, gross=9000, discount=9001)
+
+        assert resp.status_code == 400
+        assert not self._attributions(db)
+
+    # --- UNHAPPY: self-referral is recorded but disqualified ------------------
+
+    def test_U_retro_self_referral_is_disqualified(self):
+        """Attributing the referrer's OWN booking to their code records the
+        attribution as disqualified — the self-use guard applies to the
+        retro path exactly as it does live."""
+        booking = _booking_stub(customer_id=400)   # same customer as program
+        code = self._referral_code()
+        program = SimpleNamespace(id=9, customer_id=400, referral_code_id=77)
+        db = self._wire(booking, code, program)
+
+        resp = self._put(db, gross=9000, discount=900)
+
+        assert resp.status_code == 200
+        attributions = self._attributions(db)
+        assert len(attributions) == 1
+        assert attributions[0].is_self_use is True
+        assert attributions[0].status == "disqualified"
