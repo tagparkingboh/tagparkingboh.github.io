@@ -4207,16 +4207,21 @@ function Admin() {
     return filtered
   }, [bookings, searchTerm, statusFilter, hideTestEmails, sortAsc])
 
-  // Today's bookings (bookings created today in UK timezone)
+  // Today's bookings — bucketed on the effective (paid) date in UK time, to
+  // match the backend reports. A booking that initiates at 23:59 and confirms
+  // at 00:12 lands on the confirmed day, not the day it was started.
   const todaysBookings = useMemo(() => {
     // Get today's date in UK timezone (YYYY-MM-DD format)
     const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
 
+    // Payment-success time, falling back to created_at (manual/unpaid).
+    const effectiveTs = (b) => b.payment?.paid_at || b.created_at
+
     let todays = bookings.filter(b => {
-      if (!b.created_at) return false
-      // Convert created_at to UK date
-      const createdDate = new Date(b.created_at).toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
-      return createdDate === todayUK
+      const ts = effectiveTs(b)
+      if (!ts) return false
+      const effDate = new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
+      return effDate === todayUK
     })
 
     // Hide test emails
@@ -4224,8 +4229,8 @@ function Admin() {
       todays = todays.filter(b => !isTestEmail(b.customer?.email))
     }
 
-    // Sort by created_at descending (newest first)
-    todays.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    // Sort by effective timestamp descending (newest first)
+    todays.sort((a, b) => new Date(effectiveTs(b)) - new Date(effectiveTs(a)))
 
     return todays
   }, [bookings, hideTestEmails])

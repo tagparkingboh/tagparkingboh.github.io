@@ -129,10 +129,16 @@ class TestBookingStats:
         assert body["monthly"] == []
 
     def test_H_with_bookings(self):
+        # Stats bucket on the effective (paid, UK) day, so vary paid_at — two
+        # distinct payment days should yield two daily entries.
         b1 = _booking(id=1, status=BookingStatus.CONFIRMED,
-                      created_at=datetime(2026, 5, 1, 9, 0))
+                      created_at=datetime(2026, 5, 1, 9, 0),
+                      payment=SimpleNamespace(amount_pence=9900, status=PaymentStatus.SUCCEEDED,
+                                              paid_at=datetime(2026, 5, 1, 10, 0)))
         b2 = _booking(id=2, status=BookingStatus.COMPLETED,
-                      created_at=datetime(2026, 5, 2, 10, 0))
+                      created_at=datetime(2026, 5, 2, 10, 0),
+                      payment=SimpleNamespace(amount_pence=9900, status=PaymentStatus.SUCCEEDED,
+                                              paid_at=datetime(2026, 5, 2, 11, 0)))
         _override(self._wire([b1, b2]))
         resp = TestClient(app).get("/api/admin/bookings/stats")
         assert resp.status_code == 200

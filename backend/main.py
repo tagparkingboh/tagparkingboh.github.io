@@ -24,6 +24,19 @@ def get_uk_now() -> datetime:
     return datetime.now(ZoneInfo("Europe/London"))
 
 
+def utc_now() -> datetime:
+    """Timezone-AWARE current UTC time, for writing to timestamptz columns.
+
+    Never use naive `datetime.utcnow()` for a stored timestamp: a naive value
+    written to a `timestamptz` column is interpreted in the DB session's
+    timezone, so under a Europe/London session it lands one hour early in BST
+    (and correct in GMT) — the bug that skewed `payment.paid_at`. An aware UTC
+    value carries its own offset, so Postgres stores the exact instant
+    regardless of session timezone or DST — correct in both BST and GMT.
+    """
+    return datetime.now(timezone.utc)
+
+
 UK_TIMEZONE = ZoneInfo("Europe/London")
 
 
@@ -32,6 +45,31 @@ def to_uk_datetime(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(UK_TIMEZONE)
+
+
+def booking_effective_datetime(booking) -> Optional[datetime]:
+    """The "when did this booking happen" timestamp for reporting, in UK time.
+
+    Uses the payment-success time (`payment.paid_at`) when present, falling back
+    to the booking-initiation time (`booking.created_at`) for any booking that
+    has no settled payment (e.g. a future manual/comp booking). Always returned
+    in Europe/London so date bucketing matches how the day is seen operationally.
+
+    Locked 2026-06-15: every booking-count / revenue report keys off this, so a
+    booking that initiates at 23:59 and confirms at 00:12 is counted on the
+    confirmed day — consistently across reports, instead of some on created_at
+    and some on paid_at.
+    """
+    payment = getattr(booking, "payment", None)
+    stamp = getattr(payment, "paid_at", None) if payment is not None else None
+    # Only trust a real datetime — paid_at is datetime-or-None in production;
+    # the isinstance guard also keeps the helper safe under MagicMock payments
+    # in tests, which auto-spawn a truthy child for an unset attribute.
+    if not isinstance(stamp, datetime):
+        stamp = getattr(booking, "created_at", None)
+    if not isinstance(stamp, datetime):
+        return None
+    return to_uk_datetime(stamp)
 
 
 def parse_uk_date_start(date_str: str) -> datetime:
@@ -2016,20 +2054,24 @@ async def get_booking_stats(
     daily_by_status = defaultdict(lambda: defaultdict(int))
 
     for booking in all_bookings:
-        if booking.created_at:
+        # Bucket on the payment-success day in UK time (falls back to
+        # created_at for unpaid/manual). Keeps a 23:59-initiated / 00:12-paid
+        # booking on the confirmed day, consistently with the financial report.
+        eff = booking_effective_datetime(booking)
+        if eff:
             status = booking.status.value if booking.status else 'unknown'
 
             # Daily: YYYY-MM-DD
-            day_key = booking.created_at.strftime("%Y-%m-%d")
+            day_key = eff.strftime("%Y-%m-%d")
             daily_by_status[day_key][status] += 1
 
             # Weekly: YYYY-WW (ISO week)
-            iso_year, iso_week, _ = booking.created_at.isocalendar()
+            iso_year, iso_week, _ = eff.isocalendar()
             week_key = f"{iso_year}-W{iso_week:02d}"
             weekly_by_status[week_key][status] += 1
 
             # Monthly: YYYY-MM
-            month_key = booking.created_at.strftime("%Y-%m")
+            month_key = eff.strftime("%Y-%m")
             monthly_by_status[month_key][status] += 1
 
     # Convert to sorted lists for charts (with status breakdown)
@@ -2062,24 +2104,30 @@ async def get_booking_stats(
 
     total_successful = status_totals.get('confirmed', 0) + status_totals.get('completed', 0)
 
-    # Recent period comparisons (confirmed + completed only)
-    today = date.today()
+    # Recent period comparisons (confirmed + completed only). UK "today" so
+    # the week/month boundaries match the operator's calendar, and each
+    # booking is placed by its effective (paid) UK date.
+    today = get_uk_now().date()
     this_week_start = today - timedelta(days=today.weekday())
     last_week_start = this_week_start - timedelta(days=7)
     this_month_start = today.replace(day=1)
     last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
 
+    def _eff_date(b):
+        eff = booking_effective_datetime(b)
+        return eff.date() if eff else None
+
     successful_bookings = [b for b in all_bookings if b.status in [BookingStatus.CONFIRMED, BookingStatus.COMPLETED]]
-    this_week_count = sum(1 for b in successful_bookings if b.created_at and b.created_at.date() >= this_week_start)
-    last_week_count = sum(1 for b in successful_bookings if b.created_at and last_week_start <= b.created_at.date() < this_week_start)
-    this_month_count = sum(1 for b in successful_bookings if b.created_at and b.created_at.date() >= this_month_start)
-    last_month_count = sum(1 for b in successful_bookings if b.created_at and last_month_start <= b.created_at.date() < this_month_start)
+    this_week_count = sum(1 for b in successful_bookings if (d := _eff_date(b)) and d >= this_week_start)
+    last_week_count = sum(1 for b in successful_bookings if (d := _eff_date(b)) and last_week_start <= d < this_week_start)
+    this_month_count = sum(1 for b in successful_bookings if (d := _eff_date(b)) and d >= this_month_start)
+    last_month_count = sum(1 for b in successful_bookings if (d := _eff_date(b)) and last_month_start <= d < this_month_start)
 
     # Confirmed-only counts for booking targets (future bookings)
     confirmed_bookings = [b for b in all_bookings if b.status == BookingStatus.CONFIRMED]
-    confirmed_today = sum(1 for b in confirmed_bookings if b.created_at and b.created_at.date() == today)
-    confirmed_this_week = sum(1 for b in confirmed_bookings if b.created_at and b.created_at.date() >= this_week_start)
-    confirmed_this_month = sum(1 for b in confirmed_bookings if b.created_at and b.created_at.date() >= this_month_start)
+    confirmed_today = sum(1 for b in confirmed_bookings if _eff_date(b) == today)
+    confirmed_this_week = sum(1 for b in confirmed_bookings if (d := _eff_date(b)) and d >= this_week_start)
+    confirmed_this_month = sum(1 for b in confirmed_bookings if (d := _eff_date(b)) and d >= this_month_start)
 
     # Revenue calculations - only count bookings with non-zero payments
     from db_models import Payment
@@ -3198,7 +3246,7 @@ async def mark_booking_paid(
         payment.status = PaymentStatus.SUCCEEDED
         if not payment.paid_at:
             # Use booking created_at date for manual bookings
-            payment.paid_at = booking.created_at or datetime.utcnow()
+            payment.paid_at = booking.created_at or utc_now()
 
     db.commit()
 
@@ -6132,7 +6180,8 @@ async def get_popular_airlines_destinations(
     - Top destinations by booking count (each booking counted once per unique destination)
 
     Filters:
-    - start_date/end_date: Date range for bookings (based on created_at)
+    - start_date/end_date: Date range for bookings (based on the effective
+      payment date in UK time, falling back to created_at when unpaid)
     - top: Number of results (5, 10, or 20)
     """
     import pytz
@@ -6160,18 +6209,25 @@ async def get_popular_airlines_destinations(
     if top not in [5, 10, 20]:
         top = 10
 
-    # Build base query - confirmed and completed bookings only
+    # Build base query - confirmed and completed bookings only.
     query = db.query(Booking).filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
 
-    # Apply date filters
-    if start_date:
-        query = query.filter(Booking.created_at >= start_date)
-    if end_date:
-        # Include the entire end date
-        end_datetime = datetime.combine(end_date, datetime.max.time())
-        query = query.filter(Booking.created_at <= end_datetime)
-
     bookings = query.all()
+
+    # Date range is applied on the effective (paid, UK) date so it matches the
+    # other booking-count reports — not the raw-UTC created_at it used before.
+    if start_date or end_date:
+        def _in_range(b):
+            eff = booking_effective_datetime(b)
+            if eff is None:
+                return False
+            d = eff.date()
+            if start_date and d < start_date:
+                return False
+            if end_date and d > end_date:
+                return False
+            return True
+        bookings = [b for b in bookings if _in_range(b)]
 
     # Count airlines (merge departure and return - each booking counts once per unique airline NAME)
     # Use only airline name as key to avoid duplicates like "Jet2 (UNK)" and "Jet2 (LS)"
@@ -6522,11 +6578,12 @@ async def get_fun_facts(
             dt = pytz.utc.localize(dt)
         return dt.astimezone(uk_tz)
 
-    bookings_with_created = [b for b in bookings if b.created_at]
+    # Effective (paid, UK) datetime — falls back to created_at when unpaid.
+    bookings_with_created = [b for b in bookings if booking_effective_datetime(b)]
     if bookings_with_created:
-        # Latest time of night (e.g., 23:58:42) - compare UK times
-        latest_time = max(bookings_with_created, key=lambda b: to_uk_time(b.created_at).time())
-        latest_uk = to_uk_time(latest_time.created_at)
+        # Latest time of night (e.g., 23:58:42) - compare effective UK times
+        latest_time = max(bookings_with_created, key=lambda b: booking_effective_datetime(b).time())
+        latest_uk = booking_effective_datetime(latest_time)
         # Get customer name
         lt_first = latest_time.customer_first_name or (latest_time.customer.first_name if latest_time.customer else None)
         lt_last = latest_time.customer_last_name or (latest_time.customer.last_name if latest_time.customer else None)
@@ -6537,9 +6594,9 @@ async def get_fun_facts(
             "customerName": f"{lt_first} {lt_last}" if lt_first and lt_last else None,
         }
 
-        # Earliest time of day (e.g., 03:02:15) - compare UK times
-        earliest_time = min(bookings_with_created, key=lambda b: to_uk_time(b.created_at).time())
-        earliest_uk = to_uk_time(earliest_time.created_at)
+        # Earliest time of day (e.g., 03:02:15) - compare effective UK times
+        earliest_time = min(bookings_with_created, key=lambda b: booking_effective_datetime(b).time())
+        earliest_uk = booking_effective_datetime(earliest_time)
         # Get customer name
         et_first = earliest_time.customer_first_name or (earliest_time.customer.first_name if earliest_time.customer else None)
         et_last = earliest_time.customer_last_name or (earliest_time.customer.last_name if earliest_time.customer else None)
@@ -6551,8 +6608,8 @@ async def get_fun_facts(
         }
 
     # === Milestones ===
-    # Sort bookings by created_at to get order
-    sorted_bookings = sorted(bookings_with_created, key=lambda b: b.created_at)
+    # Order by effective (paid, UK) time — the Nth booking is the Nth to settle.
+    sorted_bookings = sorted(bookings_with_created, key=lambda b: booking_effective_datetime(b))
     # Ladder of "Xth booking" milestones surfaced on Admin → Insights.
     # 1–500 in fine-grained steps (early growth, every 25–50); 500+ in
     # round hundreds (later growth, less interesting to mark every 50).
@@ -6572,11 +6629,12 @@ async def get_fun_facts(
             # Get customer name from snapshot or relationship
             first_name = booking.customer_first_name or (booking.customer.first_name if booking.customer else None)
             last_name = booking.customer_last_name or (booking.customer.last_name if booking.customer else None)
+            eff = booking_effective_datetime(booking)
             milestones.append({
                 "number": num,
                 "label": label,
-                "date": booking.created_at.strftime("%d %b %Y"),
-                "time": booking.created_at.strftime("%H:%M"),
+                "date": eff.strftime("%d %b %Y"),
+                "time": eff.strftime("%H:%M"),
                 "reference": booking.reference,
                 "customerName": f"{first_name} {last_name}" if first_name and last_name else None,
                 "customerFirstName": first_name,
@@ -6585,13 +6643,13 @@ async def get_fun_facts(
     result["milestones"] = milestones
 
     # === Last Minute & Advance Booking ===
-    # Calculate gap between created_at and dropoff_date
+    # Gap between the effective (paid, UK) booking date and the dropoff date.
     bookings_with_gap = []
     for booking in bookings:
-        if booking.created_at and booking.dropoff_date:
-            # Convert created_at to date for comparison
-            created_date = booking.created_at.date()
-            gap_days = (booking.dropoff_date - created_date).days
+        eff = booking_effective_datetime(booking)
+        if eff and booking.dropoff_date:
+            booked_date = eff.date()
+            gap_days = (booking.dropoff_date - booked_date).days
             bookings_with_gap.append((booking, gap_days))
 
     if bookings_with_gap:
@@ -6603,14 +6661,15 @@ async def get_fun_facts(
         last_minute_data = {
             "gapDays": last_minute[1],
             "reference": last_minute[0].reference,
-            "bookedOn": last_minute[0].created_at.strftime("%d %b %Y"),
+            "bookedOn": booking_effective_datetime(last_minute[0]).strftime("%d %b %Y"),
             "dropoffDate": last_minute[0].dropoff_date.strftime("%d %b %Y"),
             "customerName": f"{lm_first} {lm_last}" if lm_first and lm_last else None,
         }
-        # For same-day bookings, calculate hours:minutes:seconds before drop-off
+        # For same-day bookings, calculate hours:minutes:seconds before drop-off.
+        # Compare the dropoff (naive UK local) to the effective time as naive UK.
         if last_minute[1] == 0 and last_minute[0].dropoff_time:
             dropoff_datetime = datetime.combine(last_minute[0].dropoff_date, last_minute[0].dropoff_time)
-            created_naive = last_minute[0].created_at.replace(tzinfo=None) if last_minute[0].created_at.tzinfo else last_minute[0].created_at
+            created_naive = booking_effective_datetime(last_minute[0]).replace(tzinfo=None)
             time_diff = dropoff_datetime - created_naive
             if time_diff.total_seconds() > 0:
                 hours, remainder = divmod(int(time_diff.total_seconds()), 3600)
@@ -6626,14 +6685,14 @@ async def get_fun_facts(
         advance_data = {
             "gapDays": advance[1],
             "reference": advance[0].reference,
-            "bookedOn": advance[0].created_at.strftime("%d %b %Y"),
+            "bookedOn": booking_effective_datetime(advance[0]).strftime("%d %b %Y"),
             "dropoffDate": advance[0].dropoff_date.strftime("%d %b %Y"),
             "customerName": f"{adv_first} {adv_last}" if adv_first and adv_last else None,
         }
         # Calculate detailed breakdown: months/days/hours/minutes/seconds
         if advance[0].dropoff_time:
             dropoff_datetime = datetime.combine(advance[0].dropoff_date, advance[0].dropoff_time)
-            created_naive = advance[0].created_at.replace(tzinfo=None) if advance[0].created_at.tzinfo else advance[0].created_at
+            created_naive = booking_effective_datetime(advance[0]).replace(tzinfo=None)
             time_diff = dropoff_datetime - created_naive
             if time_diff.total_seconds() > 0:
                 total_seconds = int(time_diff.total_seconds())
@@ -7961,13 +8020,10 @@ async def get_session_tracking_report(
     manual_by_period = defaultdict(int)
     manual_cumulative = 0
     for booking in manual_bookings:
-        if booking.created_at:
-            booking_time = booking.created_at
-            if booking_time.tzinfo is None:
-                booking_time = uk_tz.localize(booking_time)
-            else:
-                booking_time = booking_time.astimezone(uk_tz)
-
+        # Bucket on effective (paid, UK) date so manual bookings sit on the
+        # same clock as the online funnel's booking_confirmed stage.
+        booking_time = booking_effective_datetime(booking)
+        if booking_time:
             if period == "weekly":
                 period_key = booking_time.strftime("%Y-W%W")
             elif period == "monthly":
@@ -8316,9 +8372,10 @@ async def get_bookings_forecast(
             pickup_dow = booking.pickup_date.weekday()
             pickup_day_of_week_bookings[pickup_dow] += 1
 
-        # Month booking was created
-        if booking.created_at:
-            booking_month_bookings[booking.created_at.month] += 1
+        # Month the booking was placed (effective paid month, UK time)
+        eff = booking_effective_datetime(booking)
+        if eff:
+            booking_month_bookings[eff.month] += 1
 
         # Airline patterns (merge Ryanair UK into Ryanair)
         if booking.dropoff_airline_name:
@@ -13145,7 +13202,7 @@ async def create_payment(
             )
             # Update payment status to SUCCEEDED (it's created as PENDING by default)
             payment.status = PaymentStatus.SUCCEEDED
-            payment.paid_at = datetime.utcnow()
+            payment.paid_at = utc_now()
             db.commit()
 
             # Mark promo code as used (check new promo_codes table first, then legacy)
@@ -13637,7 +13694,7 @@ async def stripe_webhook(
                 db=db,
                 stripe_payment_intent_id=payment_intent_id,
                 status=PaymentStatus.SUCCEEDED,
-                paid_at=datetime.utcnow(),
+                paid_at=utc_now(),
             )
             # Canonical booking reference: derived from the Payment row we
             # just resolved, NOT the Stripe metadata. update_payment_status
