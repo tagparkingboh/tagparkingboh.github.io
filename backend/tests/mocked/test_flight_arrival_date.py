@@ -22,10 +22,11 @@ endpoint and count for coverage.
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, time as dt_time, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,9 +38,24 @@ from database import get_db  # noqa: E402
 client = TestClient(app)
 
 
-# Pair landing-date + day-after, well past the same-day-booking gate.
-TUE = date(2026, 6, 23)
-WED = date(2026, 6, 24)
+# Pin the clock to a safe morning hour so the customer lead-time gate (same-day
+# + next-day-after-20:00, which reads datetime.now() inline) is deterministic
+# at any run time. The frozen date stays today, so the dynamic dates below
+# remain weeks ahead and never go stale. Mirrors test_pickup_date_rollover.py.
+_FROZEN_HHMM = dt_time(9, 0)  # 09:00 UTC = 10:00 BST, well before the 20:00 cutoff
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock():
+    with freeze_time(datetime.combine(date.today(), _FROZEN_HHMM)):
+        yield
+
+
+# Pair landing-date + day-after, ~5 weeks ahead of today (landing on Tue/Wed)
+# so the same-day-booking gate never rejects them and they never go stale.
+_BASE = date.today() + timedelta(days=35)
+TUE = _BASE + timedelta(days=(1 - _BASE.weekday()) % 7)  # next Tuesday on/after base
+WED = TUE + timedelta(days=1)
 
 
 # =============================================================================
