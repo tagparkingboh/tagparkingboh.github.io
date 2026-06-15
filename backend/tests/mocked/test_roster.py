@@ -2461,9 +2461,10 @@ class TestEmployeePortalAPIContract:
         # This is the path the frontend uses
         expected_path = "/api/employee/shifts"
 
-        # Verify by checking main.py has this route
+        # Verify by checking main.py has this route. Use getattr — some route
+        # entries (e.g. included-router mounts on newer FastAPI) have no .path.
         import main
-        routes = [route.path for route in main.app.routes]
+        routes = [getattr(route, "path", None) for route in main.app.routes]
 
         assert expected_path in routes, f"Expected {expected_path} to be registered"
 

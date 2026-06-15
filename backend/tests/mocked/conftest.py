@@ -20,6 +20,21 @@ def setup_test_database():
 
 
 @pytest.fixture(autouse=True)
+def isolate_environment(monkeypatch):
+    """Keep the shell's ENVIRONMENT out of mocked tests.
+
+    Mocked tests never send real email/SMS, so the env-gated staging guard
+    (`ENVIRONMENT=staging`) must not leak in from the runner's shell or CI —
+    it short-circuits send_email/send_sms to a suppressed "success" and breaks
+    their no-key / exception / status-code assertions. Unset it before every
+    test; a test that specifically exercises the staging guard sets
+    ENVIRONMENT itself within its own body (which runs after this fixture).
+    """
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def reset_app_state():
     """
     Automatically reset FastAPI app state after each test.
