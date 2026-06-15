@@ -4004,7 +4004,10 @@ function RosterCalendar({
                         {booking.status === 'refunded' && (
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
                         )}
-                        <div className="booking-header-row">
+                        <div className="booking-ref-row">
+                          <div className="booking-ref">{booking.reference}</div>
+                        </div>
+                        <div className="booking-flight-row">
                           <div className="booking-time">{formatTime(booking.dropoff_time)}</div>
                           <div className="booking-flight">
                             {booking.dropoff_airline_name && (
@@ -4022,7 +4025,6 @@ function RosterCalendar({
                               </span>
                             )}
                           </div>
-                          <div className="booking-ref">{booking.reference}</div>
                         </div>
                         <div className="booking-details-row">
                           {booking.customer?.first_name || booking.customer_first_name}{' '}
@@ -4077,7 +4079,10 @@ function RosterCalendar({
                         {booking.status === 'refunded' && (
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
                         )}
-                        <div className="booking-header-row">
+                        <div className="booking-ref-row">
+                          <div className="booking-ref">{booking.reference}</div>
+                        </div>
+                        <div className="booking-flight-row">
                           {/* pickup_time leading cell removed 2026-05-20 —
                               the row now leads with the airline. Arrival time
                               still surfaces via "Arrives:" below. */}
@@ -4097,7 +4102,6 @@ function RosterCalendar({
                               </span>
                             )}
                           </div>
-                          <div className="booking-ref">{booking.reference}</div>
                         </div>
                         <div className="booking-details-row">
                           {booking.customer?.first_name || booking.customer_first_name}{' '}
