@@ -2626,18 +2626,17 @@ async def get_booking_stats(
 
     _pattern_counts = {m: {b: 0 for b in _bucket_keys} for m in range(1, _current_month + 1)}
     for booking in all_bookings:
-        if not booking.created_at:
-            continue
         if booking.status not in (BookingStatus.CONFIRMED, BookingStatus.COMPLETED):
             continue
-        created = booking.created_at
-        if created.tzinfo is None:
-            created = _uk_tz.localize(created)
-        else:
-            created = created.astimezone(_uk_tz)
-        if created.year != _now_uk.year or created.month > _current_month:
+        # Bucket on the effective (paid, UK) date — same basis as every other
+        # booking-count report, so a 23:59-initiated / 00:12-paid booking sits
+        # in the week its payment settled.
+        eff = booking_effective_datetime(booking)
+        if eff is None:
             continue
-        _pattern_counts[created.month][_week_bucket(created.day)] += 1
+        if eff.year != _now_uk.year or eff.month > _current_month:
+            continue
+        _pattern_counts[eff.month][_week_bucket(eff.day)] += 1
 
     months_pattern = []
     overall_buckets = {b: 0 for b in _bucket_keys}

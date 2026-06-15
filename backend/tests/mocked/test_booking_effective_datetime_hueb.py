@@ -233,3 +233,40 @@ class TestBookingStatsPaidDayBucketing:
         assert "2026-06-14" not in daily
         assert daily["2026-06-15"]["confirmed"] == 2
         assert daily["2026-06-15"]["total"] == 2
+
+
+def _build_stats_client(bookings):
+    """A TestClient whose Booking queries return `bookings` and AuditLog []."""
+    db = SimpleNamespace()
+    db.query = lambda model: _FakeQuery([]) if model is AuditLog else _FakeQuery(bookings)
+
+    def _override_get_db():
+        yield db
+
+    from main import require_admin
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[require_admin] = lambda: SimpleNamespace(id=1, email="admin@test", is_admin=True)
+    return TestClient(app)
+
+
+class TestMonthlyPatternPaidBasis:
+    """monthly_booking_pattern must bucket by the paid week, not the created
+    week — the surface that showed Days 15-21 as 20 instead of 21."""
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    def test_buckets_by_paid_week_not_created_week(self):
+        from main import get_uk_now
+        now = get_uk_now()
+        y, m = now.year, now.month
+        # Created on day 7 (W1, Days 1-7); paid on day 8 (W2, Days 8-14).
+        b = _stats_booking("TAG-WK0001", _utc(y, m, 7, 10, 0), _utc(y, m, 8, 10, 0))
+        resp = _build_stats_client([b]).get("/api/admin/bookings/stats")
+        assert resp.status_code == 200
+
+        months = resp.json()["monthly_booking_pattern"]["months"]
+        this_month = next(mo for mo in months if mo["month"] == f"{y}-{m:02d}")
+        counts = {x["key"]: x["count"] for x in this_month["buckets"]}
+        assert counts["W2"] == 1   # paid week
+        assert counts["W1"] == 0   # NOT the created week
