@@ -24,6 +24,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from freezegun import freeze_time
+
 import main
 import db_service
 from main import app, require_admin
@@ -31,6 +33,17 @@ from database import get_db
 from db_models import BookingStatus
 
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock():
+    """Freeze the clock so the test's date.today() and the endpoint's
+    get_uk_now().date() resolve to the same day. They otherwise disagree when
+    the (Pacific) test machine and UK straddle midnight, dropping a "today"
+    booking from the endpoint's `dropoff_date >= today_uk` filter. Noon UTC
+    keeps the UTC and UK calendar dates aligned."""
+    with freeze_time(datetime.combine(date_type.today(), time(12, 0))):
+        yield
 
 
 def _clear_env(monkeypatch):
