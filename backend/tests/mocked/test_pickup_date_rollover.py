@@ -41,10 +41,11 @@ file verifies the upstream data the bucketing reads.
 """
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, time as dt_time, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,10 +57,27 @@ from database import get_db  # noqa: E402
 client = TestClient(app)
 
 
-# Dates ~5 weeks ahead so the lead-time gate doesn't reject the booking;
-# Tue/Wed pair preserves the operational-day semantics under test.
-TUE = date(2026, 6, 23)
-WED = date(2026, 6, 24)
+# Pin the clock to a safe morning hour so the customer lead-time gate
+# (main.py: same-day block + next-day-after-20:00 block, which reads
+# datetime.now() inline) is deterministic no matter when the suite runs —
+# previously these tests failed if executed after 20:00 UK. The frozen date
+# stays today's real date, so the dynamic booking dates below remain weeks in
+# the future and never go stale.
+_FROZEN_HHMM = dt_time(9, 0)  # 09:00 UTC = 10:00 BST, well before the 20:00 cutoff
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock():
+    with freeze_time(datetime.combine(date.today(), _FROZEN_HHMM)):
+        yield
+
+
+# Booking dates computed ~5 weeks ahead of today (landing on a Tue/Wed pair),
+# so the lead-time gate never rejects them and they never go stale. The Tue/Wed
+# pairing preserves the operational-day semantics under test.
+_BASE = date.today() + timedelta(days=35)
+TUE = _BASE + timedelta(days=(1 - _BASE.weekday()) % 7)  # next Tuesday on/after base
+WED = TUE + timedelta(days=1)
 
 
 # =============================================================================
