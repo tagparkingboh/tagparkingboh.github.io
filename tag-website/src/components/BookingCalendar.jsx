@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { formatDestination } from '../utils/formatDestination'
 import './BookingCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -333,7 +334,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                             {booking.dropoff_flight_number && booking.dropoff_flight_number !== 'Unknown' && <span className="flight-number">{booking.dropoff_flight_number}</span>}
                           </div>
                           <div className="booking-destination">
-                            → {booking.dropoff_destination || 'Unknown'}
+                            → {formatDestination(booking.dropoff_destination) || 'Unknown'}
                             {booking.flight_departure_time && <span className="flight-time-info">Departs: {formatTime(booking.flight_departure_time)}</span>}
                           </div>
                           <div className="booking-ref">
@@ -378,7 +379,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                             {booking.pickup_flight_number && booking.pickup_flight_number !== 'Unknown' && <span className="flight-number">{booking.pickup_flight_number}</span>}
                           </div>
                           <div className="booking-destination">
-                            ← {booking.pickup_origin || 'Unknown'}
+                            ← {formatDestination(booking.pickup_origin) || 'Unknown'}
                             {booking.flight_arrival_time && <span className="flight-time-info">Arrives: {formatTime(booking.flight_arrival_time)}</span>}
                           </div>
                           <div className="booking-ref">

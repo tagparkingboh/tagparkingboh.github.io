@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../AuthContext'
 import { DEFAULT_ONLINE_CAPACITY, getOnlineCapacityForDate } from '../utils/capacity'
+import { formatDestination } from '../utils/formatDestination'
 import './RosterCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -4018,7 +4019,7 @@ function RosterCalendar({
                             )}
                           </div>
                           <div className="booking-destination">
-                            → {booking.dropoff_destination || 'Unknown'}
+                            → {formatDestination(booking.dropoff_destination) || 'Unknown'}
                             {booking.flight_departure_time && (
                               <span className="flight-time-info">
                                 Departs: {formatTime(booking.flight_departure_time)}
@@ -4095,7 +4096,7 @@ function RosterCalendar({
                             )}
                           </div>
                           <div className="booking-destination">
-                            ← {booking.pickup_origin || 'Unknown'}
+                            ← {formatDestination(booking.pickup_origin) || 'Unknown'}
                             {booking.flight_arrival_time && (
                               <span className="flight-time-info">
                                 Arrives: {formatTime(booking.flight_arrival_time)}
@@ -4280,7 +4281,7 @@ function RosterCalendar({
                                     )}
                                     {booking.destination && (
                                       <span className="shift-booking-dest">
-                                        {booking.type === 'dropoff' ? '→' : '←'} {booking.destination}
+                                        {booking.type === 'dropoff' ? '→' : '←'} {formatDestination(booking.destination)}
                                       </span>
                                     )}
                                   </div>

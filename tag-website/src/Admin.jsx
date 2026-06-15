@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import ManualBooking from './components/ManualBooking'
+import { formatDestination } from './utils/formatDestination'
 import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
@@ -4504,7 +4505,7 @@ function Admin() {
                 </div>
                 <div className="booking-detail">
                   <span className="detail-label">Destination</span>
-                  <span className="detail-value">{booking.dropoff_destination || '-'}</span>
+                  <span className="detail-value">{formatDestination(booking.dropoff_destination) || '-'}</span>
                 </div>
               </div>
             </div>
@@ -4549,7 +4550,7 @@ function Admin() {
                 </div>
                 <div className="booking-detail">
                   <span className="detail-label">Origin</span>
-                  <span className="detail-value">{booking.pickup_origin || '-'}</span>
+                  <span className="detail-value">{formatDestination(booking.pickup_origin) || '-'}</span>
                 </div>
               </div>
             </div>
