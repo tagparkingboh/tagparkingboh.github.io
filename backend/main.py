@@ -6610,14 +6610,16 @@ async def get_fun_facts(
     # Order by effective (paid, UK) time — the Nth booking is the Nth to settle.
     sorted_bookings = sorted(bookings_with_created, key=lambda b: booking_effective_datetime(b))
     # Ladder of "Xth booking" milestones surfaced on Admin → Insights.
-    # 1–500 in fine-grained steps (early growth, every 25–50); 500+ in
-    # round hundreds (later growth, less interesting to mark every 50).
+    # 1–500 in fine-grained steps (early growth, every 25–50); 500–1000 in
+    # steps of 50; 1000+ in round 250s (later growth, less interesting to
+    # mark every 50).
     # Each milestone is only rendered once total bookings >= the number
     # (gate is the `if len(sorted_bookings) >= num:` check below) so
     # future tiers stay invisible until earned.
     milestone_numbers = [
         1, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
-        600, 700, 800, 900, 1000,
+        550, 600, 650, 700, 750, 800, 850, 900, 950, 1000,
+        1250, 1500, 1750, 2000,
     ]
     milestones = []
 

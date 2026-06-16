@@ -12748,7 +12748,7 @@ function Admin() {
                               <span className="booking-target-label">Total Milestones</span>
                               <span className="booking-target-value">{bookingStats.total_successful || 0} total bookings</span>
                               <div className="booking-target-milestones milestones-wrap">
-                                {[1, 10, 25, 50, 75, 100, 150, 250, 500, 1000].map(target => (
+                                {[1, 10, 25, 50, 75, 100, 150, 250, 500, 750, 1000].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.total_successful || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
