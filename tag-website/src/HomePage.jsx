@@ -287,7 +287,7 @@ function HomePage() {
             <p className="hero-subtitle">TAG: HIGHLY-RATED, FRIENDLY, AND EFFICIENT MEET-AND-GREET<br />SERVICE AT BOURNEMOUTH AIRPORT</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 && (
-                <>Save up to 60% off<br />official airport parking</>
+                <>Save up to 70% off<br />official airport parking</>
               )}
               {heroBannerIndex === 1 && (
                 <>Friendly and cost-effective alternative<br />to official airport parking</>
@@ -389,7 +389,7 @@ function HomePage() {
             <li className="feature-3"><span className="check">✓</span> No hidden fees</li>
             <li className="feature-4"><span className="check">✓</span> Free cancellation up to 24hrs before</li>
           </ul>
-          <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
+          <p className="pricing-save-unified">Save up to 70% off official airport parking</p>
         </div>
 
         <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
@@ -400,8 +400,8 @@ function HomePage() {
       <section className="features-banner">
         <div className="features-content">
           <div className="feature">
-            <h2>60%</h2>
-            <p>Save up to 60% off<br />official airport parking</p>
+            <h2>70%</h2>
+            <p>Save up to 70% off<br />official airport parking</p>
           </div>
           <div className="feature">
             <h2>£0</h2>
