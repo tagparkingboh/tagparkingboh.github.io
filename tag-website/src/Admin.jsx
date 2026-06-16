@@ -12706,7 +12706,7 @@ function Admin() {
                               <span className="booking-target-label">Daily Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_today || 0} confirmed today</span>
                               <div className="booking-target-milestones">
-                                {[1, 2, 3, 4, 5, 10, 15, 20].map(target => (
+                                {[1, 2, 3, 4, 5, 10, 15, 20, 25, 30].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_today || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
@@ -12720,7 +12720,7 @@ function Admin() {
                               <span className="booking-target-label">Weekly Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_this_week || 0} confirmed this week</span>
                               <div className="booking-target-milestones">
-                                {[1, 5, 10, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80].map(target => (
+                                {[1, 5, 10, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_this_week || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
@@ -12734,7 +12734,7 @@ function Admin() {
                               <span className="booking-target-label">Monthly Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_this_month || 0} confirmed this month</span>
                               <div className="booking-target-milestones">
-                                {[1, 10, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300].map(target => (
+                                {[1, 10, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_this_month || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
