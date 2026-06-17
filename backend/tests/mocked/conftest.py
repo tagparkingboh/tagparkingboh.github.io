@@ -12,6 +12,12 @@ from sqlalchemy.pool import StaticPool
 from types import SimpleNamespace
 
 
+EXTERNAL_INTEGRATION_TESTS = (
+    "test_cancel_payment.py::TestCancelPaymentIntentIntegration",
+    "test_dvla.py::TestVehicleLookupIntegration",
+)
+
+
 def _sqlite_tables(Base):
     return [
         table for table in Base.metadata.sorted_tables
@@ -154,7 +160,7 @@ def isolate_environment(monkeypatch, request):
     ENVIRONMENT itself within its own body (which runs after this fixture).
     """
     monkeypatch.delenv("ENVIRONMENT", raising=False)
-    if request.node.get_closest_marker("integration"):
+    if any(pattern in request.node.nodeid for pattern in EXTERNAL_INTEGRATION_TESTS):
         pytest.skip("External integration tests are excluded from tests/mocked")
 
     state = {"engine": None, "tables": None, "SessionLocal": None}

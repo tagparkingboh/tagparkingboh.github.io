@@ -490,17 +490,26 @@ class TestFlightHistoryIntegration:
 
     def test_record_and_retrieve_departure_history(self, db_session):
         """Should record and retrieve departure history from database."""
-        # This test uses the real database - requires flight_departure_history table
-        # Skip if table doesn't exist
         from sqlalchemy import inspect
         inspector = inspect(db_session.bind)
         if 'flight_departure_history' not in inspector.get_table_names():
             pytest.skip("flight_departure_history table not created yet")
 
-        # Create a test flight first (or use existing)
-        flight = db_session.query(FlightDeparture).first()
-        if not flight:
-            pytest.skip("No departure flights in database")
+        flight = FlightDeparture(
+            date=FUTURE_DATE,
+            flight_number="FR5523",
+            airline_code="FR",
+            airline_name="Ryanair",
+            departure_time=time(10, 30),
+            destination_code="AGP",
+            destination_name="Malaga",
+            capacity_tier=4,
+            slots_booked_early=1,
+            slots_booked_late=0,
+        )
+        db_session.add(flight)
+        db_session.commit()
+        db_session.refresh(flight)
 
         # Record history
         history = record_departure_history(db_session, flight, "updated", "test@example.com")
@@ -520,9 +529,19 @@ class TestFlightHistoryIntegration:
         if 'flight_arrival_history' not in inspector.get_table_names():
             pytest.skip("flight_arrival_history table not created yet")
 
-        flight = db_session.query(FlightArrival).first()
-        if not flight:
-            pytest.skip("No arrival flights in database")
+        flight = FlightArrival(
+            date=FUTURE_DATE,
+            flight_number="BA1234",
+            airline_code="BA",
+            airline_name="British Airways",
+            departure_time=time(8, 15),
+            arrival_time=time(10, 45),
+            origin_code="LHR",
+            origin_name="London Heathrow",
+        )
+        db_session.add(flight)
+        db_session.commit()
+        db_session.refresh(flight)
 
         history = record_arrival_history(db_session, flight, "updated", "test@example.com")
         db_session.commit()
