@@ -37,9 +37,11 @@ from auto_roster import (  # noqa: E402
     handle_booking_cancelled,
     handle_booking_cancelled_async,
     delete_all_auto_shifts,
+    trim_window_auto_shifts_for_date,
 )
 from db_models import (  # noqa: E402
     BookingStatus,
+    RosterWindowTemplate,
     ServiceType,
     ShiftStatus,
     ShiftType,
@@ -106,8 +108,33 @@ def mk_settings(
     )
 
 
+def mk_window_template(profile, label, start_time, end_time, sort_order=0):
+    return RosterWindowTemplate(
+        profile=profile,
+        label=label,
+        start_time=start_time,
+        end_time=end_time,
+        sort_order=sort_order,
+        is_active=True,
+    )
+
+
+def default_window_templates():
+    windows = [
+        ("early", time(3, 0), time(9, 0)),
+        ("day", time(9, 30), time(15, 30)),
+        ("late", time(15, 45), time(20, 45)),
+        ("overnight", time(21, 0), time(2, 0)),
+    ]
+    return [
+        mk_window_template(profile, label, start, end, idx)
+        for profile in ("weekday", "weekend")
+        for idx, (label, start, end) in enumerate(windows)
+    ]
+
+
 def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shifts=None,
-            bookings=None, existing_links_by_shift=None):
+            bookings=None, existing_links_by_shift=None, window_templates=None):
     """A MagicMock db that:
       - returns `untouched_auto_shifts` for the rebuild's delete-candidate query
         (filtered by `staff_id IS NULL`)
@@ -124,6 +151,7 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shif
     suppressed_shifts = list(suppressed_shifts or [])
     bookings = list(bookings or [])
     existing_links_by_shift = dict(existing_links_by_shift or {})
+    window_templates = list(window_templates or [])
     added = []
     deleted = []
 
@@ -145,6 +173,7 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shif
             captured_filters.append(args)
             return chain
         chain.filter.side_effect = capture_filter
+        chain.order_by.return_value = chain
 
         def _status_allowed(shift_status, captured) -> bool:
             """Inspect captured filter args for a `status.in_([...])`
@@ -270,6 +299,9 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shif
         elif model is ShiftBookingLink:
             chain.all.side_effect = link_all
             chain.first.return_value = None
+        elif model is RosterWindowTemplate:
+            chain.all.return_value = list(window_templates)
+            chain.first.return_value = window_templates[0] if window_templates else None
         else:
             chain.all.return_value = []
             chain.first.return_value = None
@@ -642,33 +674,33 @@ class TestRebuildAutoForDates:
         # back-dates to D-1 23:30 because flight_arrival_time > pickup_time).
         b1 = mk_booking(
             booking_id=1, reference="TAG-NIGHT001",
-            dropoff_dt=datetime(2026, 7, 1, 11, 45),
-            pickup_dt=datetime(2026, 7, 9, 0, 0),
+            dropoff_dt=datetime(2026, 6, 1, 11, 45),
+            pickup_dt=datetime(2026, 6, 9, 0, 0),
             flight_arrival_time=time(23, 30),
         )
         b2 = mk_booking(
             booking_id=2, reference="TAG-NIGHT002",
-            dropoff_dt=datetime(2026, 7, 1, 11, 45),
-            pickup_dt=datetime(2026, 7, 9, 0, 29),
+            dropoff_dt=datetime(2026, 6, 1, 11, 45),
+            pickup_dt=datetime(2026, 6, 9, 0, 29),
             flight_arrival_time=time(23, 59),
         )
         # New booking landing 01:30 on D with pickup 02:00 (no rollover).
         b_new = mk_booking(
             booking_id=3, reference="TAG-LATEAM01",
-            dropoff_dt=datetime(2026, 7, 1, 11, 45),
-            pickup_dt=datetime(2026, 7, 9, 2, 0),
+            dropoff_dt=datetime(2026, 6, 1, 11, 45),
+            pickup_dt=datetime(2026, 6, 9, 2, 0),
             flight_arrival_time=time(1, 30),
         )
         # Existing untouched auto-shift from b1+b2's earlier rebuild: spans
-        # 8 Jul 23:00 → 9 Jul 00:30. Its `date` is 8 Jul — NOT in target_set
-        # for the new booking's rebuild ({1 Jul, 9 Jul}).
+        # 8 Jun 23:00 → 9 Jun 00:30. Its `date` is 8 Jun — NOT in target_set
+        # for the new booking's rebuild ({1 Jun, 9 Jun}).
         existing = SimpleNamespace(
             id=999,
             created_source="auto",
             staff_id=None,
             status=ShiftStatus.SCHEDULED,
-            date=date(2026, 7, 8),
-            end_date=date(2026, 7, 9),
+            date=date(2026, 6, 8),
+            end_date=date(2026, 6, 9),
             start_time=time(23, 0),
             end_time=time(0, 30),
         )
@@ -679,7 +711,7 @@ class TestRebuildAutoForDates:
         # Trigger the rebuild for b_new's own affected dates only.
         rebuild_auto_for_dates(
             db,
-            {date(2026, 7, 1), date(2026, 7, 9)},
+            {date(2026, 6, 1), date(2026, 6, 9)},
             mk_settings(),
         )
 
@@ -689,15 +721,15 @@ class TestRebuildAutoForDates:
         deleted = [d for d in db._deleted if hasattr(d, "date")]
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
 
-        # The cross-midnight shift (date=8 Jul) must have been picked up
+        # The cross-midnight shift (date=8 Jun) must have been picked up
         # by the expanded delete scope, NOT left intact.
-        assert any(s.date == date(2026, 7, 8) for s in deleted), (
-            "expanded target_set must catch the existing 8 Jul shift; "
+        assert any(s.date == date(2026, 6, 8) for s in deleted), (
+            "expanded target_set must catch the existing 8 Jun shift; "
             f"deleted dates: {[s.date for s in deleted]}"
         )
         # A replacement cross-midnight shift must have been created that
         # extends past 02:00 (so it covers b_new's pickup).
-        cross = [s for s in new_shifts if s.date == date(2026, 7, 8) and s.end_date == date(2026, 7, 9)]
+        cross = [s for s in new_shifts if s.date == date(2026, 6, 8) and s.end_date == date(2026, 6, 9)]
         assert len(cross) == 1, (
             f"exactly one cross-midnight shift expected, got {len(cross)}: "
             f"{[(s.date, s.end_date, s.start_time, s.end_time) for s in new_shifts]}"
@@ -2702,6 +2734,255 @@ class TestAutoRosterCoverageEdges:
         db.close.assert_called_once()
 
 
+class TestTemplateRosterWindows:
+    """Phase 2 standard shift windows, effective 2026-07-01 onward."""
+
+    def test_H_july_dropoffs_slot_into_one_config_window(self):
+        b1 = mk_booking(
+            booking_id=3001,
+            reference="TAG-WIN0400",
+            dropoff_dt=datetime(2026, 7, 2, 4, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b2 = mk_booking(
+            booking_id=3002,
+            reference="TAG-WIN0600",
+            dropoff_dt=datetime(2026, 7, 2, 6, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b1, b2], window_templates=default_window_templates())
+
+        result = rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+
+        from db_models import RosterShift, ShiftBookingLink
+        shifts = [obj for obj in db._added if isinstance(obj, RosterShift)]
+        links = [obj for obj in db._added if isinstance(obj, ShiftBookingLink)]
+        assert result["created"] == 1
+        assert len(shifts) == 1
+        assert shifts[0].date == date(2026, 7, 2)
+        assert shifts[0].start_time == time(3, 0)
+        assert shifts[0].end_time == time(9, 0)
+        assert {link.booking_id for link in links} == {3001, 3002}
+
+    def test_H_july_pickup_uses_late_window(self):
+        booking = mk_booking(
+            booking_id=3003,
+            reference="TAG-WIN1600",
+            dropoff_dt=datetime(2026, 7, 10, 8, 0),
+            pickup_dt=datetime(2026, 7, 2, 16, 30),
+            flight_arrival_time=time(16, 0),
+            flight_arrival_date=date(2026, 7, 2),
+        )
+        db = make_db(bookings=[booking], window_templates=default_window_templates())
+
+        rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+
+        from db_models import RosterShift
+        shift = next(obj for obj in db._added if isinstance(obj, RosterShift))
+        assert shift.start_time == time(15, 45)
+        assert shift.end_time == time(20, 45)
+
+    def test_B_window_edges_and_gap_extend_nearest_window(self):
+        at_end = mk_booking(
+            booking_id=3010,
+            reference="TAG-EDGE0900",
+            dropoff_dt=datetime(2026, 7, 2, 9, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        in_gap = mk_booking(
+            booking_id=3011,
+            reference="TAG-GAP0915",
+            dropoff_dt=datetime(2026, 7, 2, 9, 15),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        at_start = mk_booking(
+            booking_id=3012,
+            reference="TAG-EDGE0930",
+            dropoff_dt=datetime(2026, 7, 2, 9, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(
+            bookings=[at_end, in_gap, at_start],
+            window_templates=default_window_templates(),
+        )
+
+        rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+
+        from db_models import RosterShift
+        shifts = sorted(
+            [obj for obj in db._added if isinstance(obj, RosterShift)],
+            key=lambda shift: shift.start_time,
+        )
+        assert [(shift.start_time, shift.end_time) for shift in shifts] == [
+            (time(3, 0), time(9, 15)),
+            (time(9, 30), time(15, 30)),
+        ]
+
+    def test_B_cross_midnight_window_holds_late_and_early_events(self):
+        late = mk_booking(
+            booking_id=3020,
+            reference="TAG-NITE2355",
+            dropoff_dt=datetime(2026, 7, 1, 23, 55),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        early = mk_booking(
+            booking_id=3021,
+            reference="TAG-NITE0130",
+            dropoff_dt=datetime(2026, 7, 2, 1, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[late, early], window_templates=default_window_templates())
+
+        rebuild_auto_for_dates(db, {date(2026, 7, 1)}, mk_settings())
+
+        from db_models import RosterShift, ShiftBookingLink
+        shift = next(obj for obj in db._added if isinstance(obj, RosterShift))
+        assert shift.date == date(2026, 7, 1)
+        assert shift.end_date == date(2026, 7, 2)
+        assert shift.start_time == time(21, 0)
+        assert shift.end_time == time(2, 0)
+        assert {obj.booking_id for obj in db._added if isinstance(obj, ShiftBookingLink)} == {3020, 3021}
+
+    def test_B_effective_date_routes_june_to_cluster_and_july_to_windows(self, monkeypatch):
+        calls = []
+
+        def fake_cluster(_db, target_dates, _settings, focus_booking_id=None):
+            calls.append(("cluster", set(target_dates), focus_booking_id))
+            return {"created": 1, "deleted": 0}
+
+        def fake_windows(_db, target_dates, _settings, focus_booking_id=None):
+            calls.append(("windows", set(target_dates), focus_booking_id))
+            return {"created": 2, "deleted": 0}
+
+        monkeypatch.setattr("auto_roster._rebuild_cluster_auto_for_dates", fake_cluster)
+        monkeypatch.setattr("auto_roster._rebuild_window_auto_for_dates", fake_windows)
+
+        result = rebuild_auto_for_dates(
+            MagicMock(),
+            {date(2026, 6, 30), date(2026, 7, 1)},
+            mk_settings(),
+            focus_booking_id=44,
+        )
+
+        assert calls == [
+            ("cluster", {date(2026, 6, 30)}, 44),
+            ("windows", {date(2026, 7, 1)}, 44),
+        ]
+        assert result["created"] == 3
+
+    def test_E_saturday_uses_weekend_profile(self):
+        templates = [
+            mk_window_template("weekday", "weekday-early", time(3, 0), time(9, 0), 0),
+            mk_window_template("weekend", "weekend-early", time(4, 0), time(10, 0), 0),
+        ]
+        booking = mk_booking(
+            booking_id=3030,
+            reference="TAG-WEEKEND",
+            dropoff_dt=datetime(2026, 7, 4, 4, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[booking], window_templates=templates)
+
+        rebuild_auto_for_dates(db, {date(2026, 7, 4)}, mk_settings())
+
+        from db_models import RosterShift
+        shift = next(obj for obj in db._added if isinstance(obj, RosterShift))
+        assert shift.start_time == time(4, 0)
+        assert shift.end_time == time(10, 0)
+
+    def test_E_config_rows_drive_window_boundaries(self):
+        templates = [
+            mk_window_template("weekday", "custom-early", time(4, 0), time(8, 0), 0),
+            mk_window_template("weekend", "weekend-early", time(3, 0), time(9, 0), 0),
+        ]
+        booking = mk_booking(
+            booking_id=3040,
+            reference="TAG-CONFIG",
+            dropoff_dt=datetime(2026, 7, 2, 4, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[booking], window_templates=templates)
+
+        rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+
+        from db_models import RosterShift
+        shift = next(obj for obj in db._added if isinstance(obj, RosterShift))
+        assert shift.start_time == time(4, 0)
+        assert shift.end_time == time(8, 0)
+
+    def test_H_trim_shrinks_untouched_window_to_actual_events_plus_buffers(self):
+        early = mk_booking(
+            booking_id=3050,
+            reference="TAG-TRIM0500",
+            dropoff_dt=datetime(2026, 7, 2, 5, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        late = mk_booking(
+            booking_id=3051,
+            reference="TAG-TRIM0700",
+            dropoff_dt=datetime(2026, 7, 2, 7, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        shift = SimpleNamespace(
+            id=305,
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 2),
+            end_date=None,
+            start_time=time(3, 0),
+            end_time=time(9, 0),
+            shift_type=ShiftType.MORNING,
+            bookings=[early, late],
+        )
+        db = make_db(untouched_auto_shifts=[shift])
+
+        result = trim_window_auto_shifts_for_date(
+            db,
+            date(2026, 7, 2),
+            mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
+        )
+
+        assert result == {"trimmed": 1, "skipped": 0}
+        assert shift.start_time == time(4, 30)
+        assert shift.end_time == time(7, 30)
+        db.commit.assert_called_once()
+
+    def test_U_trim_never_reshapes_claimed_window(self):
+        booking = mk_booking(
+            booking_id=3060,
+            reference="TAG-CLAIMED",
+            dropoff_dt=datetime(2026, 7, 2, 5, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        shift = SimpleNamespace(
+            id=306,
+            created_source="auto",
+            staff_id=17,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 2),
+            end_date=None,
+            start_time=time(3, 0),
+            end_time=time(9, 0),
+            shift_type=ShiftType.MORNING,
+            bookings=[booking],
+        )
+        db = make_db(untouched_auto_shifts=[shift])
+
+        result = trim_window_auto_shifts_for_date(
+            db,
+            date(2026, 7, 2),
+            mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
+        )
+
+        assert result == {"trimmed": 0, "skipped": 1}
+        assert shift.start_time == time(3, 0)
+        assert shift.end_time == time(9, 0)
+        db.commit.assert_not_called()
+
+
 class TestFocusRebuildOrphanRescue:
     """Orphan rescue (2026-06-12 incident, TAG-GIR11546 → shift 5263).
 
@@ -2714,32 +2995,32 @@ class TestFocusRebuildOrphanRescue:
 
     def _incident_fixtures(self):
         """GIR11546-shaped triple:
-          - F (focus, new booking): drop 16/07 09:50, pickup arrival 20/07 23:05
-          - A (QDB-shaped):         drop 17/07 10:10, pickup arrival 20/07 23:05
+          - F (focus, new booking): drop 16/06 09:50, pickup arrival 20/06 23:05
+          - A (QDB-shaped):         drop 17/06 10:10, pickup arrival 20/06 23:05
                                     (same return flight as F)
-          - B (QBP-shaped):         pickup arrival 17/07 11:50
-          - S1: untouched auto shift 17/07 09:40-13:30 linked to A + B
+          - B (QBP-shaped):         pickup arrival 17/06 11:50
+          - S1: untouched auto shift 17/06 09:40-13:30 linked to A + B
         """
         f = mk_booking(
             booking_id=900, reference="TAG-FOCUS001",
-            dropoff_dt=datetime(2026, 7, 16, 9, 50),
-            pickup_dt=datetime(2026, 7, 20, 23, 35),
+            dropoff_dt=datetime(2026, 6, 16, 9, 50),
+            pickup_dt=datetime(2026, 6, 20, 23, 35),
             flight_arrival_time=time(23, 5),
-            flight_arrival_date=date(2026, 7, 20),
+            flight_arrival_date=date(2026, 6, 20),
         )
         a = mk_booking(
             booking_id=901, reference="TAG-SHARED01",
-            dropoff_dt=datetime(2026, 7, 17, 10, 10),
-            pickup_dt=datetime(2026, 7, 20, 23, 35),
+            dropoff_dt=datetime(2026, 6, 17, 10, 10),
+            pickup_dt=datetime(2026, 6, 20, 23, 35),
             flight_arrival_time=time(23, 5),
-            flight_arrival_date=date(2026, 7, 20),
+            flight_arrival_date=date(2026, 6, 20),
         )
         b = mk_booking(
             booking_id=902, reference="TAG-ORPHAN01",
-            dropoff_dt=datetime(2026, 7, 12, 12, 50),
-            pickup_dt=datetime(2026, 7, 17, 12, 20),
+            dropoff_dt=datetime(2026, 6, 12, 12, 50),
+            pickup_dt=datetime(2026, 6, 17, 12, 20),
             flight_arrival_time=time(11, 50),
-            flight_arrival_date=date(2026, 7, 17),
+            flight_arrival_date=date(2026, 6, 17),
         )
         s1 = SimpleNamespace(
             id=5263,
@@ -2747,7 +3028,7 @@ class TestFocusRebuildOrphanRescue:
             staff_id=None,
             admin_shaped_at=None,
             status=ShiftStatus.SCHEDULED,
-            date=date(2026, 7, 17), end_date=None,
+            date=date(2026, 6, 17), end_date=None,
             start_time=time(9, 40), end_time=time(13, 30),
             booking_id=None,
             bookings=[a, b],
@@ -2761,7 +3042,7 @@ class TestFocusRebuildOrphanRescue:
         db = make_db(bookings=[f, a, b], untouched_auto_shifts=[s1])
 
         result = rebuild_auto_for_dates(
-            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            db, {date(2026, 6, 16), date(2026, 6, 20)}, mk_settings(),
             focus_booking_id=f.id,
         )
 
@@ -2769,30 +3050,30 @@ class TestFocusRebuildOrphanRescue:
         assert s1 in db._deleted, "shared shift should be deleted via booking A"
         new_shifts = [x for x in db._added if isinstance(x, RosterShift)]
         new_dates = sorted(s.date for s in new_shifts)
-        # 16/07 (focus drop), 17/07 (RESCUED orphan cluster), 20/07 (focus+A pickup)
-        assert new_dates == [date(2026, 7, 16), date(2026, 7, 17), date(2026, 7, 20)]
+        # 16/06 (focus drop), 17/06 (RESCUED orphan cluster), 20/06 (focus+A pickup)
+        assert new_dates == [date(2026, 6, 16), date(2026, 6, 17), date(2026, 6, 20)]
         assert result["rescued"] == 1
         assert result["deleted"] == 1
         assert result["created"] == 3
-        # The rescued 17/07 shift must carry BOTH orphaned bookings.
+        # The rescued 17/06 shift must carry BOTH orphaned bookings.
         linked_ids = {l.booking_id for l in db._added if isinstance(l, ShiftBookingLink)}
         assert {a.id, b.id} <= linked_ids
 
     def test_H_rescue_does_not_touch_unrelated_clusters_of_rescued_booking(self):
-        """B also has a drop-off on 12/07 (covered elsewhere, outside the
+        """B also has a drop-off on 12/06 (covered elsewhere, outside the
         delete scope). The rescue must NOT re-materialise that cluster —
         only the one whose coverage was deleted."""
         f, a, b, s1 = self._incident_fixtures()
         db = make_db(bookings=[f, a, b], untouched_auto_shifts=[s1])
 
         rebuild_auto_for_dates(
-            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            db, {date(2026, 6, 16), date(2026, 6, 20)}, mk_settings(),
             focus_booking_id=f.id,
         )
 
         from db_models import RosterShift
         new_dates = [x.date for x in db._added if isinstance(x, RosterShift)]
-        assert date(2026, 7, 12) not in new_dates, (
+        assert date(2026, 6, 12) not in new_dates, (
             "rescue over-reached into a cluster that never lost coverage"
         )
 
@@ -2808,8 +3089,8 @@ class TestFocusRebuildOrphanRescue:
             staff_id=None,
             admin_shaped_at=None,
             status=ShiftStatus.CANCELLED,
-            suppressed_at=datetime(2026, 7, 1, 9, 0),
-            date=date(2026, 7, 17), end_date=None,
+            suppressed_at=datetime(2026, 6, 1, 9, 0),
+            date=date(2026, 6, 17), end_date=None,
             start_time=time(9, 0), end_time=time(14, 0),
             booking_id=None,
             bookings=[],
@@ -2821,13 +3102,13 @@ class TestFocusRebuildOrphanRescue:
         )
 
         result = rebuild_auto_for_dates(
-            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            db, {date(2026, 6, 16), date(2026, 6, 20)}, mk_settings(),
             focus_booking_id=f.id,
         )
 
         from db_models import RosterShift
         new_dates = [x.date for x in db._added if isinstance(x, RosterShift)]
-        assert date(2026, 7, 17) not in new_dates
+        assert date(2026, 6, 17) not in new_dates
         assert result["skipped_suppressed"] == 1
 
     # --- EDGE ----------------------------------------------------------------
@@ -2838,9 +3119,9 @@ class TestFocusRebuildOrphanRescue:
         not create a duplicate."""
         f, a, b, s1 = self._incident_fixtures()
         frozen = mk_assigned_shift(
-            id=4250, shift_date=date(2026, 7, 17),
+            id=4250, shift_date=date(2026, 6, 17),
             start_time=time(9, 0), end_time=time(14, 0),
-            staff_id=16, admin_shaped_at=datetime(2026, 7, 1, 8, 0),
+            staff_id=16, admin_shaped_at=datetime(2026, 6, 1, 8, 0),
         )
         db = make_db(
             bookings=[f, a, b],
@@ -2849,13 +3130,13 @@ class TestFocusRebuildOrphanRescue:
         )
 
         result = rebuild_auto_for_dates(
-            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            db, {date(2026, 6, 16), date(2026, 6, 20)}, mk_settings(),
             focus_booking_id=f.id,
         )
 
         from db_models import RosterShift
         new_dates = [x.date for x in db._added if isinstance(x, RosterShift)]
-        assert date(2026, 7, 17) not in new_dates
+        assert date(2026, 6, 17) not in new_dates
         assert result["skipped_covered"] == 1
         assert result["rescued"] == 1  # attempted, recognised as covered
 
@@ -2866,8 +3147,8 @@ class TestFocusRebuildOrphanRescue:
         f, a, b, s1 = self._incident_fixtures()
         c = mk_booking(
             booking_id=903, reference="TAG-CASCADE1",
-            dropoff_dt=datetime(2026, 7, 17, 16, 0),  # > 190min after 11:50
-            pickup_dt=datetime(2026, 7, 24, 14, 0),
+            dropoff_dt=datetime(2026, 6, 17, 16, 0),  # > 190min after 11:50
+            pickup_dt=datetime(2026, 6, 24, 14, 0),
         )
         s2 = SimpleNamespace(
             id=5300,
@@ -2875,7 +3156,7 @@ class TestFocusRebuildOrphanRescue:
             staff_id=None,
             admin_shaped_at=None,
             status=ShiftStatus.SCHEDULED,
-            date=date(2026, 7, 17), end_date=None,
+            date=date(2026, 6, 17), end_date=None,
             start_time=time(11, 0), end_time=time(17, 0),  # overlaps rescued window
             booking_id=None,
             bookings=[c],
@@ -2883,7 +3164,7 @@ class TestFocusRebuildOrphanRescue:
         db = make_db(bookings=[f, a, b, c], untouched_auto_shifts=[s1, s2])
 
         result = rebuild_auto_for_dates(
-            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            db, {date(2026, 6, 16), date(2026, 6, 20)}, mk_settings(),
             focus_booking_id=f.id,
         )
 
@@ -2906,7 +3187,7 @@ class TestFocusRebuildOrphanRescue:
             staff_id=None,
             admin_shaped_at=None,
             status=ShiftStatus.SCHEDULED,
-            date=date(2026, 7, 16), end_date=None,
+            date=date(2026, 6, 16), end_date=None,
             start_time=time(9, 0), end_time=time(10, 30),
             booking_id=None,
             bookings=[f],
@@ -2914,13 +3195,13 @@ class TestFocusRebuildOrphanRescue:
         db = make_db(bookings=[f], untouched_auto_shifts=[own_old_shift])
 
         result = rebuild_auto_for_dates(
-            db, {date(2026, 7, 16), date(2026, 7, 20)}, mk_settings(),
+            db, {date(2026, 6, 16), date(2026, 6, 20)}, mk_settings(),
             focus_booking_id=f.id,
         )
 
         from db_models import RosterShift
         new_dates = sorted(x.date for x in db._added if isinstance(x, RosterShift))
-        assert new_dates == [date(2026, 7, 16), date(2026, 7, 20)]
+        assert new_dates == [date(2026, 6, 16), date(2026, 6, 20)]
         assert result["rescued"] == 0
 
 

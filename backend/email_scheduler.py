@@ -55,6 +55,8 @@ AUTO_ROSTER_SWEEP_HOUR_ENV = "AUTO_ROSTER_SWEEP_HOUR"
 AUTO_ROSTER_SWEEP_MINUTE_ENV = "AUTO_ROSTER_SWEEP_MINUTE"
 AUTO_ROSTER_SWEEP_DEFAULT_HOUR = 3
 AUTO_ROSTER_SWEEP_DEFAULT_MINUTE = 10
+TEMPLATE_ROSTER_TRIM_HOUR = 20
+TEMPLATE_ROSTER_TRIM_MINUTE = 0
 
 
 def get_db() -> Session:
@@ -865,6 +867,54 @@ def process_all_pending_emails():
         db.close()
 
 
+def process_template_roster_window_trim(target_date=None):
+    """Daily T-1 cutoff trim for standard roster windows.
+
+    Runs at 20:00 Europe/London for tomorrow's operational day. The auto-roster
+    helper gates itself to 2026-07-01+ and only reshapes untouched auto shifts.
+    """
+    london = pytz.timezone("Europe/London")
+    trim_date = target_date or (datetime.now(london).date() + timedelta(days=1))
+    db = get_db()
+    try:
+        from auto_roster import (
+            TEMPLATE_ROSTER_EFFECTIVE_DATE,
+            trim_window_auto_shifts_for_date,
+        )
+        from roster_planner import PlannerSettings
+        from routers.roster import _load_planner_settings_rows
+
+        if trim_date < TEMPLATE_ROSTER_EFFECTIVE_DATE:
+            logger.info(
+                "template_roster_window_trim skipped target_date=%s reason=pre_effective",
+                trim_date.isoformat(),
+            )
+            return {"trimmed": 0, "skipped": 0, "pre_effective": True}
+
+        settings = PlannerSettings.from_kv(_load_planner_settings_rows(db))
+        result = trim_window_auto_shifts_for_date(db, trim_date, settings)
+        logger.info(
+            "template_roster_window_trim complete target_date=%s trimmed=%s skipped=%s",
+            trim_date.isoformat(),
+            result.get("trimmed", 0),
+            result.get("skipped", 0),
+        )
+        return result
+    except Exception as e:
+        logger.exception(
+            "template_roster_window_trim failed target_date=%s error=%s",
+            trim_date.isoformat(),
+            e,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("template_roster_window_trim rollback failed")
+        return {"trimmed": 0, "skipped": 0, "failed": True, "error": str(e)}
+    finally:
+        db.close()
+
+
 def cleanup_old_snapshots():
     """Remove pool snapshots older than 7 days to prevent table bloat."""
     try:
@@ -961,6 +1011,24 @@ def start_scheduler():
         )
     else:
         logger.info("Auto-roster sweep not scheduled; AUTO_ROSTER_SWEEP_ENABLED is disabled")
+
+    scheduler.add_job(
+        process_template_roster_window_trim,
+        trigger=CronTrigger(
+            hour=TEMPLATE_ROSTER_TRIM_HOUR,
+            minute=TEMPLATE_ROSTER_TRIM_MINUTE,
+            timezone=pytz.timezone("Europe/London"),
+        ),
+        id="template_roster_window_trim",
+        name="Template roster T-1 window trim",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    logger.info(
+        "Template roster window trim scheduled at %02d:%02d Europe/London",
+        TEMPLATE_ROSTER_TRIM_HOUR,
+        TEMPLATE_ROSTER_TRIM_MINUTE,
+    )
 
     scheduler.start()
     logger.info(f"Email scheduler started - checking every {CHECK_INTERVAL_MINUTES} minutes")

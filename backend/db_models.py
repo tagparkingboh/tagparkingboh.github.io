@@ -1505,6 +1505,30 @@ class RosterPlannerSettings(Base):
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
+class RosterWindowTemplate(Base):
+    """Config rows for standard auto-roster shift windows.
+
+    Application logic gates these rows to operational days dated 2026-07-01
+    onward. Profiles are currently `weekday` and `weekend`; rows remain data so
+    operations can adjust windows without a deploy.
+    """
+    __tablename__ = "roster_window_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    profile = Column(String(20), nullable=False, index=True)
+    label = Column(String(80), nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("profile", "label", name="uq_roster_window_template_profile_label"),
+    )
+
+
 class PlannerRun(Base):
     """One row per engine invocation in shadow mode.
 

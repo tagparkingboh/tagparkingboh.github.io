@@ -1020,6 +1020,57 @@ class TestAutoRosterSweepScheduler:
         db.close.assert_called_once()
 
 
+class TestTemplateRosterWindowTrimScheduler:
+    def test_B_pre_effective_date_is_noop_but_closes_db(self, monkeypatch):
+        db = MagicMock()
+        monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
+
+        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 6, 30))
+
+        assert result == {"trimmed": 0, "skipped": 0, "pre_effective": True}
+        db.rollback.assert_not_called()
+        db.close.assert_called_once()
+
+    def test_H_july_target_runs_trim_with_planner_settings(self, monkeypatch):
+        db = MagicMock()
+        calls = {}
+        monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda d: {"gap_max_minutes": 190})
+
+        def fake_trim(db_arg, target_date, settings):
+            calls["db"] = db_arg
+            calls["target_date"] = target_date
+            calls["settings"] = settings
+            return {"trimmed": 2, "skipped": 1}
+
+        monkeypatch.setattr("auto_roster.trim_window_auto_shifts_for_date", fake_trim)
+
+        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 7, 2))
+
+        assert result == {"trimmed": 2, "skipped": 1}
+        assert calls["db"] is db
+        assert calls["target_date"] == date_type(2026, 7, 2)
+        assert calls["settings"].gap_max_minutes == 190
+        db.close.assert_called_once()
+
+    def test_U_trim_failure_rolls_back_and_closes(self, monkeypatch):
+        db = MagicMock()
+        monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
+        monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda d: {})
+
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("trim failed")
+
+        monkeypatch.setattr("auto_roster.trim_window_auto_shifts_for_date", boom)
+
+        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 7, 2))
+
+        assert result["failed"] is True
+        assert "trim failed" in result["error"]
+        db.rollback.assert_called_once()
+        db.close.assert_called_once()
+
+
 class TestStandaloneWrappers:
     @pytest.mark.parametrize("fn,inner_attr", [
         ("_process_welcome_emails_standalone", "process_pending_welcome_emails"),
@@ -1098,7 +1149,7 @@ class TestSchedulerControl:
         fake_sched.running = False
         monkeypatch.setattr(email_scheduler, "scheduler", fake_sched)
         email_scheduler.start_scheduler()
-        assert fake_sched.add_job.call_count >= 3  # process / cleanup / weekly report
+        assert fake_sched.add_job.call_count >= 4  # process / cleanup / weekly / template trim
         assert fake_sched.start.called
 
     def test_H_start_adds_auto_roster_sweep_job_when_enabled(self, monkeypatch):
@@ -1130,6 +1181,23 @@ class TestSchedulerControl:
 
         job_ids = [call.kwargs.get("id") for call in fake_sched.add_job.call_args_list]
         assert "auto_roster_sweep" not in job_ids
+        assert "template_roster_window_trim" in job_ids
+
+    def test_H_start_adds_template_trim_job_at_20_00_london(self, monkeypatch):
+        fake_sched = MagicMock()
+        fake_sched.running = False
+        monkeypatch.setattr(email_scheduler, "scheduler", fake_sched)
+
+        email_scheduler.start_scheduler()
+
+        trim_call = next(
+            call for call in fake_sched.add_job.call_args_list
+            if call.kwargs.get("id") == "template_roster_window_trim"
+        )
+        trigger = trim_call.kwargs["trigger"]
+        assert trim_call.args[0] is email_scheduler.process_template_roster_window_trim
+        assert str(trigger.fields[5]) == "20"
+        assert str(trigger.fields[6]) == "0"
 
     def test_E_start_when_already_running_is_noop(self, monkeypatch):
         fake_sched = MagicMock()

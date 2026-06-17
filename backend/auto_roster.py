@@ -36,7 +36,7 @@ confirmation/cancellation flow that triggered it.
 from __future__ import annotations
 
 import logging
-from datetime import date as date_type, datetime, timedelta
+from datetime import date as date_type, datetime, time as time_type, timedelta
 from typing import Iterable, Optional
 
 from sqlalchemy import or_
@@ -46,6 +46,7 @@ from db_models import (
     Booking,
     BookingStatus,
     RosterShift,
+    RosterWindowTemplate,
     ServiceType,
     ShiftBookingLink,
     ShiftStatus,
@@ -62,6 +63,8 @@ from roster_planner import (
 )
 
 logger = logging.getLogger(__name__)
+
+TEMPLATE_ROSTER_EFFECTIVE_DATE = date_type(2026, 7, 1)
 
 
 def _scalar_value(value):
@@ -386,7 +389,7 @@ def _booking_confirmation_marker(booking: Booking) -> dict:
 # Rebuild — core
 # ---------------------------------------------------------------------------
 
-def rebuild_auto_for_dates(
+def _rebuild_cluster_auto_for_dates(
     db: Session,
     target_dates: Iterable[date_type],
     settings: PlannerSettings,
@@ -749,6 +752,407 @@ def rebuild_auto_for_dates(
 
     db.commit()
     return summary
+
+
+def _summary() -> dict:
+    return {
+        "deleted": 0, "created": 0, "skipped_covered": 0,
+        "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
+        "rescued": 0,
+    }
+
+
+def _merge_summary(target: dict, source: dict) -> dict:
+    for key, value in (source or {}).items():
+        if isinstance(value, int):
+            target[key] = target.get(key, 0) + value
+    return target
+
+
+def _default_window_template_specs() -> list[dict]:
+    windows = [
+        ("early", time_type(3, 0), time_type(9, 0)),
+        ("day", time_type(9, 30), time_type(15, 30)),
+        ("late", time_type(15, 45), time_type(20, 45)),
+        ("overnight", time_type(21, 0), time_type(2, 0)),
+    ]
+    specs = []
+    for profile in ("weekday", "weekend"):
+        for idx, (label, start_time, end_time) in enumerate(windows):
+            specs.append({
+                "profile": profile,
+                "label": label,
+                "start_time": start_time,
+                "end_time": end_time,
+                "sort_order": idx,
+                "is_active": True,
+            })
+    return specs
+
+
+def _load_window_templates(db: Session) -> dict[str, list[RosterWindowTemplate]]:
+    rows = (
+        db.query(RosterWindowTemplate)
+        .filter(RosterWindowTemplate.is_active == True)
+        .order_by(RosterWindowTemplate.profile, RosterWindowTemplate.sort_order, RosterWindowTemplate.start_time)
+        .all()
+    )
+    if not rows:
+        rows = [RosterWindowTemplate(**spec) for spec in _default_window_template_specs()]
+        for row in rows:
+            db.add(row)
+        try:
+            db.flush()
+        except Exception:
+            # Unit-test fakes may not implement flush fully; the rows are still
+            # usable as in-memory config for this call.
+            pass
+
+    grouped: dict[str, list[RosterWindowTemplate]] = {"weekday": [], "weekend": []}
+    for row in rows:
+        profile = getattr(row, "profile", None)
+        if profile in grouped:
+            grouped[profile].append(row)
+    for profile in grouped:
+        grouped[profile].sort(key=lambda row: (
+            getattr(row, "sort_order", 0),
+            getattr(row, "start_time", time_type(0, 0)),
+        ))
+    return grouped
+
+
+def _window_profile_for_day(day: date_type) -> str:
+    return "weekend" if day.weekday() >= 5 else "weekday"
+
+
+def _window_bounds(day: date_type, window: RosterWindowTemplate) -> tuple[datetime, datetime]:
+    start = datetime.combine(day, window.start_time)
+    end_day = day + timedelta(days=1) if window.end_time <= window.start_time else day
+    return start, datetime.combine(end_day, window.end_time)
+
+
+def _window_contains_event(
+    day: date_type,
+    window: RosterWindowTemplate,
+    start_dt: datetime,
+    end_dt: datetime,
+) -> bool:
+    win_start, win_end = _window_bounds(day, window)
+    return win_start <= start_dt and end_dt <= win_end
+
+
+def _distance_to_window(
+    day: date_type,
+    window: RosterWindowTemplate,
+    start_dt: datetime,
+    end_dt: datetime,
+) -> timedelta:
+    win_start, win_end = _window_bounds(day, window)
+    if end_dt < win_start:
+        return win_start - end_dt
+    if start_dt > win_end:
+        return start_dt - win_end
+    return timedelta(0)
+
+
+def _template_for_event(
+    templates: dict[str, list[RosterWindowTemplate]],
+    start_dt: datetime,
+    end_dt: datetime,
+) -> tuple[date_type, RosterWindowTemplate]:
+    candidate_days = [start_dt.date(), start_dt.date() - timedelta(days=1)]
+    matches: list[tuple[int, date_type, RosterWindowTemplate]] = []
+    for day_index, day in enumerate(candidate_days):
+        for window in templates.get(_window_profile_for_day(day), []):
+            if _window_contains_event(day, window, start_dt, end_dt):
+                matches.append((day_index, day, window))
+    if matches:
+        matches.sort(key=lambda item: (
+            item[0],
+            getattr(item[2], "sort_order", 0),
+            getattr(item[2], "start_time", time_type(0, 0)),
+        ))
+        return matches[0][1], matches[0][2]
+
+    nearest: list[tuple[timedelta, int, date_type, RosterWindowTemplate]] = []
+    for day_index, day in enumerate(candidate_days):
+        for window in templates.get(_window_profile_for_day(day), []):
+            nearest.append((
+                _distance_to_window(day, window, start_dt, end_dt),
+                day_index,
+                day,
+                window,
+            ))
+    if not nearest:
+        raise ValueError("No active roster window templates configured")
+    nearest.sort(key=lambda item: (
+        item[0],
+        item[1],
+        getattr(item[3], "sort_order", 0),
+        getattr(item[3], "start_time", time_type(0, 0)),
+    ))
+    return nearest[0][2], nearest[0][3]
+
+
+def _window_shift_type(start_dt: datetime, end_dt: datetime):
+    shift_type, _ = round_to_shift_type(start_dt, end_dt)
+    return shift_type
+
+
+def _rebuild_window_auto_for_dates(
+    db: Session,
+    target_dates: Iterable[date_type],
+    settings: PlannerSettings,
+    focus_booking_id: Optional[int] = None,
+) -> dict:
+    summary = _summary()
+    target_set = {d for d in set(target_dates) if d >= TEMPLATE_ROSTER_EFFECTIVE_DATE}
+    if not target_set:
+        return summary
+
+    templates = _load_window_templates(db)
+
+    existing = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.created_source == "auto",
+            RosterShift.staff_id.is_(None),
+            RosterShift.admin_shaped_at.is_(None),
+            RosterShift.status == ShiftStatus.SCHEDULED,
+            RosterShift.date.in_(target_set),
+        )
+        .all()
+    )
+    for shift in existing:
+        db.delete(shift)
+        summary["deleted"] += 1
+    if summary["deleted"]:
+        db.flush()
+
+    expanded = set()
+    for d in target_set:
+        expanded.update({d - timedelta(days=1), d, d + timedelta(days=1)})
+
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.REFUNDED]),
+            or_(
+                Booking.dropoff_date.in_(expanded),
+                Booking.pickup_date.in_(expanded),
+                Booking.flight_arrival_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    bookings = [booking for booking in bookings if _booking_in_scope(booking)]
+    summary["bookings_in_scope"] = len(bookings)
+
+    frozen_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.status.in_([
+                ShiftStatus.SCHEDULED,
+                ShiftStatus.CONFIRMED,
+            ]),
+            or_(
+                RosterShift.created_source != "auto",
+                RosterShift.staff_id.isnot(None),
+                RosterShift.admin_shaped_at.isnot(None),
+            ),
+            or_(
+                RosterShift.date.in_(expanded),
+                RosterShift.end_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+    suppressed_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.created_source == "auto",
+            RosterShift.status == ShiftStatus.CANCELLED,
+            RosterShift.suppressed_at.isnot(None),
+            or_(
+                RosterShift.date.in_(expanded),
+                RosterShift.end_date.in_(expanded),
+            ),
+        )
+        .all()
+    )
+
+    groups: dict[tuple[date_type, str, str], dict] = {}
+    for booking in bookings:
+        for event_type, start_dt, end_dt in _events_for_booking(booking):
+            op_date, window = _template_for_event(templates, start_dt, end_dt)
+            if op_date not in target_set:
+                continue
+            summary["events"] += 1
+            window_start, window_end = _window_bounds(op_date, window)
+            group = groups.setdefault(
+                (op_date, window.profile, window.label),
+                {
+                    "op_date": op_date,
+                    "window": window,
+                    "start": window_start,
+                    "end": window_end,
+                    "booking_ids": set(),
+                },
+            )
+            if start_dt < group["start"]:
+                group["start"] = start_dt
+            if end_dt > group["end"]:
+                group["end"] = end_dt
+            group["booking_ids"].add(booking.id)
+
+    for group in sorted(groups.values(), key=lambda item: (item["op_date"], item["start"])):
+        group_window = (group["start"], group["end"])
+        booking_ids = sorted(group["booking_ids"])
+        if _cluster_suppression_blockers(
+            set(booking_ids),
+            group["start"],
+            group["end"],
+            suppressed_shifts,
+        ):
+            summary["skipped_suppressed"] += 1
+            continue
+
+        if any(
+            _shift_can_cover_jockey_work(shift)
+            and _shift_window(shift)[0] <= group_window[0]
+            and group_window[1] <= _shift_window(shift)[1]
+            for shift in frozen_shifts
+        ):
+            summary["skipped_covered"] += 1
+            continue
+
+        end_date = group["end"].date() if group["end"].date() != group["op_date"] else None
+        new_shift = RosterShift(
+            staff_id=None,
+            date=group["op_date"],
+            end_date=end_date,
+            start_time=group["start"].time(),
+            end_time=group["end"].time(),
+            shift_type=_window_shift_type(group["start"], group["end"]),
+            status=ShiftStatus.SCHEDULED,
+            created_source="auto",
+            intended_driver_type="jockey",
+        )
+        db.add(new_shift)
+        db.flush()
+        for booking_id in booking_ids:
+            db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
+        summary["created"] += 1
+
+    db.commit()
+    return summary
+
+
+def rebuild_auto_for_dates(
+    db: Session,
+    target_dates: Iterable[date_type],
+    settings: PlannerSettings,
+    focus_booking_id: Optional[int] = None,
+) -> dict:
+    target_set = set(target_dates)
+    if not target_set:
+        return _summary()
+
+    pre_effective = {d for d in target_set if d < TEMPLATE_ROSTER_EFFECTIVE_DATE}
+    window_effective = {d for d in target_set if d >= TEMPLATE_ROSTER_EFFECTIVE_DATE}
+    result = _summary()
+    if pre_effective:
+        _merge_summary(
+            result,
+            _rebuild_cluster_auto_for_dates(
+                db,
+                pre_effective,
+                settings,
+                focus_booking_id=focus_booking_id,
+            ),
+        )
+    if window_effective:
+        _merge_summary(
+            result,
+            _rebuild_window_auto_for_dates(
+                db,
+                window_effective,
+                settings,
+                focus_booking_id=focus_booking_id,
+            ),
+        )
+    return result
+
+
+def trim_window_auto_shifts_for_date(
+    db: Session,
+    target_date: date_type,
+    settings: PlannerSettings,
+) -> dict:
+    """Shrink untouched template-window shifts to actual event span + buffers.
+
+    Intended for the T-1 20:00 booking cutoff job. The function is deliberately
+    narrow: only July+ untouched auto shifts are eligible, and the new window is
+    clamped inside the existing shift so this job never expands or reshapes
+    claimed/admin-owned rows.
+    """
+    result = {"trimmed": 0, "skipped": 0}
+    if target_date < TEMPLATE_ROSTER_EFFECTIVE_DATE:
+        return result
+
+    shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.created_source == "auto",
+            RosterShift.staff_id.is_(None),
+            RosterShift.admin_shaped_at.is_(None),
+            RosterShift.status == ShiftStatus.SCHEDULED,
+            RosterShift.date == target_date,
+        )
+        .all()
+    )
+    if not shifts:
+        return result
+
+    for shift in shifts:
+        if not _is_auto_shift_eligible_for_rebuild(shift):
+            result["skipped"] += 1
+            continue
+        shift_start, shift_end = _shift_window(shift)
+        event_starts: list[datetime] = []
+        event_ends: list[datetime] = []
+        for booking in getattr(shift, "bookings", []) or []:
+            if not _booking_in_scope(booking):
+                continue
+            for _event_type, start_dt, end_dt in _events_for_booking(booking):
+                if shift_start <= start_dt and end_dt <= shift_end:
+                    event_starts.append(start_dt)
+                    event_ends.append(end_dt)
+        if not event_starts:
+            result["skipped"] += 1
+            continue
+
+        desired_start = min(event_starts) - timedelta(minutes=settings.start_buffer_minutes)
+        desired_end = max(event_ends) + timedelta(minutes=settings.end_buffer_minutes)
+        new_start = max(shift_start, desired_start)
+        new_end = min(shift_end, desired_end)
+        if new_end <= new_start:
+            result["skipped"] += 1
+            continue
+        if new_start == shift_start and new_end == shift_end:
+            result["skipped"] += 1
+            continue
+
+        shift.date = new_start.date()
+        shift.end_date = new_end.date() if new_end.date() != new_start.date() else None
+        shift.start_time = new_start.time()
+        shift.end_time = new_end.time()
+        shift.shift_type = _window_shift_type(new_start, new_end)
+        result["trimmed"] += 1
+
+    if result["trimmed"]:
+        db.commit()
+    return result
 
 
 def build_auto_roster_sweep_plan(
@@ -1230,6 +1634,12 @@ def _affected_dates_for_booking(booking: Booking) -> set[date_type]:
     for _et, start_dt, end_dt in _events_for_booking(booking):
         dates.add(start_dt.date())
         dates.add(end_dt.date())
+        for dt in (start_dt, end_dt):
+            if (
+                dt.date() >= TEMPLATE_ROSTER_EFFECTIVE_DATE
+                and dt.time() < time_type(2, 0)
+            ):
+                dates.add(dt.date() - timedelta(days=1))
     return dates
 
 

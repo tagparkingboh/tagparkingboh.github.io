@@ -458,6 +458,53 @@ class TestDuplicateDependencyPoolHUEB:
         created_shift = next(obj for obj in state["added"] if isinstance(obj, RosterShift))
         assert created_shift.parent_shift_id is None
 
+    def test_U_duplicate_rejects_self_parent_assignment(self, rig):
+        client, db, state = rig
+        src = make_shift(id=7010, staff_id=10, shift_date=date(2026, 7, 2))
+        state["shifts_by_id"][7010] = src
+
+        def add_with_source_id(obj):
+            state["added"].append(obj)
+            if isinstance(obj, RosterShift):
+                obj.id = src.id
+                obj.created_at = datetime(2026, 7, 1, 12, 0)
+                obj.updated_at = None
+                obj.staff = None
+                obj.bookings = []
+                state["shifts_by_id"][obj.id] = obj
+
+        db.add.side_effect = add_with_source_id
+
+        r = client.post("/api/roster/7010/duplicate", json={"add_unassigned_jockey": True})
+
+        assert r.status_code == 409
+        assert "own parent" in r.json()["detail"]
+        db.rollback.assert_called()
+
+    def test_U_duplicate_rejects_cycle_creating_assignment(self, rig):
+        client, db, state = rig
+        src = make_shift(id=7020, staff_id=10, shift_date=date(2026, 7, 2))
+        state["shifts_by_id"][7020] = src
+
+        def add_cycle_child(obj):
+            state["added"].append(obj)
+            if isinstance(obj, RosterShift):
+                obj.id = 7021
+                obj.created_at = datetime(2026, 7, 1, 12, 0)
+                obj.updated_at = None
+                obj.staff = None
+                obj.bookings = []
+                state["shifts_by_id"][obj.id] = obj
+                src.parent_shift_id = obj.id
+
+        db.add.side_effect = add_cycle_child
+
+        r = client.post("/api/roster/7020/duplicate", json={"add_unassigned_jockey": True})
+
+        assert r.status_code == 409
+        assert "Cycle detected in roster shift dependency tree" in r.json()["detail"]
+        db.rollback.assert_called()
+
     def test_H_toggle_false_resyncs_children(self, rig):
         client, db, state = rig
         parent = make_shift(id=7002, shift_date=date(2026, 7, 2))

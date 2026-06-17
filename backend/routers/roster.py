@@ -53,6 +53,7 @@ from shift_pool_sync import (
     shift_pool_sync_enabled,
     sync_shift_pool_for_shift,
     sync_shift_pool_from_parent,
+    validate_shift_parent_assignment,
 )
 import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -2234,6 +2235,15 @@ async def duplicate_shift(
         db.flush()
 
         if should_create_dependency:
+            try:
+                validate_shift_parent_assignment(
+                    db,
+                    shift_id=new_shift.id,
+                    parent_shift_id=source.id,
+                )
+            except ValueError as exc:
+                db.rollback()
+                raise HTTPException(status_code=409, detail=str(exc))
             for bid in existing_booking_ids:
                 db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=bid))
         elif has_date:
