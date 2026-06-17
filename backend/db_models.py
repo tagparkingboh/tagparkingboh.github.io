@@ -1657,9 +1657,27 @@ class RosterShift(Base):
     suppressed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     suppression_reason = Column(Text, nullable=True)
 
+    # Duplicate dependency pool. A duplicated child points at its source
+    # shift; while the parent's `dependents_independent` is false, children
+    # mirror the parent's booking links. Effective only for shifts dated
+    # 2026-07-01 onward in application logic.
+    parent_shift_id = Column(
+        Integer,
+        ForeignKey("roster_shifts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    dependents_independent = Column(Boolean, nullable=False, default=False, server_default="false")
+
     # Relationships
     staff = relationship("User", foreign_keys=[staff_id])
     suppressed_by = relationship("User", foreign_keys=[suppressed_by_user_id])
+    parent_shift = relationship(
+        "RosterShift",
+        remote_side=[id],
+        foreign_keys=[parent_shift_id],
+        backref="dependent_shifts",
+    )
     booking = relationship("Booking", foreign_keys=[booking_id])  # DEPRECATED - use bookings
 
     # Many-to-many relationship with bookings

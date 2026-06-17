@@ -17,7 +17,7 @@ wrap-around (cross-midnight, month, year, DST).
 import sys
 from pathlib import Path
 from datetime import date, time, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -78,6 +78,11 @@ def make_shift(
     s.bookings = bookings or []
     s.created_at = datetime(2026, 5, 1)
     s.updated_at = None
+    s.suppressed_at = None
+    s.suppressed_by_user_id = None
+    s.suppression_reason = None
+    s.parent_shift_id = None
+    s.dependents_independent = False
     # Driver-trust pivot 2026-05-28: explicit NULL so admin_shaped_at
     # behaves like a fresh DB row (not a MagicMock auto-attribute) when
     # endpoints read it for stamp-or-not decisions.
@@ -409,6 +414,92 @@ class TestDuplicateStaffFanoutHappy:
         r = client.post("/api/roster/91/duplicate", json={"add_unassigned_fleet": True})
         assert r.status_code == 200, r.text
         assert r.json()[0]["intended_driver_type"] == "fleet"
+
+
+class TestDuplicateDependencyPoolHUEB:
+
+    def test_H_july_duplicate_stamps_parent_dependency_on_children(self, rig):
+        client, db, state = rig
+        booking = make_booking(id=700, ref="TAG-POOL700", dropoff_dt=datetime(2026, 7, 2, 9, 30))
+        src = make_shift(id=7000, staff_id=10, shift_date=date(2026, 7, 2), bookings=[booking])
+        state["shifts_by_id"][7000] = src
+        state["bookings_by_id"][700] = booking
+        state["users_by_id"][20] = make_user(id=20, first_name="Marek", last_name="Smolarek", driver_type="jockey")
+        state["users_by_id"][30] = make_user(id=30, first_name="Fleet", last_name="Driver", driver_type="fleet")
+
+        r = client.post("/api/roster/7000/duplicate", json={"staff_ids": [20, 30]})
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body) == 2
+        assert {row["parent_shift_id"] for row in body} == {7000}
+        assert {row["dependents_independent"] for row in body} == {False}
+        created_shifts = [obj for obj in state["added"] if isinstance(obj, RosterShift)]
+        assert len(created_shifts) == 2
+        assert all(s.parent_shift_id == 7000 for s in created_shifts)
+
+    def test_H_june_shift_tailing_into_july_does_not_create_dependency(self, rig):
+        client, db, state = rig
+        src = make_shift(
+            id=7001,
+            staff_id=10,
+            shift_date=date(2026, 6, 30),
+            end_date=date(2026, 7, 1),
+            start_time=time(22, 0),
+            end_time=time(2, 0),
+        )
+        state["shifts_by_id"][7001] = src
+        state["users_by_id"][20] = make_user(id=20)
+
+        r = client.post("/api/roster/7001/duplicate", json={"staff_ids": [20]})
+
+        assert r.status_code == 200, r.text
+        assert r.json()[0]["parent_shift_id"] is None
+        created_shift = next(obj for obj in state["added"] if isinstance(obj, RosterShift))
+        assert created_shift.parent_shift_id is None
+
+    def test_H_toggle_false_resyncs_children(self, rig):
+        client, db, state = rig
+        parent = make_shift(id=7002, shift_date=date(2026, 7, 2))
+        parent.dependents_independent = True
+        state["shifts_by_id"][7002] = parent
+
+        with patch("routers.roster.sync_shift_pool_from_parent", return_value=[7003]) as sync:
+            r = client.patch(
+                "/api/roster/7002/dependents-independent",
+                json={"dependents_independent": False},
+            )
+
+        assert r.status_code == 200, r.text
+        assert parent.dependents_independent is False
+        sync.assert_called_once_with(db, 7002)
+
+    def test_H_toggle_true_detaches_without_resync(self, rig):
+        client, db, state = rig
+        parent = make_shift(id=7004, shift_date=date(2026, 7, 2))
+        state["shifts_by_id"][7004] = parent
+
+        with patch("routers.roster.sync_shift_pool_from_parent", return_value=[]) as sync:
+            r = client.patch(
+                "/api/roster/7004/dependents-independent",
+                json={"dependents_independent": True},
+            )
+
+        assert r.status_code == 200, r.text
+        assert parent.dependents_independent is True
+        sync.assert_not_called()
+
+    def test_H_toggle_rejects_pre_july_parent(self, rig):
+        client, db, state = rig
+        parent = make_shift(id=7005, shift_date=date(2026, 6, 30), end_date=date(2026, 7, 1))
+        state["shifts_by_id"][7005] = parent
+
+        r = client.patch(
+            "/api/roster/7005/dependents-independent",
+            json={"dependents_independent": False},
+        )
+
+        assert r.status_code == 422
 
 
 # =============================================================================

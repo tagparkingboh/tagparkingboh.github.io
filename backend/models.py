@@ -583,6 +583,10 @@ class RosterShiftDuplicateRequest(BaseModel):
     add_unassigned_fleet: bool = False
 
 
+class RosterShiftDependentsUpdate(BaseModel):
+    dependents_independent: bool
+
+
 class RosterShiftMergeRequest(BaseModel):
     """Body for POST /api/roster/{id}/merge.
 
@@ -666,6 +670,10 @@ class RosterShiftResponse(BaseModel):
     suppressed_at: Optional[datetime] = None
     suppressed_by_user_id: Optional[int] = None
     suppression_reason: Optional[str] = None
+    parent_shift_id: Optional[int] = None
+    dependents_independent: bool = False
+    pool_parent_shift_id: Optional[int] = None
+    pool_child_shift_ids: List[int] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -733,6 +741,10 @@ class TeamShiftResponse(BaseModel):
     first_name: str
     last_name: str
     phone: Optional[str] = None
+    parent_shift_id: Optional[int] = None
+    dependents_independent: bool = False
+    pool_parent_shift_id: Optional[int] = None
+    pool_child_shift_ids: List[int] = Field(default_factory=list)
     date: date_type
     end_date: date_type
     start_time: str  # HH:MM

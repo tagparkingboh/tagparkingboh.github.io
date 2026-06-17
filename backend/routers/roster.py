@@ -19,7 +19,7 @@ from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Sessio
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
-    RosterShiftDuplicateRequest, RosterShiftMergeRequest, RosterShiftSplitRequest,
+    RosterShiftDependentsUpdate, RosterShiftDuplicateRequest, RosterShiftMergeRequest, RosterShiftSplitRequest,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
     ShiftExceptionResponse,
     ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo,
@@ -47,6 +47,12 @@ from roster_planner_runner import (
     TRIGGER_MANUAL,
     TRIGGER_SETTINGS_CHANGED,
     _shift_covers_event_window,
+)
+from shift_pool_sync import (
+    SHIFT_POOL_SYNC_START_DATE,
+    shift_pool_sync_enabled,
+    sync_shift_pool_for_shift,
+    sync_shift_pool_from_parent,
 )
 import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -301,6 +307,48 @@ def _booking_vehicle_registration(booking):
     return None
 
 
+def _shift_int_attr(shift, attr: str) -> Optional[int]:
+    value = getattr(shift, attr, None)
+    return value if isinstance(value, int) else None
+
+
+def _shift_bool_attr(shift, attr: str) -> bool:
+    value = getattr(shift, attr, False)
+    return value if isinstance(value, bool) else False
+
+
+def _shift_pool_child_ids(db: Session, shift) -> list[int]:
+    shift_id = _shift_int_attr(shift, "id")
+    if shift_id is None:
+        return []
+    rows = (
+        db.query(RosterShift.id)
+        .filter(RosterShift.parent_shift_id == shift_id)
+        .order_by(RosterShift.id)
+        .all()
+    )
+    child_ids: list[int] = []
+    for row in rows:
+        if isinstance(row, (tuple, list)):
+            row_id = row[0] if row else None
+            if isinstance(row_id, int):
+                child_ids.append(row_id)
+            continue
+        row_parent_id = getattr(row, "parent_shift_id", None)
+        row_id = getattr(row, "id", None)
+        if isinstance(row_id, int) and row_parent_id == shift_id:
+            child_ids.append(row_id)
+    return child_ids
+
+
+def _shift_pool_parent_id(shift, child_ids: list[int]) -> Optional[int]:
+    parent_shift_id = _shift_int_attr(shift, "parent_shift_id")
+    if parent_shift_id is not None:
+        return parent_shift_id
+    shift_id = _shift_int_attr(shift, "id")
+    return shift_id if shift_id is not None and child_ids else None
+
+
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
     import db_service as _db_service
@@ -311,6 +359,8 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
 
     # Build list of linked bookings
     linked_bookings = []
+    direct_child_ids = _shift_pool_child_ids(db, shift)
+    pool_parent_shift_id = _shift_pool_parent_id(shift, direct_child_ids)
 
     # For overnight shifts, check both start date and end date
     shift_dates = {shift.date}
@@ -457,6 +507,10 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
             if isinstance(getattr(shift, "suppression_reason", None), str)
             else None
         ),
+        parent_shift_id=_shift_int_attr(shift, "parent_shift_id"),
+        dependents_independent=_shift_bool_attr(shift, "dependents_independent"),
+        pool_parent_shift_id=pool_parent_shift_id,
+        pool_child_shift_ids=direct_child_ids,
     )
 
 
@@ -1749,6 +1803,12 @@ async def update_shift(
 
         # Clear legacy booking_id
         shift.booking_id = None
+        try:
+            db.flush()
+            sync_shift_pool_for_shift(db, shift_id)
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(exc))
     elif updates.booking_id is not None:
         # Legacy single booking support - convert to link
         db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == shift_id).delete()
@@ -1759,10 +1819,54 @@ async def update_shift(
             link = ShiftBookingLink(shift_id=shift_id, booking_id=updates.booking_id)
             db.add(link)
         shift.booking_id = None
+        try:
+            db.flush()
+            sync_shift_pool_for_shift(db, shift_id)
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(exc))
 
     db.commit()
     db.refresh(shift)
 
+    return shift_to_response(shift, db)
+
+
+@router.patch("/roster/{shift_id}/dependents-independent", response_model=RosterShiftResponse)
+async def patch_shift_dependents_independent(
+    shift_id: int,
+    body: RosterShiftDependentsUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Toggle whether a duplicate parent keeps its children synced.
+
+    `true` detaches children in place. `false` re-syncs recursive children to
+    the parent's current non-cancelled booking set.
+    """
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    if not shift_pool_sync_enabled(shift):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Duplicate dependency sync is only available for shifts dated "
+                f"{SHIFT_POOL_SYNC_START_DATE.isoformat()} or later."
+            ),
+        )
+
+    shift.dependents_independent = body.dependents_independent
+    if not body.dependents_independent:
+        try:
+            db.flush()
+            sync_shift_pool_from_parent(db, shift.id)
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(exc))
+
+    db.commit()
+    db.refresh(shift)
     return shift_to_response(shift, db)
 
 
@@ -2082,6 +2186,7 @@ async def duplicate_shift(
         copy_end_dt = copy_end_dt + timedelta(days=1)
 
     created: list[RosterShift] = []
+    should_create_dependency = shift_pool_sync_enabled(source)
     for write_sid, forced_intended in writes:
         intended = forced_intended or (source.intended_driver_type or "jockey")
         if write_sid is not None and forced_intended is None:
@@ -2122,11 +2227,16 @@ async def duplicate_shift(
             # admin planning gesture — stamp the copy so the auto-roster
             # never reshapes its window even when staff_id is NULL.
             admin_shaped_at=datetime.now(timezone.utc),
+            parent_shift_id=source.id if should_create_dependency else None,
+            dependents_independent=False,
         )
         db.add(new_shift)
         db.flush()
 
-        if has_date:
+        if should_create_dependency:
+            for bid in existing_booking_ids:
+                db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=bid))
+        elif has_date:
             # Cross-date copy: re-link bookings whose event window overlaps
             # the copy's window (uses back-date heuristic via _events_for_booking).
             for b in (source.bookings or []):
@@ -2672,8 +2782,12 @@ async def get_team_shifts(
     # the day, regardless of driver_type. Claim eligibility is still gated
     # by driver_type in /api/employee/available-shifts — this endpoint is
     # view-only and exists so the team can see who else is on shift.
-    return [
-        TeamShiftResponse(
+    responses: list[TeamShiftResponse] = []
+    for s in shifts:
+        if s.staff is None:
+            continue
+        pool_child_ids = _shift_pool_child_ids(db, s)
+        responses.append(TeamShiftResponse(
             initials=get_staff_initials(s.staff),
             first_name=s.staff.first_name,
             last_name=s.staff.last_name,
@@ -2682,10 +2796,12 @@ async def get_team_shifts(
             end_date=s.end_date or s.date,
             start_time=format_time(s.start_time),
             end_time=format_time(s.end_time),
-        )
-        for s in shifts
-        if s.staff is not None
-    ]
+            parent_shift_id=_shift_int_attr(s, "parent_shift_id"),
+            dependents_independent=_shift_bool_attr(s, "dependents_independent"),
+            pool_parent_shift_id=_shift_pool_parent_id(s, pool_child_ids),
+            pool_child_shift_ids=pool_child_ids,
+        ))
+    return responses
 
 
 @router.get("/employee/weekly-hours")

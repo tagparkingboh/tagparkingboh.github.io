@@ -2436,6 +2436,34 @@ function RosterCalendar({
     }
   }
 
+  const toggleDependentsIndependent = async (shift, checked) => {
+    if (!shift?.id) return
+    setActionSubmitting(true)
+    setActionError('')
+    try {
+      const r = await authFetch(`${API_URL}/api/roster/${shift.id}/dependents-independent`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ dependents_independent: checked }),
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      setSuccessMessage(checked ? 'Pool detached' : 'Pool synced')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
   const openV3DeleteModal = (shift) => {
     setActionError('')
     setV3DeleteModal({ shift })
@@ -4177,6 +4205,9 @@ function RosterCalendar({
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
                     const isShiftExpanded = expandedShiftIds.has(shift.id)
                     const autoShapeState = getAutoShiftShapeState(shift)
+                    const poolChildIds = Array.isArray(shift.pool_child_shift_ids) ? shift.pool_child_shift_ids : []
+                    const isPoolParent = poolChildIds.length > 0
+                    const isPoolChild = Boolean(shift.parent_shift_id)
 
                     return (
                       <div
@@ -4229,11 +4260,37 @@ function RosterCalendar({
                               🤖 {autoShapeState.detailLabel}
                             </div>
                           )}
+                          {(isPoolParent || isPoolChild) && (
+                            <div
+                              className={`shift-pool-badge ${isPoolParent ? 'pool-parent' : 'pool-child'}`}
+                              title={isPoolParent
+                                ? `Parent for ${poolChildIds.length} synced duplicate${poolChildIds.length === 1 ? '' : 's'}`
+                                : `Synced duplicate of shift ${shift.parent_shift_id}`}
+                            >
+                              {isPoolParent ? `Pool parent · ${poolChildIds.length}` : `Pool child · #${shift.parent_shift_id}`}
+                            </div>
+                          )}
                         </div>
 
                         {isShiftExpanded && (
                         <>
                         <div className="shift-card-body">
+                          {isAdmin && isPoolParent && (
+                            <label className="shift-pool-toggle" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(shift.dependents_independent)}
+                                disabled={actionSubmitting}
+                                onChange={(e) => toggleDependentsIndependent(shift, e.target.checked)}
+                              />
+                              <span>Independent</span>
+                            </label>
+                          )}
+                          {isPoolChild && (
+                            <div className="shift-pool-note">
+                              Synced with parent shift #{shift.parent_shift_id}
+                            </div>
+                          )}
                           {shift.staff_first_name ? (
                             <div className="shift-staff">
                               <span className="shift-staff-initials">{shift.staff_initials}</span>

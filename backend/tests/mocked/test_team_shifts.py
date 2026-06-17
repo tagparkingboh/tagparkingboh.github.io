@@ -13,6 +13,8 @@ Coverage matrix per SPEC.md:
 
 Privacy regression guards (lesson 2026-04-27):
 - Response must NOT contain id, staff_id, shift_type, notes, booking refs.
+- Pool membership metadata is allowed so the employee calendar can mark synced
+  duplicate pools without exposing booking/customer details.
 """
 import sys
 from pathlib import Path
@@ -43,14 +45,27 @@ def make_user(*, id, first_name="Marek", last_name="Smolarek", phone="+447111000
     return u
 
 
-def make_shift(*, staff, shift_date, start_time, end_time, end_date=None):
+def make_shift(
+    *,
+    staff,
+    shift_date,
+    start_time,
+    end_time,
+    end_date=None,
+    id=10,
+    parent_shift_id=None,
+    dependents_independent=False,
+):
     s = MagicMock()
+    s.id = id
     s.staff_id = staff.id if staff else None
     s.staff = staff
     s.date = shift_date
     s.end_date = end_date or shift_date
     s.start_time = start_time
     s.end_time = end_time
+    s.parent_shift_id = parent_shift_id
+    s.dependents_independent = dependents_independent
     return s
 
 
@@ -118,6 +133,10 @@ class TestTeamShiftsHappy:
             "end_date": "2026-05-11",
             "start_time": "08:00",
             "end_time": "16:00",
+            "parent_shift_id": None,
+            "dependents_independent": False,
+            "pool_parent_shift_id": None,
+            "pool_child_shift_ids": [],
         }
 
     def test_no_teammates_returns_empty_list(self, client_with_shifts):

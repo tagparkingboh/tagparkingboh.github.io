@@ -108,6 +108,8 @@ def _shift(
         suppressed_at=None,
         suppressed_by_user_id=None,
         suppression_reason=None,
+        parent_shift_id=None,
+        dependents_independent=False,
         created_at=datetime(2026, 6, 1, 9, 0),
         updated_at=None,
         date=shift_date,
@@ -643,6 +645,7 @@ class TestRosterDetailAndCreateHUEB:
         monkeypatch.setattr("routers.roster.check_shift_overlap", lambda *a, **k: None)
         monkeypatch.setattr("routers.roster.check_staff_unavailability", lambda *a, **k: None)
         monkeypatch.setattr("routers.roster.shift_to_response", lambda s, db: _shift_response_payload(s))
+        monkeypatch.setattr("routers.roster.sync_shift_pool_for_shift", lambda *a, **k: [])
 
         response = client.post(
             "/api/roster",
@@ -855,6 +858,7 @@ class TestRosterUpdateAndActionsHUEB:
         monkeypatch.setattr("routers.roster.check_shift_overlap", lambda *a, **k: None)
         monkeypatch.setattr("routers.roster.check_staff_unavailability", lambda *a, **k: None)
         monkeypatch.setattr("routers.roster.shift_to_response", lambda s, db: _shift_response_payload(s))
+        monkeypatch.setattr("routers.roster.sync_shift_pool_for_shift", lambda *a, **k: [])
 
         response = client.put(
             "/api/roster/100",
@@ -1129,6 +1133,10 @@ class TestEmployeeRosterFeedsHUEB:
             "end_date": "2026-07-06",
             "start_time": "14:00",
             "end_time": "18:00",
+            "parent_shift_id": None,
+            "dependents_independent": False,
+            "pool_parent_shift_id": None,
+            "pool_child_shift_ids": [],
         }]
         assert "bookings" not in payload[0]
         assert "notes" not in payload[0]

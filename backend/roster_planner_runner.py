@@ -34,6 +34,7 @@ from db_models import (
     ShiftStatus,
     User,
 )
+from shift_pool_sync import sync_shift_pool_from_parent, synced_booking_source_shift
 
 logger = logging.getLogger(__name__)
 
@@ -396,6 +397,7 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
         )
 
         linked: list[int] = []
+        sync_sources: set[int] = set()
         for shift in candidates:
             intended = getattr(shift, "intended_driver_type", None)
             if intended not in (None, "jockey"):
@@ -409,21 +411,26 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
                 )
             ):
                 continue
+            source_shift = synced_booking_source_shift(db, shift)
             # Idempotency: don't write a duplicate link.
             existing = (
                 db.query(ShiftBookingLink)
                 .filter(
-                    ShiftBookingLink.shift_id == shift.id,
+                    ShiftBookingLink.shift_id == source_shift.id,
                     ShiftBookingLink.booking_id == booking.id,
                 )
                 .first()
             )
             if existing:
                 continue
-            db.add(ShiftBookingLink(shift_id=shift.id, booking_id=booking.id))
-            linked.append(shift.id)
+            db.add(ShiftBookingLink(shift_id=source_shift.id, booking_id=booking.id))
+            linked.append(source_shift.id)
+            sync_sources.add(source_shift.id)
 
         if linked:
+            db.flush()
+            for source_id in sorted(sync_sources):
+                sync_shift_pool_from_parent(db, source_id)
             db.commit()
         return linked
     except Exception as e:
