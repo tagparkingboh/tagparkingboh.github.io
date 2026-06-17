@@ -14,7 +14,6 @@ from types import SimpleNamespace
 
 EXTERNAL_INTEGRATION_TESTS = (
     "test_cancel_payment.py::TestCancelPaymentIntentIntegration",
-    "test_dvla.py::TestVehicleLookupIntegration",
 )
 
 

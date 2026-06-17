@@ -237,20 +237,15 @@ class TestVehicleLookupMockedUat:
 
 
 # =============================================================================
-# Integration Tests (against DVLA UAT environment)
+# Mocked UAT Example Tests
 # =============================================================================
 
-@pytest.mark.integration
 class TestVehicleLookupIntegration:
-    """Integration tests against DVLA UAT environment.
-
-    These tests hit the real DVLA UAT API with test registrations.
-    Run with: pytest -m integration tests/test_dvla.py
-    """
+    """DVLA UAT examples run against a mocked client in tests/mocked."""
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_ford_red(self, client):
-        """Test AA19AAA returns Ford Red from DVLA UAT."""
+    async def test_dvla_uat_ford_red(self, client, mocked_dvla_uat):
+        """Test AA19AAA returns Ford Red with tax/MOT status."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
             json={"registration": "AA19AAA"}
@@ -261,10 +256,15 @@ class TestVehicleLookupIntegration:
         assert data["success"] is True
         assert data["make"] == "FORD"
         assert data["colour"] == "RED"
+        assert data["tax_status"] == "Taxed"
+        assert data["mot_status"] == "Valid"
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "AA19AAA"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_audi_white(self, client):
-        """Test AA19MOT returns Audi White from DVLA UAT."""
+    async def test_dvla_uat_audi_white(self, client, mocked_dvla_uat):
+        """Test AA19MOT returns Audi White with tax/MOT status."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
             json={"registration": "AA19MOT"}
@@ -275,10 +275,15 @@ class TestVehicleLookupIntegration:
         assert data["success"] is True
         assert data["make"] == "AUDI"
         assert data["colour"] == "WHITE"
+        assert data["tax_status"] == "Taxed"
+        assert data["mot_status"] == "Valid"
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "AA19MOT"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_skoda_grey(self, client):
-        """Test AA19DSL returns Skoda Grey from DVLA UAT."""
+    async def test_dvla_uat_skoda_grey(self, client, mocked_dvla_uat):
+        """Test AA19DSL returns Skoda Grey with tax/MOT status."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
             json={"registration": "AA19DSL"}
@@ -289,10 +294,15 @@ class TestVehicleLookupIntegration:
         assert data["success"] is True
         assert data["make"] == "SKODA"
         assert data["colour"] == "GREY"
+        assert data["tax_status"] == "Taxed"
+        assert data["mot_status"] == "Valid"
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "AA19DSL"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_motorcycle(self, client):
-        """Test L2WPS returns Kawasaki Black motorcycle from DVLA UAT."""
+    async def test_dvla_uat_motorcycle(self, client, mocked_dvla_uat):
+        """Test L2WPS returns Kawasaki Black motorcycle with tax/MOT status."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
             json={"registration": "L2WPS"}
@@ -303,10 +313,15 @@ class TestVehicleLookupIntegration:
         assert data["success"] is True
         assert data["make"] == "KAWASAKI"
         assert data["colour"] == "BLACK"
+        assert data["tax_status"] == "Taxed"
+        assert data["mot_status"] == "No details held by DVLA"
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "L2WPS"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_not_found(self, client):
-        """Test ER19NFD returns not found from DVLA UAT."""
+    async def test_dvla_uat_not_found(self, client, mocked_dvla_uat):
+        """Test ER19NFD returns not found from the mocked UAT contract."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
             json={"registration": "ER19NFD"}
@@ -316,10 +331,13 @@ class TestVehicleLookupIntegration:
         data = response.json()
         assert data["success"] is False
         assert "not found" in data["error"].lower()
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "ER19NFD"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_bad_request(self, client):
-        """Test ER19BAD returns bad request from DVLA UAT."""
+    async def test_dvla_uat_bad_request(self, client, mocked_dvla_uat):
+        """Test ER19BAD returns bad request from the mocked UAT contract."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
             json={"registration": "ER19BAD"}
@@ -329,9 +347,12 @@ class TestVehicleLookupIntegration:
         data = response.json()
         assert data["success"] is False
         assert "Invalid" in data["error"]
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "ER19BAD"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_with_spaces(self, client):
+    async def test_dvla_uat_with_spaces(self, client, mocked_dvla_uat):
         """Test registration with spaces is cleaned and works."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
@@ -343,9 +364,15 @@ class TestVehicleLookupIntegration:
         assert data["success"] is True
         assert data["registration"] == "AA19AAA"
         assert data["make"] == "FORD"
+        assert data["colour"] == "RED"
+        assert data["tax_status"] == "Taxed"
+        assert data["mot_status"] == "Valid"
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "AA19AAA"
+        }
 
     @pytest.mark.asyncio
-    async def test_dvla_uat_lowercase(self, client):
+    async def test_dvla_uat_lowercase(self, client, mocked_dvla_uat):
         """Test lowercase registration is uppercased and works."""
         response = await client.post(
             "/api/vehicles/dvla-lookup",
@@ -356,3 +383,10 @@ class TestVehicleLookupIntegration:
         data = response.json()
         assert data["success"] is True
         assert data["registration"] == "AA19AAA"
+        assert data["make"] == "FORD"
+        assert data["colour"] == "RED"
+        assert data["tax_status"] == "Taxed"
+        assert data["mot_status"] == "Valid"
+        assert mocked_dvla_uat.calls[-1]["json"] == {
+            "registrationNumber": "AA19AAA"
+        }
