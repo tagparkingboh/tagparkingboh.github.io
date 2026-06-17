@@ -82,3 +82,8 @@ backend/no_stripe_frame_*.png
 backend/payment_disabled_*.png
 backend/staging_batches.log
 backend/staging_logs/
+
+# Local-only roster analysis artifacts (contain prod-data pulls — never commit)
+analysis/
+analysis_outputs/
+scripts/
