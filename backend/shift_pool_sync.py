@@ -31,6 +31,37 @@ def shift_pool_sync_enabled(shift: RosterShift | None) -> bool:
     )
 
 
+def _cycle_error(shift_id: int) -> ValueError:
+    return ValueError(f"Cycle detected in roster shift dependency tree at shift {shift_id}")
+
+
+def validate_shift_parent_assignment(
+    db: Session,
+    *,
+    shift_id: int,
+    parent_shift_id: int | None,
+) -> None:
+    """Reject parent assignments that would break the dependency tree."""
+    if parent_shift_id is None:
+        return
+    if shift_id == parent_shift_id:
+        raise ValueError("Shift cannot be its own parent")
+
+    current_id = parent_shift_id
+    seen: set[int] = set()
+    while current_id is not None:
+        if current_id == shift_id:
+            raise _cycle_error(shift_id)
+        if current_id in seen:
+            raise _cycle_error(current_id)
+        seen.add(current_id)
+
+        current = db.query(RosterShift).filter(RosterShift.id == current_id).first()
+        if current is None:
+            raise ValueError(f"Parent shift {current_id} not found")
+        current_id = _int_id(getattr(current, "parent_shift_id", None))
+
+
 def synced_booking_source_shift(db: Session, shift: RosterShift) -> RosterShift:
     """Return the source shift for writes to a synced pool.
 
@@ -49,7 +80,7 @@ def synced_booking_source_shift(db: Session, shift: RosterShift) -> RosterShift:
         if current_id is None or parent_id is None:
             break
         if current_id in seen:
-            break
+            raise _cycle_error(current_id)
         seen.add(current_id)
         parent = (
             db.query(RosterShift)
@@ -111,7 +142,7 @@ def sync_shift_pool_from_parent(db: Session, parent_shift_id: int) -> list[int]:
 
     def walk(parent_id: int) -> None:
         if parent_id in visited:
-            raise ValueError(f"Cycle detected in roster shift dependency tree at shift {parent_id}")
+            raise _cycle_error(parent_id)
         visited.add(parent_id)
 
         parent = db.query(RosterShift).filter(RosterShift.id == parent_id).first()
@@ -132,6 +163,11 @@ def sync_shift_pool_from_parent(db: Session, parent_shift_id: int) -> list[int]:
         for child in children:
             if not shift_pool_sync_enabled(child):
                 continue
+            child_id = _int_id(getattr(child, "id", None))
+            if child_id is None:
+                continue
+            if child_id in visited:
+                raise _cycle_error(child_id)
             if set_shift_booking_ids(db, child.id, desired):
                 changed_shift_ids.append(child.id)
             walk(child.id)

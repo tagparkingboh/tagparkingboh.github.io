@@ -1726,6 +1726,64 @@ class TestSkipAndLinkAgreeForFlightArrivalBooking:
             frozen.date, frozen.end_date, frozen.start_time, frozen.end_time,
         ) == original_window
 
+    def test_E_dependency_cycle_links_primary_shift_and_logs(self, caplog):
+        broken = mk_assigned_shift(
+            id=1001,
+            shift_date=date(2026, 7, 2),
+            start_time=time(9, 0),
+            end_time=time(12, 0),
+            staff_id=10,
+        )
+        broken.parent_shift_id = broken.id
+        broken.dependents_independent = False
+        b = mk_booking(
+            booking_id=1002,
+            reference="TAG-CYCLE001",
+            dropoff_dt=datetime(2026, 7, 2, 10, 0),
+            pickup_dt=datetime(2026, 7, 9, 14, 0),
+        )
+
+        from unittest.mock import MagicMock as _MM
+        from db_models import RosterShift as _RS, ShiftBookingLink as _SBL
+        from roster_planner_runner import auto_link_booking_to_shifts
+
+        added: list = []
+        link_db = _MM()
+        link_db._committed = False
+
+        def _query(model):
+            chain = _MM()
+            chain.filter.return_value = chain
+            chain.order_by.return_value = chain
+            if model is _RS:
+                chain.all.return_value = [broken]
+                chain.first.return_value = broken
+            elif model is _SBL:
+                chain.first.return_value = None
+                chain.all.return_value = []
+            return chain
+
+        link_db.query.side_effect = _query
+        link_db.add.side_effect = added.append
+        link_db.commit.side_effect = lambda: setattr(link_db, "_committed", True)
+        link_db.rollback = _MM()
+
+        caplog.set_level(logging.ERROR, logger="roster_planner_runner")
+        linked_ids = auto_link_booking_to_shifts(link_db, b)
+
+        link_rows = [row for row in added if isinstance(row, _SBL)]
+        assert linked_ids == [broken.id]
+        assert len(link_rows) == 1
+        assert link_rows[0].shift_id == broken.id
+        assert link_rows[0].booking_id == b.id
+        assert link_db._committed is True
+        link_db.rollback.assert_not_called()
+        assert any(
+            "dependency cycle" in record.message
+            and f"booking_id={b.id}" in record.message
+            for record in caplog.records
+        )
+
 
 # ===========================================================================
 # auto-roster sweep dry-run — Step 2 HUEB report contract

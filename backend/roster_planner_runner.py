@@ -411,7 +411,19 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
                 )
             ):
                 continue
-            source_shift = synced_booking_source_shift(db, shift)
+            skip_pool_sync = False
+            try:
+                source_shift = synced_booking_source_shift(db, shift)
+            except ValueError as e:
+                logger.error(
+                    "auto_link_booking_to_shifts dependency cycle; linking directly "
+                    "booking_id=%s shift_id=%s: %s",
+                    getattr(booking, "id", None),
+                    getattr(shift, "id", None),
+                    e,
+                )
+                source_shift = shift
+                skip_pool_sync = True
             # Idempotency: don't write a duplicate link.
             existing = (
                 db.query(ShiftBookingLink)
@@ -425,12 +437,22 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
                 continue
             db.add(ShiftBookingLink(shift_id=source_shift.id, booking_id=booking.id))
             linked.append(source_shift.id)
-            sync_sources.add(source_shift.id)
+            if not skip_pool_sync:
+                sync_sources.add(source_shift.id)
 
         if linked:
             db.flush()
             for source_id in sorted(sync_sources):
-                sync_shift_pool_from_parent(db, source_id)
+                try:
+                    sync_shift_pool_from_parent(db, source_id)
+                except ValueError as e:
+                    logger.error(
+                        "auto_link_booking_to_shifts dependency cycle during pool sync; "
+                        "booking remains linked booking_id=%s source_shift_id=%s: %s",
+                        getattr(booking, "id", None),
+                        source_id,
+                        e,
+                    )
             db.commit()
         return linked
     except Exception as e:

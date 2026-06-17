@@ -12,7 +12,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from db_models import Booking, BookingStatus, RosterShift, ShiftBookingLink, ShiftStatus, ShiftType
-from shift_pool_sync import sync_shift_pool_from_parent, synced_booking_source_shift
+from shift_pool_sync import (
+    sync_shift_pool_from_parent,
+    synced_booking_source_shift,
+    validate_shift_parent_assignment,
+)
 
 
 def make_shift(id, *, shift_date=date(2026, 7, 2), parent_shift_id=None, independent=False):
@@ -213,3 +217,34 @@ def test_H_cycle_guard_raises_instead_of_looping():
 
     with pytest.raises(ValueError):
         sync_shift_pool_from_parent(db, 1)
+
+
+def test_H_source_guard_raises_same_cycle_contract():
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1, parent_shift_id=2),
+        2: make_shift(2, parent_shift_id=1),
+    }
+
+    with pytest.raises(ValueError, match="Cycle detected in roster shift dependency tree"):
+        synced_booking_source_shift(db, db.shifts[1])
+
+
+def test_U_parent_assignment_rejects_self_parent():
+    db = FakeDB()
+    db.shifts = {1: make_shift(1)}
+
+    with pytest.raises(ValueError, match="own parent"):
+        validate_shift_parent_assignment(db, shift_id=1, parent_shift_id=1)
+
+
+def test_U_parent_assignment_rejects_reparent_that_closes_loop():
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1),
+        2: make_shift(2, parent_shift_id=1),
+        3: make_shift(3, parent_shift_id=2),
+    }
+
+    with pytest.raises(ValueError, match="Cycle detected in roster shift dependency tree"):
+        validate_shift_parent_assignment(db, shift_id=1, parent_shift_id=3)
