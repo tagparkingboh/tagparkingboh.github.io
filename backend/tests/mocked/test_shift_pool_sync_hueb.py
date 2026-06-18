@@ -339,6 +339,26 @@ def test_H_locked_child_prunes_incoming_sync_but_sources_descendants():
     assert linked_ids(db, 3) == [20]
 
 
+def test_H_locked_parent_still_sources_child_and_lock_does_not_cascade():
+    """Locking a parent does NOT cascade the lock to its child: the child
+    still follows (is synced from) the locked parent, and the child's own
+    `locked` flag stays False — lock is per-shift, never propagated."""
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1, locked=True),
+        2: make_shift(2, parent_shift_id=1),
+    }
+    db.bookings = {10: make_booking(10), 99: make_booking(99)}
+    link(db, 1, 10)
+    link(db, 2, 99)  # stale set on the (unlocked) child
+
+    changed = sync_shift_pool_from_parent(db, 1)
+
+    assert changed == [2]
+    assert linked_ids(db, 2) == [10]        # child followed the locked parent
+    assert db.shifts[2].locked is False     # lock did not cascade downward
+
+
 def test_B_env_override_enables_pool_sync_before_july(monkeypatch):
     """The pool-sync gate reads the effective date per call, so an env
     override (cutover moved to 15 Jun) makes a 20 Jun pool sync — proving the

@@ -2854,6 +2854,56 @@ class TestTemplateRosterWindows:
         assert {link.booking_id for link in links} == {3012}
         assert result["orphans"] == 2
 
+    def test_B_dropoff_eos_boundary_window_end_minus_30(self):
+        """Drop-off coverage = event_start + 30, so it fits the early window
+        (03:00-09:00) iff start <= 08:30 (= window_end - 30). t-eps/t fit;
+        08:31 (t+eps) orphans and the fixed window never stretches."""
+        def run(dropoff_t):
+            booking = mk_booking(
+                booking_id=4001, reference="TAG-EOSD",
+                dropoff_dt=datetime(2026, 7, 2, dropoff_t.hour, dropoff_t.minute),
+                pickup_dt=datetime(2026, 7, 20, 12, 0),
+                flight_arrival_time=time(12, 0), flight_arrival_date=date(2026, 7, 20),
+            )
+            db = make_db(bookings=[booking], window_templates=default_window_templates())
+            result = rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+            from db_models import RosterShift
+            shifts = [s for s in db._added if isinstance(s, RosterShift) and s.date == date(2026, 7, 2)]
+            return shifts, result
+
+        shifts, _ = run(time(8, 29))   # t-eps
+        assert [(s.start_time, s.end_time) for s in shifts] == [(time(3, 0), time(9, 0))]
+        shifts, _ = run(time(8, 30))   # t (== window_end - 30)
+        assert [(s.start_time, s.end_time) for s in shifts] == [(time(3, 0), time(9, 0))]
+        shifts, result = run(time(8, 31))  # t+eps -> coverage end 09:01 > 09:00, gap to day window
+        assert shifts == []
+        assert result["orphans"] >= 1
+
+    def test_B_pickup_eos_boundary_window_end_minus_45(self):
+        """Pickup coverage = arrival + 45, so it fits the late window
+        (15:45-20:45) iff arrival <= 20:00 (= window_end - 45). t-eps/t fit;
+        20:01 (t+eps) orphans (coverage end 20:46 > 20:45; overnight starts 21:00)."""
+        def run(arrival_t):
+            booking = mk_booking(
+                booking_id=4002, reference="TAG-EOSP",
+                dropoff_dt=datetime(2026, 7, 1, 4, 0),
+                pickup_dt=datetime(2026, 7, 2, 21, 0),
+                flight_arrival_time=arrival_t, flight_arrival_date=date(2026, 7, 2),
+            )
+            db = make_db(bookings=[booking], window_templates=default_window_templates())
+            result = rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+            from db_models import RosterShift
+            shifts = [s for s in db._added if isinstance(s, RosterShift) and s.date == date(2026, 7, 2)]
+            return shifts, result
+
+        shifts, _ = run(time(19, 59))  # t-eps
+        assert [(s.start_time, s.end_time) for s in shifts] == [(time(15, 45), time(20, 45))]
+        shifts, _ = run(time(20, 0))   # t (== window_end - 45)
+        assert [(s.start_time, s.end_time) for s in shifts] == [(time(15, 45), time(20, 45))]
+        shifts, result = run(time(20, 1))  # t+eps
+        assert shifts == []
+        assert result["orphans"] >= 1
+
     def test_B_cross_midnight_window_holds_late_and_early_events(self):
         late = mk_booking(
             booking_id=3020,
