@@ -3142,6 +3142,26 @@ class TestTemplateRosterWindows:
         assert (shift.start_time, shift.end_time) == (time(3, 0), time(9, 0))
         db.commit.assert_not_called()
 
+    def test_B_env_override_routes_pre_july_date_through_template_engine(self, monkeypatch):
+        """The rebuild dispatcher reads the effective date per call. With the
+        cutover moved to 15 Jun via env, a 20 Jun booking must run through the
+        TEMPLATE engine (fixed 03:00-09:00 window) — which the cluster engine
+        would never produce — proving auto_roster honors the runtime knob."""
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-06-15")
+        booking = mk_booking(
+            booking_id=3300, reference="TAG-OVERRIDE",
+            dropoff_dt=datetime(2026, 6, 20, 4, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        db = make_db(bookings=[booking], window_templates=default_window_templates())
+
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 20)}, mk_settings())
+
+        from db_models import RosterShift
+        shifts = [s for s in db._added if isinstance(s, RosterShift)]
+        assert result["created"] == 1
+        assert (shifts[0].start_time, shifts[0].end_time) == (time(3, 0), time(9, 0))
+
 
 class TestFocusRebuildOrphanRescue:
     """Orphan rescue (2026-06-12 incident, TAG-GIR11546 → shift 5263).

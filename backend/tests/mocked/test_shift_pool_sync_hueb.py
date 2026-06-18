@@ -317,3 +317,23 @@ def test_H_booking_added_to_detached_child_stays_then_resync_discards():
     changed = sync_shift_pool_from_parent(db, 1)
     assert 2 in changed
     assert linked_ids(db, 2) == [10, 11]
+
+
+def test_B_env_override_enables_pool_sync_before_july(monkeypatch):
+    """The pool-sync gate reads the effective date per call, so an env
+    override (cutover moved to 15 Jun) makes a 20 Jun pool sync — proving the
+    consumer honors the runtime knob, not a cached constant."""
+    monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-06-15")
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1, shift_date=date(2026, 6, 20)),
+        2: make_shift(2, shift_date=date(2026, 6, 20), parent_shift_id=1),
+    }
+    db.bookings = {10: make_booking(10)}
+    link(db, 1, 10)
+    # child 2 starts empty; sync should fill it from the parent
+
+    changed = sync_shift_pool_from_parent(db, 1)
+
+    assert changed == [2]
+    assert linked_ids(db, 2) == [10]

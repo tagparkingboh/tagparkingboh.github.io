@@ -33,3 +33,23 @@ def test_U_invalid_env_date_falls_back_and_warns(monkeypatch, caplog):
 
     assert result == date_type(2026, 7, 1)
     assert "Invalid TEMPLATE_ROSTER_EFFECTIVE_DATE" in caplog.text
+
+
+def test_B_blank_env_value_uses_default_without_warning(monkeypatch, caplog):
+    """A set-but-blank value strips to empty and takes the silent default
+    path — it is NOT treated as 'invalid', so no warning is logged."""
+    monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "   ")
+
+    with caplog.at_level(logging.WARNING):
+        result = get_roster_effective_date()
+
+    assert result == date_type(2026, 7, 1)
+    assert "Invalid" not in caplog.text
+
+
+def test_U_syntactically_impossible_date_falls_back(monkeypatch):
+    """A well-formed but impossible ISO date (Feb 30) raises ValueError in
+    fromisoformat and must fall back to the default, not crash the caller."""
+    monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-02-30")
+
+    assert get_roster_effective_date() == date_type(2026, 7, 1)
