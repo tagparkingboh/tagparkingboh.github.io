@@ -65,6 +65,9 @@ from roster_effective_date import get_roster_effective_date
 
 logger = logging.getLogger(__name__)
 
+TEMPLATE_DROPOFF_COVERAGE_MINUTES = 30
+TEMPLATE_PICKUP_COVERAGE_MINUTES = 45
+
 
 def _scalar_value(value):
     return value.value if hasattr(value, "value") else value
@@ -850,9 +853,9 @@ def _template_event_coverage(
         else start_dt
     )
     if event_type == "drop_off":
-        coverage_end = start_dt + timedelta(minutes=30)
+        coverage_end = start_dt + timedelta(minutes=TEMPLATE_DROPOFF_COVERAGE_MINUTES)
     else:
-        coverage_end = start_dt + timedelta(minutes=45)
+        coverage_end = start_dt + timedelta(minutes=TEMPLATE_PICKUP_COVERAGE_MINUTES)
     return coverage_start, max(coverage_end, end_dt)
 
 

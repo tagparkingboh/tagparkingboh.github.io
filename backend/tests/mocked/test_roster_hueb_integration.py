@@ -86,6 +86,7 @@ def _mock_shift(
     s.created_source = created_source
     s.planner_run_id = None
     s.admin_shaped_at = None
+    s.locked = False
     s.suppressed_at = None
     s.suppressed_by_user_id = None
     s.suppression_reason = None
@@ -893,23 +894,25 @@ class TestDeleteShift:
         assert s.suppressed_at is not None
         db.delete.assert_not_called()
 
-    def test_H_delete_auto_assigned_shift_hard_deletes(self):
-        """Auto shifts with a staff owner are not suppression candidates."""
+    def test_H_delete_auto_assigned_shift_soft_suppresses(self):
+        """Claimed auto shifts still suppress so rebuilds do not recreate them."""
         s = _mock_shift(staff_id=44, created_source="auto")
         db = self._wire(s)
         _override_db(db)
         resp = TestClient(app).delete(f"/api/roster/{s.id}")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["suppressed"] is False
-        assert body["message"] == "Shift deleted"
-        assert s.status == ShiftStatus.SCHEDULED
-        assert s.suppressed_at is None
-        db.delete.assert_called_once_with(s)
+        assert body["suppressed"] is True
+        assert body["message"] == "Shift suppressed"
+        assert s.status == ShiftStatus.CANCELLED
+        assert s.suppressed_by_user_id == 1
+        assert s.suppression_reason == "admin_delete"
+        assert s.suppressed_at is not None
+        db.delete.assert_not_called()
 
     def test_H_delete_auto_confirmed_unassigned_shift_hard_deletes(self):
-        """Only scheduled unowned auto shifts can be suppressed; confirmed
-        shifts are treated as owned operational records."""
+        """Only scheduled auto shifts can be suppressed; confirmed shifts are
+        treated as owned operational records."""
         s = _mock_shift(staff_id=None, created_source="auto", status=ShiftStatus.CONFIRMED)
         db = self._wire(s)
         _override_db(db)

@@ -656,8 +656,8 @@ class TestRebuildAutoForDates:
         assert result["deleted"] == 1
         assert result["created"] == 0
 
-    def test_rebuild_respects_suppressed_auto_shift_window(self):
-        """A soft-deleted auto shift is a durable admin suppression: even
+    def test_rebuild_respects_claimed_unlocked_suppressed_auto_shift_window(self):
+        """A claimed-but-unlocked auto shift soft-delete is durable: even
         explicit regenerate should not recreate the same generated coverage."""
         b = mk_booking(
             booking_id=77,
@@ -668,7 +668,8 @@ class TestRebuildAutoForDates:
         suppressed = SimpleNamespace(
             id=7700,
             created_source="auto",
-            staff_id=None,
+            staff_id=44,
+            locked=False,
             status=ShiftStatus.CANCELLED,
             suppressed_at=datetime(2026, 6, 9, 12, 0),
             admin_shaped_at=None,

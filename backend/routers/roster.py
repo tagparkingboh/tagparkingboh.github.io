@@ -1958,9 +1958,9 @@ async def delete_shift(
 ):
     """Delete a roster shift.
 
-    Untouched auto shifts are soft-suppressed so auto-roster remembers the
-    admin's intent and does not quietly recreate the same coverage later.
-    Other shift types keep the historic hard-delete behaviour.
+    Auto shifts are soft-suppressed so auto-roster remembers the admin's
+    intent and does not quietly recreate the same coverage later. Other shift
+    types keep the historic hard-delete behaviour.
     """
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
 
@@ -2019,7 +2019,6 @@ async def delete_shift(
 
     soft_suppressed = (
         getattr(shift, "created_source", None) == "auto"
-        and shift.staff_id is None
         and shift.status == ShiftStatus.SCHEDULED
     )
     if soft_suppressed:
