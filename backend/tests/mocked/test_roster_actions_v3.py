@@ -588,6 +588,27 @@ class TestDuplicateDependencyPoolHUEB:
         assert r.status_code == 200, r.text
         assert state["committed"] is True
 
+    def test_E_synced_child_edit_with_unchanged_booking_set_is_not_409(self, rig):
+        """A re-save that sends a synced child's CURRENT booking set unchanged
+        must take the no-op branch (desired == current), not the 409 reject —
+        otherwise an ordinary shift-edit save that happens to include
+        booking_ids would spuriously fail on every synced child."""
+        parent = make_shift(id=7012, staff_id=None, shift_date=date(2026, 7, 2))
+        child = make_shift(id=7013, staff_id=None, shift_date=date(2026, 7, 2))
+        child.parent_shift_id = 7012
+        booking = make_booking(id=7130, ref="TAG-POOL7130", dropoff_dt=datetime(2026, 7, 2, 9, 30))
+        client, db, state = rig
+        state["shifts_by_id"][7012] = parent
+        state["shifts_by_id"][7013] = child
+        state["bookings_by_id"][7130] = booking
+        # child already carries 7130; the edit re-sends the same set.
+        state["shift_links_by_shift"][7013] = [ShiftBookingLink(shift_id=7013, booking_id=7130)]
+
+        with patch("routers.roster.sync_shift_pool_for_shift", return_value=[]):
+            r = client.put("/api/roster/7013", json={"booking_ids": [7130]})
+
+        assert r.status_code == 200, r.text
+
 
 # =============================================================================
 # Duplicate — Unhappy / Edge
