@@ -249,3 +249,71 @@ def test_U_parent_assignment_rejects_reparent_that_closes_loop():
 
     with pytest.raises(ValueError, match="Cycle detected in roster shift dependency tree"):
         validate_shift_parent_assignment(db, shift_id=1, parent_shift_id=3)
+
+
+def test_I_amendment_after_pool_keeps_link_set_and_never_reshapes_windows():
+    """A booking's date/time changing after the pool is formed must not change
+    which bookings the children carry, and sync must NEVER touch a shift's
+    window (start/end/date) — it only writes ShiftBookingLink rows."""
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1),
+        2: make_shift(2, parent_shift_id=1),
+    }
+    db.bookings = {
+        10: make_booking(10),
+        11: make_booking(11),
+    }
+    link(db, 1, 10)
+    link(db, 1, 11)
+    link(db, 2, 10)
+    link(db, 2, 11)
+
+    # Customer amends booking 10 after pooling (moves the flight to a late
+    # cross-midnight slot). The booking set on the parent is unchanged.
+    db.bookings[10].dropoff_date = date(2026, 7, 5)
+    db.bookings[10].dropoff_time = time(23, 30)
+    db.bookings[10].pickup_date = date(2026, 7, 12)
+
+    child = db.shifts[2]
+    window_before = (child.date, child.end_date, child.start_time, child.end_time)
+
+    changed = sync_shift_pool_from_parent(db, 1)
+
+    # Link set is stable (same non-cancelled parent set), so no link churn.
+    assert changed == []
+    assert linked_ids(db, 2) == [10, 11]
+    assert db.deleted == []
+    # The amendment never reshapes the child shift's window.
+    assert (child.date, child.end_date, child.start_time, child.end_time) == window_before
+
+
+def test_H_booking_added_to_detached_child_stays_then_resync_discards():
+    """While the parent is Independent, a booking added directly to a child
+    stays only on that child. Un-checking Independent re-syncs and discards
+    the divergence (child snaps back to the parent's set)."""
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1, independent=True),      # parent detached
+        2: make_shift(2, parent_shift_id=1),
+    }
+    db.bookings = {
+        10: make_booking(10),
+        11: make_booking(11),
+        77: make_booking(77),                    # added straight onto the child
+    }
+    link(db, 1, 10)
+    link(db, 1, 11)
+    link(db, 2, 10)
+    link(db, 2, 77)                              # child diverged: has 77, missing 11
+
+    # Detached: syncing from the parent must not touch the child.
+    changed = sync_shift_pool_from_parent(db, 1)
+    assert changed == []
+    assert linked_ids(db, 2) == [10, 77]         # 77 stays only here
+
+    # Un-check Independent -> children snap back, 77 discarded, 11 restored.
+    db.shifts[1].dependents_independent = False
+    changed = sync_shift_pool_from_parent(db, 1)
+    assert 2 in changed
+    assert linked_ids(db, 2) == [10, 11]

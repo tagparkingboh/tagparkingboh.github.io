@@ -2983,6 +2983,165 @@ class TestTemplateRosterWindows:
         assert shift.end_time == time(9, 0)
         db.commit.assert_not_called()
 
+    def test_B_booking_straddling_effective_date_uses_both_engines(self):
+        """A single booking that drops off 30 Jun (cluster engine) and is
+        picked up 1 Jul (template engine) must get coverage on BOTH sides:
+        the June event via the legacy cluster engine, the July event via the
+        template window — no orphaned event, no crash, one link each."""
+        booking = mk_booking(
+            booking_id=3200,
+            reference="TAG-STRADDLE",
+            dropoff_dt=datetime(2026, 6, 30, 8, 0),
+            pickup_dt=datetime(2026, 7, 1, 5, 30),
+            flight_arrival_time=time(5, 0),
+            flight_arrival_date=date(2026, 7, 1),
+        )
+        db = make_db(bookings=[booking], window_templates=default_window_templates())
+
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 6, 30), date(2026, 7, 1)}, mk_settings()
+        )
+
+        from db_models import RosterShift, ShiftBookingLink
+        shifts = [o for o in db._added if isinstance(o, RosterShift)]
+        links = [o for o in db._added if isinstance(o, ShiftBookingLink)]
+        june = [s for s in shifts if s.date == date(2026, 6, 30)]
+        july = [s for s in shifts if s.date == date(2026, 7, 1)]
+        assert len(june) == 1, "June drop-off must get a cluster-engine shift"
+        assert len(july) == 1, "July pickup must get a template-window shift"
+        # June side is event-anchored by the cluster engine, NOT a template window.
+        assert (june[0].start_time, june[0].end_time) != (time(3, 0), time(9, 0))
+        # July side lands in the template 'early' window.
+        assert july[0].start_time == time(3, 0)
+        assert july[0].end_time == time(9, 0)
+        # Same booking linked on both sides — nothing orphaned.
+        assert {l.booking_id for l in links} == {3200}
+        assert result["created"] == 2
+
+    def test_B_real_engines_select_per_date_june_cluster_july_template(self):
+        """Real-engine boundary (no monkeypatch): a 30 Jun drop-off is shaped
+        by the cluster engine (event +/- buffers); a 1 Jul drop-off by the
+        template engine (fixed config window)."""
+        june = mk_booking(
+            booking_id=3210, reference="TAG-JUN",
+            dropoff_dt=datetime(2026, 6, 30, 8, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        july = mk_booking(
+            booking_id=3211, reference="TAG-JUL",
+            dropoff_dt=datetime(2026, 7, 1, 8, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        db = make_db(bookings=[june, july], window_templates=default_window_templates())
+
+        rebuild_auto_for_dates(db, {date(2026, 6, 30), date(2026, 7, 1)}, mk_settings())
+
+        from db_models import RosterShift
+        by_date = {s.date: s for s in db._added if isinstance(s, RosterShift)}
+        # July: template 'early' window exactly.
+        assert (by_date[date(2026, 7, 1)].start_time, by_date[date(2026, 7, 1)].end_time) == (
+            time(3, 0), time(9, 0),
+        )
+        # June: cluster engine anchors start to event - start_buffer (20m).
+        assert by_date[date(2026, 6, 30)].start_time == time(7, 40)
+        assert by_date[date(2026, 6, 30)].start_time != time(3, 0)
+
+    def test_C_no_active_templates_falls_back_to_defaults(self):
+        """Empty template config must seed the default windows, not crash or
+        no-op — a fresh prod DB has no rows on day one."""
+        booking = mk_booking(
+            booking_id=3220, reference="TAG-NOTPL",
+            dropoff_dt=datetime(2026, 7, 2, 4, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        db = make_db(bookings=[booking], window_templates=[])
+
+        result = rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+
+        from db_models import RosterShift
+        shifts = [s for s in db._added if isinstance(s, RosterShift)]
+        assert result["created"] == 1
+        assert (shifts[0].start_time, shifts[0].end_time) == (time(3, 0), time(9, 0))
+
+    def test_U_misconfigured_templates_raise_no_window_error(self):
+        """Active templates that exist but match no weekday/weekend profile
+        leave the engine with no window to place an event -> explicit
+        ValueError, never a silent miss that drops coverage."""
+        bad = [mk_window_template("holiday", "h-early", time(3, 0), time(9, 0), 0)]
+        booking = mk_booking(
+            booking_id=3230, reference="TAG-BADTPL",
+            dropoff_dt=datetime(2026, 7, 2, 4, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        db = make_db(bookings=[booking], window_templates=bad)
+
+        with pytest.raises(ValueError, match="No active roster window templates"):
+            rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+
+    def test_B_trim_date_gate_skips_june_trims_july(self):
+        """Trim job is gated on the operational date: 30 Jun (t-eps) is a
+        no-op leaving the window untouched; 1 Jul (t) trims to events+buffers."""
+        def make_trim_shift(shift_date):
+            return SimpleNamespace(
+                id=307, created_source="auto", staff_id=None, admin_shaped_at=None,
+                status=ShiftStatus.SCHEDULED, date=shift_date, end_date=None,
+                start_time=time(3, 0), end_time=time(9, 0), shift_type=ShiftType.MORNING,
+                bookings=[mk_booking(
+                    booking_id=3070, reference="TAG-TRIMGATE",
+                    dropoff_dt=datetime(shift_date.year, shift_date.month, shift_date.day, 5, 0),
+                    pickup_dt=datetime(2026, 7, 20, 14, 0),
+                )],
+            )
+
+        june_shift = make_trim_shift(date(2026, 6, 30))
+        db_june = make_db(untouched_auto_shifts=[june_shift])
+        res_june = trim_window_auto_shifts_for_date(
+            db_june, date(2026, 6, 30),
+            mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
+        )
+        assert res_june == {"trimmed": 0, "skipped": 0}
+        assert (june_shift.start_time, june_shift.end_time) == (time(3, 0), time(9, 0))
+
+        july_shift = make_trim_shift(date(2026, 7, 1))
+        db_july = make_db(untouched_auto_shifts=[july_shift])
+        res_july = trim_window_auto_shifts_for_date(
+            db_july, date(2026, 7, 1),
+            mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
+        )
+        assert res_july["trimmed"] == 1
+        assert (july_shift.start_time, july_shift.end_time) == (time(4, 30), time(5, 30))
+
+    def test_U_trim_never_expands_window_only_clamps_inward(self):
+        """Events at the window edges would push the buffered span OUTSIDE the
+        shift; the inward clamp must keep the window from ever growing."""
+        edge_early = mk_booking(
+            booking_id=3080, reference="TAG-EDGEA",
+            dropoff_dt=datetime(2026, 7, 2, 3, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        edge_late = mk_booking(
+            booking_id=3081, reference="TAG-EDGEB",
+            dropoff_dt=datetime(2026, 7, 2, 9, 0),
+            pickup_dt=datetime(2026, 7, 20, 14, 0),
+        )
+        shift = SimpleNamespace(
+            id=308, created_source="auto", staff_id=None, admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED, date=date(2026, 7, 2), end_date=None,
+            start_time=time(3, 0), end_time=time(9, 0), shift_type=ShiftType.MORNING,
+            bookings=[edge_early, edge_late],
+        )
+        db = make_db(untouched_auto_shifts=[shift])
+
+        result = trim_window_auto_shifts_for_date(
+            db, date(2026, 7, 2),
+            mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
+        )
+
+        # desired span 02:30-09:30 (wider) clamps back to 03:00-09:00 -> no change.
+        assert result == {"trimmed": 0, "skipped": 1}
+        assert (shift.start_time, shift.end_time) == (time(3, 0), time(9, 0))
+        db.commit.assert_not_called()
+
 
 class TestFocusRebuildOrphanRescue:
     """Orphan rescue (2026-06-12 incident, TAG-GIR11546 → shift 5263).
