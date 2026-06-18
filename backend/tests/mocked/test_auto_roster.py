@@ -2904,6 +2904,42 @@ class TestTemplateRosterWindows:
         assert shifts == []
         assert result["orphans"] >= 1
 
+    def test_B_overnight_arrival_0159_belongs_to_prior_day_window_and_orphans(self, monkeypatch):
+        """A 6/22 01:59 arrival is attributed (by the <02:00 cutoff) to 6/21's
+        overnight window (6/21 21:00 -> 6/22 02:00), but arrival+45 = 02:44
+        spills past the 02:00 window end, so it orphans — no shift is created.
+        (Window knob moved to June so the template engine owns these dates.)"""
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-06-01")
+        booking = mk_booking(
+            booking_id=4101, reference="TAG-NITE0159",
+            dropoff_dt=datetime(2026, 6, 15, 4, 0),
+            pickup_dt=datetime(2026, 6, 22, 2, 30),
+            flight_arrival_time=time(1, 59), flight_arrival_date=date(2026, 6, 22),
+        )
+        db = make_db(bookings=[booking], window_templates=default_window_templates())
+        # 6/21 is the day whose overnight window reaches into 6/22 02:00.
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 21)}, mk_settings())
+        from db_models import RosterShift
+        assert [s for s in db._added if isinstance(s, RosterShift)] == []
+        assert result["orphans"] >= 1
+
+    def test_B_overnight_arrival_0200_belongs_to_same_day_window_and_orphans(self, monkeypatch):
+        """A 6/22 02:00 arrival is attributed (by the >=02:00 cutoff) to 6/22
+        itself, but lands in the 02:00-03:00 dead zone before the early window
+        (03:00) opens, so it orphans — no shift is created."""
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-06-01")
+        booking = mk_booking(
+            booking_id=4102, reference="TAG-NITE0200",
+            dropoff_dt=datetime(2026, 6, 15, 4, 0),
+            pickup_dt=datetime(2026, 6, 22, 2, 30),
+            flight_arrival_time=time(2, 0), flight_arrival_date=date(2026, 6, 22),
+        )
+        db = make_db(bookings=[booking], window_templates=default_window_templates())
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 22)}, mk_settings())
+        from db_models import RosterShift
+        assert [s for s in db._added if isinstance(s, RosterShift)] == []
+        assert result["orphans"] >= 1
+
     def test_B_cross_midnight_window_holds_late_and_early_events(self):
         late = mk_booking(
             booking_id=3020,
