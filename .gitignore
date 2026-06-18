@@ -86,4 +86,3 @@ backend/staging_logs/
 # Local-only roster analysis artifacts (contain prod-data pulls — never commit)
 analysis/
 analysis_outputs/
-scripts/

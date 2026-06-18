@@ -2268,6 +2268,28 @@
   padding: 20px;
 }
 
+.booking-checkboxes.readonly {
+  background: #141414;
+  border-color: #2a2a2a;
+}
+
+.booking-checkbox-readonly,
+.booking-checkbox-readonly-empty {
+  display: flex;
+  padding: 8px 10px;
+  color: #aab3c5;
+  border-bottom: 1px solid #252525;
+}
+
+.booking-checkbox-readonly:last-child {
+  border-bottom: 0;
+}
+
+.booking-checkbox-readonly-empty {
+  justify-content: center;
+  font-style: italic;
+}
+
 .booking-group {
   margin-bottom: 12px;
 }

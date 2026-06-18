@@ -162,6 +162,7 @@ def rig():
                 # to a different target_date.
                 staff_id_targets = []
                 date_targets = []
+                parent_shift_id_targets = []
                 for args in local_args:
                     for arg in args:
                         col = getattr(getattr(arg, "left", None), "key", None)
@@ -170,6 +171,8 @@ def rig():
                             staff_id_targets.append(val)
                         elif col == "date":
                             date_targets.append(val)
+                        elif col == "parent_shift_id":
+                            parent_shift_id_targets.append(val)
 
                 rows = list(state["shifts_by_id"].values())
                 if staff_id_targets:
@@ -178,6 +181,9 @@ def rig():
                 if date_targets:
                     target = date_targets[-1]
                     rows = [s for s in rows if getattr(s, "date", None) == target]
+                if parent_shift_id_targets:
+                    target = parent_shift_id_targets[-1]
+                    rows = [s for s in rows if getattr(s, "parent_shift_id", None) == target]
                 return rows
             chain.all.side_effect = all_shifts
         elif model is Booking:
@@ -547,6 +553,40 @@ class TestDuplicateDependencyPoolHUEB:
         )
 
         assert r.status_code == 422
+
+    def test_U_synced_child_booking_edit_returns_409(self, rig):
+        client, db, state = rig
+        parent = make_shift(id=7006, staff_id=None, shift_date=date(2026, 7, 2))
+        child = make_shift(id=7007, staff_id=None, shift_date=date(2026, 7, 2))
+        child.parent_shift_id = 7006
+        booking = make_booking(id=7070, ref="TAG-POOL7070", dropoff_dt=datetime(2026, 7, 2, 9, 30))
+        state["shifts_by_id"][7006] = parent
+        state["shifts_by_id"][7007] = child
+        state["bookings_by_id"][7070] = booking
+
+        r = client.put("/api/roster/7007", json={"booking_ids": [7070]})
+
+        assert r.status_code == 409
+        assert "synced child shift" in r.json()["detail"]
+        assert "parent shift #7006" in r.json()["detail"]
+        db.commit.assert_not_called()
+
+    def test_H_independent_child_booking_edit_is_allowed(self, rig):
+        client, db, state = rig
+        parent = make_shift(id=7008, staff_id=None, shift_date=date(2026, 7, 2))
+        parent.dependents_independent = True
+        child = make_shift(id=7009, staff_id=None, shift_date=date(2026, 7, 2))
+        child.parent_shift_id = 7008
+        booking = make_booking(id=7090, ref="TAG-POOL7090", dropoff_dt=datetime(2026, 7, 2, 9, 30))
+        state["shifts_by_id"][7008] = parent
+        state["shifts_by_id"][7009] = child
+        state["bookings_by_id"][7090] = booking
+
+        with patch("routers.roster.sync_shift_pool_for_shift", return_value=[]):
+            r = client.put("/api/roster/7009", json={"booking_ids": [7090]})
+
+        assert r.status_code == 200, r.text
+        assert state["committed"] is True
 
 
 # =============================================================================

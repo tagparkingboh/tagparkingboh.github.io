@@ -1835,6 +1835,12 @@ function RosterCalendar({
     setShowDetailModal(true)
   }
 
+  const isSyncedChildShift = useCallback((shift) => {
+    if (!shift?.parent_shift_id) return false
+    const parent = shifts.find((s) => s.id === shift.parent_shift_id)
+    return !parent || !parent.dependents_independent
+  }, [shifts])
+
   // Close detail modal handler
   const closeDetailModal = () => {
     setShowDetailModal(false)
@@ -1930,9 +1936,9 @@ function RosterCalendar({
       // Convert UK date format to ISO for backend
       const isoDate = ukToISO(shiftForm.date)
       const isoEndDate = shiftForm.end_date ? ukToISO(shiftForm.end_date) : null
+      const bookingLinksReadOnly = editingShift && isSyncedChildShift(editingShift)
 
       const basePayload = {
-        booking_ids: shiftForm.booking_ids.map(id => parseInt(id)),
         date: isoDate,
         end_date: isoEndDate,  // For overnight shifts
         start_time: shiftForm.start_time,
@@ -1942,6 +1948,9 @@ function RosterCalendar({
         // Backend overrides this with the assigned user's driver_type when
         // staff_id is set; for unassigned shifts it's the source of truth.
         intended_driver_type: shiftForm.intended_driver_type || 'jockey',
+      }
+      if (!bookingLinksReadOnly) {
+        basePayload.booking_ids = shiftForm.booking_ids.map(id => parseInt(id))
       }
 
       if (editingShift) {
@@ -2120,6 +2129,11 @@ function RosterCalendar({
     setError('')
 
     try {
+      if (bulkEditForm.action === 'add_bookings' && bulkSelectionHasSyncedChild) {
+        setError('Booking links for synced child shifts are edited on the parent shift.')
+        return
+      }
+
       if (bulkEditForm.action === 'delete') {
         // Bulk delete
         let successCount = 0
@@ -3256,6 +3270,9 @@ function RosterCalendar({
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
+  const editingShiftBookingLinksReadOnly = editingShift && isSyncedChildShift(editingShift)
+  const selectedBulkShifts = shifts.filter((s) => selectedShiftIds.includes(s.id))
+  const bulkSelectionHasSyncedChild = selectedBulkShifts.some((s) => isSyncedChildShift(s))
   const selectedDateReviewItemsFromBackend = (
     backendReviewGatesLoaded && selectedDate
       ? getRosterCoverageReviewItemsFromGates(reviewGenerateGateByDate, [selectedDate])
@@ -4208,6 +4225,7 @@ function RosterCalendar({
                     const poolChildIds = Array.isArray(shift.pool_child_shift_ids) ? shift.pool_child_shift_ids : []
                     const isPoolParent = poolChildIds.length > 0
                     const isPoolChild = Boolean(shift.parent_shift_id)
+                    const isSyncedPoolChild = isSyncedChildShift(shift)
 
                     return (
                       <div
@@ -4265,9 +4283,11 @@ function RosterCalendar({
                               className={`shift-pool-badge ${isPoolParent ? 'pool-parent' : 'pool-child'}`}
                               title={isPoolParent
                                 ? `Parent for ${poolChildIds.length} synced duplicate${poolChildIds.length === 1 ? '' : 's'}`
-                                : `Synced duplicate of shift ${shift.parent_shift_id}`}
+                                : isSyncedPoolChild
+                                  ? `Synced duplicate of shift ${shift.parent_shift_id}`
+                                  : `Independent duplicate of shift ${shift.parent_shift_id}`}
                             >
-                              {isPoolParent ? `Pool parent · ${poolChildIds.length}` : `Pool child · #${shift.parent_shift_id}`}
+                              {isPoolParent ? `Pool parent · ${poolChildIds.length}` : `${isSyncedPoolChild ? 'Pool child' : 'Independent child'} · #${shift.parent_shift_id}`}
                             </div>
                           )}
                         </div>
@@ -4286,9 +4306,14 @@ function RosterCalendar({
                               <span>Independent</span>
                             </label>
                           )}
-                          {isPoolChild && (
+                          {isPoolChild && isSyncedPoolChild && (
                             <div className="shift-pool-note">
                               Synced with parent shift #{shift.parent_shift_id}
+                            </div>
+                          )}
+                          {isPoolChild && !isSyncedPoolChild && (
+                            <div className="shift-pool-note">
+                              Independent from parent shift #{shift.parent_shift_id}
                             </div>
                           )}
                           {shift.staff_first_name ? (
@@ -4753,7 +4778,23 @@ function RosterCalendar({
               {/* Link to Bookings - full width multi-select */}
               <div className="modal-form-group">
                 <label>Link to Bookings {shiftForm.booking_ids.length > 0 && `(${shiftForm.booking_ids.length} selected)`}</label>
-                {loadingDateBookings ? (
+                {editingShiftBookingLinksReadOnly ? (
+                  <div className="booking-checkboxes readonly">
+                    {(editingShift?.bookings || []).length === 0 ? (
+                      <div className="booking-checkbox-readonly-empty">No linked bookings</div>
+                    ) : (
+                      sortBookingsForShift(editingShift.bookings || [], editingShift).map((b) => (
+                        <div key={`${b.type || 'booking'}-${b.id}`} className="booking-checkbox-readonly">
+                          <span className="booking-info">
+                            <span className="booking-time">{b.time}</span>
+                            <span className="booking-ref">{b.reference}</span>
+                            <span className="booking-customer">{b.customer_name}</span>
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : loadingDateBookings ? (
                   <div className="booking-checkboxes loading">Loading bookings...</div>
                 ) : dateBookings.length === 0 ? (
                   <div className="booking-checkboxes empty">No bookings on this date</div>
@@ -4890,7 +4931,7 @@ function RosterCalendar({
                   onChange={(e) => setBulkEditForm({ ...bulkEditForm, action: e.target.value })}
                 >
                   <option value="edit_times">Edit Times</option>
-                  <option value="add_bookings">Add Bookings</option>
+                  <option value="add_bookings" disabled={bulkSelectionHasSyncedChild}>Add Bookings</option>
                   <option value="delete">Delete All</option>
                 </select>
               </div>

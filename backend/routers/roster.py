@@ -50,6 +50,7 @@ from roster_planner_runner import (
 )
 from shift_pool_sync import (
     shift_pool_sync_enabled,
+    synced_booking_source_shift,
     sync_shift_pool_for_shift,
     sync_shift_pool_from_parent,
     validate_shift_parent_assignment,
@@ -66,6 +67,43 @@ router = APIRouter(prefix="/api", tags=["roster"])
 # shifts are unaffected and remain claimable on every date. Remove this
 # constant and the OR clause it gates once the rollout is complete.
 AUTO_SHIFTS_VISIBLE_FROM = date_type(2026, 6, 1)
+
+
+def _current_shift_booking_id_set(db: Session, shift: RosterShift) -> set[int]:
+    booking_ids = {
+        row.booking_id
+        for row in db.query(ShiftBookingLink)
+        .filter(ShiftBookingLink.shift_id == shift.id)
+        .all()
+    }
+    legacy_booking_id = getattr(shift, "booking_id", None)
+    if legacy_booking_id is not None:
+        booking_ids.add(legacy_booking_id)
+    return booking_ids
+
+
+def _reject_synced_child_booking_link_change(
+    db: Session,
+    shift: RosterShift,
+    desired_booking_ids: set[int],
+) -> None:
+    parent_shift_id = getattr(shift, "parent_shift_id", None)
+    if not isinstance(parent_shift_id, int) or not shift_pool_sync_enabled(shift):
+        return
+    if desired_booking_ids == _current_shift_booking_id_set(db, shift):
+        return
+    try:
+        source = synced_booking_source_shift(db, shift)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if getattr(source, "id", None) != getattr(shift, "id", None):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This is a synced child shift. Edit bookings on parent shift "
+                f"#{source.id}."
+            ),
+        )
 
 
 # ============================================================================
@@ -1697,6 +1735,19 @@ async def update_shift(
 
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
+
+    if updates.booking_ids is not None:
+        _reject_synced_child_booking_link_change(
+            db,
+            shift,
+            {int(bid) for bid in updates.booking_ids},
+        )
+    elif updates.booking_id is not None:
+        _reject_synced_child_booking_link_change(
+            db,
+            shift,
+            {int(updates.booking_id)} if updates.booking_id else set(),
+        )
 
     # Parse times if provided
     new_start = parse_time_string(updates.start_time) if updates.start_time else shift.start_time
