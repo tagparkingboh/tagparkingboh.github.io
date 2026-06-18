@@ -924,6 +924,21 @@ class TestDeleteShift:
         assert s.suppressed_at is None
         db.delete.assert_called_once_with(s)
 
+    def test_H_delete_manual_shift_hard_deletes_not_suppressed(self):
+        """Suppression is gated to created_source=='auto'. Dropping the
+        staff_id guard must not widen it: a claimed, scheduled MANUAL shift
+        still hard-deletes and is never turned into a suppression tombstone."""
+        s = _mock_shift(staff_id=44, created_source="manual")
+        db = self._wire(s)
+        _override_db(db)
+        resp = TestClient(app).delete(f"/api/roster/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["suppressed"] is False
+        assert s.suppressed_at is None
+        assert s.suppression_reason is None
+        db.delete.assert_called_once_with(s)
+
     def test_H_delete_preview_warns_for_orphaned_booking_within_96h(self):
         soon = datetime.now(UK_TZ).date() + timedelta(days=1)
         s = _mock_shift(date_=soon, start_time=time(9, 0), end_time=time(10, 0))
