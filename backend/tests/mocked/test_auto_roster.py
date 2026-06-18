@@ -230,6 +230,26 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shif
                         return True
             return False
 
+        def _is_bool_required(col_name: str, expected: bool, captured) -> bool:
+            try:
+                from sqlalchemy.sql import operators as sqla_ops
+                from sqlalchemy.sql.elements import False_, True_
+            except Exception:
+                return False
+            expected_type = True_ if expected else False_
+            for args in captured:
+                for arg in args:
+                    op = getattr(arg, "operator", None)
+                    if op is not getattr(sqla_ops, "is_", None):
+                        continue
+                    left = getattr(arg, "left", None)
+                    if getattr(left, "key", None) != col_name:
+                        continue
+                    right = getattr(arg, "right", None)
+                    if isinstance(right, expected_type):
+                        return True
+            return False
+
         def _status_equals(captured, expected_status) -> bool:
             try:
                 from sqlalchemy.sql import operators as sqla_ops
@@ -252,6 +272,12 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shif
             blob = " ".join(_filter_str(a) for a in captured_filters)
             if _status_equals(captured_filters, ShiftStatus.CANCELLED):
                 return list(suppressed_shifts)
+            if _is_bool_required("locked", True, captured_filters):
+                return [
+                    s for s in assigned_shifts
+                    if _status_allowed(getattr(s, "status", None), captured_filters)
+                    and getattr(s, "locked", False) is True
+                ]
             if "IS NOT NULL" in blob:
                 # Driver-trust pivot 2026-05-28: the rebuild's "frozen
                 # shifts" query (skip-if-covered) intentionally includes
@@ -271,6 +297,11 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, suppressed_shif
                 pool = [
                     s for s in pool
                     if getattr(s, "admin_shaped_at", None) is None
+                ]
+            if _is_bool_required("locked", False, captured_filters):
+                pool = [
+                    s for s in pool
+                    if getattr(s, "locked", False) is not True
                 ]
             return pool
 
@@ -1767,7 +1798,7 @@ class TestSkipAndLinkAgreeForFlightArrivalBooking:
             staff_id=10,
         )
         broken.parent_shift_id = broken.id
-        broken.dependents_independent = False
+        broken.independent_from_parent = False
         b = mk_booking(
             booking_id=1002,
             reference="TAG-CYCLE001",
@@ -2387,34 +2418,25 @@ class TestDeleteAllAutoShifts:
             db, date_from=date(2026, 6, 1), date_to=date(2026, 6, 30)
         ) == 1
 
-    def test_edge_admin_shaped_unassigned_auto_is_preserved(self):
-        """Driver-trust pivot 2026-05-28: an unassigned auto-shift that
-        an admin has shaped (split/merge/duplicate/PATCH stamped
-        `admin_shaped_at`) is OFF-LIMITS to the bulk delete, same as it
-        is to the rebuild wipe. The contract is consistent across both
-        wipe paths. Without the filter, a single misclick on the admin
-        "Clear all auto-shifts" button would wipe deliberate split halves.
-
-        Sets two rows: one untouched (deleted), one admin-shaped
-        (preserved). Asserts only the untouched one moves."""
+    def test_edge_admin_shaped_unassigned_auto_is_deleted_when_unlocked(self):
+        """admin_shaped_at no longer protects auto-shifts; locked does."""
         untouched = SimpleNamespace(
             id=1, created_source="auto", staff_id=None,
             admin_shaped_at=None,
+            locked=False,
             status=ShiftStatus.SCHEDULED,
         )
         shaped = SimpleNamespace(
             id=2, created_source="auto", staff_id=None,
             admin_shaped_at=datetime(2026, 5, 28, 10, 0),
+            locked=False,
             status=ShiftStatus.SCHEDULED,
         )
         db = make_db(untouched_auto_shifts=[untouched, shaped])
         n = delete_all_auto_shifts(db)
-        assert n == 1, (
-            "only the untouched row should be deleted; admin-shaped row "
-            "is off-limits"
-        )
+        assert n == 2
         assert untouched in db._deleted
-        assert shaped not in db._deleted
+        assert shaped in db._deleted
 
 
 # ===========================================================================
@@ -2452,24 +2474,35 @@ class TestAutoRosterCoverageEdges:
             created_source="auto",
             staff_id=12,
             admin_shaped_at=None,
+            locked=False,
             status=ShiftStatus.SCHEDULED,
         )
         shaped = SimpleNamespace(
             created_source="auto",
             staff_id=None,
             admin_shaped_at=datetime(2026, 6, 10, 9, 0),
+            locked=False,
+            status=ShiftStatus.SCHEDULED,
+        )
+        locked = SimpleNamespace(
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            locked=True,
             status=ShiftStatus.SCHEDULED,
         )
         manual = SimpleNamespace(
             created_source="manual",
             staff_id=None,
             admin_shaped_at=None,
+            locked=False,
             status=ShiftStatus.SCHEDULED,
         )
 
         assert _is_auto_shift_eligible_for_rebuild(eligible) is True
-        assert _is_auto_shift_eligible_for_rebuild(assigned) is False
-        assert _is_auto_shift_eligible_for_rebuild(shaped) is False
+        assert _is_auto_shift_eligible_for_rebuild(assigned) is True
+        assert _is_auto_shift_eligible_for_rebuild(shaped) is True
+        assert _is_auto_shift_eligible_for_rebuild(locked) is False
         assert _is_auto_shift_eligible_for_rebuild(manual) is False
 
     def test_rebuild_with_empty_target_dates_returns_zero_summary(self):
@@ -2483,6 +2516,7 @@ class TestAutoRosterCoverageEdges:
             "bookings_in_scope": 0,
             "events": 0,
             "rescued": 0,
+            "orphans": 0,
         }
         db.query.assert_not_called()
 
@@ -2782,7 +2816,7 @@ class TestTemplateRosterWindows:
         assert shift.start_time == time(15, 45)
         assert shift.end_time == time(20, 45)
 
-    def test_B_window_edges_and_gap_extend_nearest_window(self):
+    def test_B_window_edges_and_gap_leave_orphan_when_no_fixed_window_fits(self):
         at_end = mk_booking(
             booking_id=3010,
             reference="TAG-EDGE0900",
@@ -2795,28 +2829,30 @@ class TestTemplateRosterWindows:
             dropoff_dt=datetime(2026, 7, 2, 9, 15),
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
-        at_start = mk_booking(
+        inside_day = mk_booking(
             booking_id=3012,
-            reference="TAG-EDGE0930",
-            dropoff_dt=datetime(2026, 7, 2, 9, 30),
+            reference="TAG-INSIDE1000",
+            dropoff_dt=datetime(2026, 7, 2, 10, 0),
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
         db = make_db(
-            bookings=[at_end, in_gap, at_start],
+            bookings=[at_end, in_gap, inside_day],
             window_templates=default_window_templates(),
         )
 
-        rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
+        result = rebuild_auto_for_dates(db, {date(2026, 7, 2)}, mk_settings())
 
-        from db_models import RosterShift
+        from db_models import RosterShift, ShiftBookingLink
         shifts = sorted(
             [obj for obj in db._added if isinstance(obj, RosterShift)],
             key=lambda shift: shift.start_time,
         )
+        links = [obj for obj in db._added if isinstance(obj, ShiftBookingLink)]
         assert [(shift.start_time, shift.end_time) for shift in shifts] == [
-            (time(3, 0), time(9, 15)),
             (time(9, 30), time(15, 30)),
         ]
+        assert {link.booking_id for link in links} == {3012}
+        assert result["orphans"] == 2
 
     def test_B_cross_midnight_window_holds_late_and_early_events(self):
         late = mk_booking(
@@ -2950,7 +2986,7 @@ class TestTemplateRosterWindows:
         assert shift.end_time == time(7, 30)
         db.commit.assert_called_once()
 
-    def test_U_trim_never_reshapes_claimed_window(self):
+    def test_H_trim_can_reshape_claimed_window_when_unlocked(self):
         booking = mk_booking(
             booking_id=3060,
             reference="TAG-CLAIMED",
@@ -2962,6 +2998,7 @@ class TestTemplateRosterWindows:
             created_source="auto",
             staff_id=17,
             admin_shaped_at=None,
+            locked=False,
             status=ShiftStatus.SCHEDULED,
             date=date(2026, 7, 2),
             end_date=None,
@@ -2978,7 +3015,41 @@ class TestTemplateRosterWindows:
             mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
         )
 
-        assert result == {"trimmed": 0, "skipped": 1}
+        assert result == {"trimmed": 1, "skipped": 0}
+        assert shift.start_time == time(4, 30)
+        assert shift.end_time == time(5, 30)
+        db.commit.assert_called_once()
+
+    def test_U_trim_never_reshapes_locked_window(self):
+        booking = mk_booking(
+            booking_id=3061,
+            reference="TAG-LOCKED",
+            dropoff_dt=datetime(2026, 7, 2, 5, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        shift = SimpleNamespace(
+            id=3061,
+            created_source="auto",
+            staff_id=None,
+            admin_shaped_at=None,
+            locked=True,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 2),
+            end_date=None,
+            start_time=time(3, 0),
+            end_time=time(9, 0),
+            shift_type=ShiftType.MORNING,
+            bookings=[booking],
+        )
+        db = make_db(untouched_auto_shifts=[shift])
+
+        result = trim_window_auto_shifts_for_date(
+            db,
+            date(2026, 7, 2),
+            mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
+        )
+
+        assert result == {"trimmed": 0, "skipped": 0}
         assert shift.start_time == time(3, 0)
         assert shift.end_time == time(9, 0)
         db.commit.assert_not_called()

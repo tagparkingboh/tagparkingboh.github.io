@@ -1662,7 +1662,7 @@ class RosterShift(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Driver-trust lifecycle (locked 2026-05-28):
+    # Driver-trust lifecycle (historical/audit only for template roster).
     #   admin_shaped_at = the moment an admin deliberately reshaped this
     #   shift via split, merge, duplicate, or direct time edit. Stamped
     #   at the point of action; NEVER cleared automatically. Auto-roster
@@ -1673,6 +1673,10 @@ class RosterShift(Base):
     # staff_id check; this column is reserved for explicit shape actions.
     admin_shaped_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Operator lock. This is the explicit "do not mutate/sync this shift"
+    # flag for auto generate, trim, and duplicate-pool propagation.
+    locked = Column(Boolean, nullable=False, default=False, server_default="false")
+
     # Auto-roster suppression lifecycle. When an admin "deletes" an
     # unowned auto shift, we keep the row as status=cancelled with these
     # fields populated so future auto-roster runs know not to recreate the
@@ -1682,16 +1686,17 @@ class RosterShift(Base):
     suppression_reason = Column(Text, nullable=True)
 
     # Duplicate dependency pool. A duplicated child points at its source
-    # shift; while the parent's `dependents_independent` is false, children
-    # mirror the parent's booking links. Effective only for shifts dated
-    # 2026-07-01 onward in application logic.
+    # shift. `independent_from_parent` is read on the child: when false the
+    # child follows its parent; when true the child keeps its own booking set
+    # and can still act as source for descendants. Effective-date gated in
+    # application logic.
     parent_shift_id = Column(
         Integer,
         ForeignKey("roster_shifts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    dependents_independent = Column(Boolean, nullable=False, default=False, server_default="false")
+    independent_from_parent = Column(Boolean, nullable=False, default=False, server_default="false")
 
     # Relationships
     staff = relationship("User", foreign_keys=[staff_id])

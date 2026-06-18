@@ -155,15 +155,10 @@ def _shift_linked_booking_ids(shift: RosterShift) -> set[int]:
 
 
 def _is_auto_shift_eligible_for_rebuild(shift: RosterShift) -> bool:
-    """Untouched auto-shift = created_source='auto', staff_id NULL,
-    admin_shaped_at NULL, SCHEDULED. Anything else is admin territory —
-    preserve it. (Driver-trust pivot 2026-05-28 added the
-    `admin_shaped_at IS NULL` clause: split/merge/duplicate/direct time
-    edits stamp this column, freezing the row.)"""
+    """Template-auto mutation eligibility: auto, scheduled, and not locked."""
     return (
         getattr(shift, "created_source", None) == "auto"
-        and shift.staff_id is None
-        and getattr(shift, "admin_shaped_at", None) is None
+        and getattr(shift, "locked", False) is not True
         and shift.status == ShiftStatus.SCHEDULED
     )
 
@@ -421,7 +416,7 @@ def _rebuild_cluster_auto_for_dates(
     summary = {
         "deleted": 0, "created": 0, "skipped_covered": 0,
         "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
-        "rescued": 0,
+        "rescued": 0, "orphans": 0,
     }
     target_set = set(target_dates)
     if not target_set:
@@ -757,7 +752,7 @@ def _summary() -> dict:
     return {
         "deleted": 0, "created": 0, "skipped_covered": 0,
         "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
-        "rescued": 0,
+        "rescued": 0, "orphans": 0,
     }
 
 
@@ -840,30 +835,40 @@ def _window_contains_event(
     return win_start <= start_dt and end_dt <= win_end
 
 
-def _distance_to_window(
-    day: date_type,
-    window: RosterWindowTemplate,
+def _template_event_coverage(
+    event_type: str,
     start_dt: datetime,
     end_dt: datetime,
-) -> timedelta:
-    win_start, win_end = _window_bounds(day, window)
-    if end_dt < win_start:
-        return win_start - end_dt
-    if start_dt > win_end:
-        return start_dt - win_end
-    return timedelta(0)
+    settings: PlannerSettings,
+    *,
+    include_start_buffer: bool = False,
+) -> tuple[datetime, datetime]:
+    """Buffered event coverage used only by the template-window engine."""
+    coverage_start = (
+        start_dt - timedelta(minutes=settings.start_buffer_minutes)
+        if include_start_buffer
+        else start_dt
+    )
+    if event_type == "drop_off":
+        coverage_end = start_dt + timedelta(minutes=30)
+    else:
+        coverage_end = start_dt + timedelta(minutes=45)
+    return coverage_start, max(coverage_end, end_dt)
 
 
 def _template_for_event(
     templates: dict[str, list[RosterWindowTemplate]],
+    event_type: str,
     start_dt: datetime,
     end_dt: datetime,
-) -> tuple[date_type, RosterWindowTemplate]:
+    settings: PlannerSettings,
+) -> Optional[tuple[date_type, RosterWindowTemplate]]:
     candidate_days = [start_dt.date(), start_dt.date() - timedelta(days=1)]
+    coverage_start, coverage_end = _template_event_coverage(event_type, start_dt, end_dt, settings)
     matches: list[tuple[int, date_type, RosterWindowTemplate]] = []
     for day_index, day in enumerate(candidate_days):
         for window in templates.get(_window_profile_for_day(day), []):
-            if _window_contains_event(day, window, start_dt, end_dt):
+            if _window_contains_event(day, window, coverage_start, coverage_end):
                 matches.append((day_index, day, window))
     if matches:
         matches.sort(key=lambda item: (
@@ -872,25 +877,9 @@ def _template_for_event(
             getattr(item[2], "start_time", time_type(0, 0)),
         ))
         return matches[0][1], matches[0][2]
-
-    nearest: list[tuple[timedelta, int, date_type, RosterWindowTemplate]] = []
-    for day_index, day in enumerate(candidate_days):
-        for window in templates.get(_window_profile_for_day(day), []):
-            nearest.append((
-                _distance_to_window(day, window, start_dt, end_dt),
-                day_index,
-                day,
-                window,
-            ))
-    if not nearest:
+    if not any(templates.get(_window_profile_for_day(day), []) for day in candidate_days):
         raise ValueError("No active roster window templates configured")
-    nearest.sort(key=lambda item: (
-        item[0],
-        item[1],
-        getattr(item[3], "sort_order", 0),
-        getattr(item[3], "start_time", time_type(0, 0)),
-    ))
-    return nearest[0][2], nearest[0][3]
+    return None
 
 
 def _window_shift_type(start_dt: datetime, end_dt: datetime):
@@ -916,8 +905,7 @@ def _rebuild_window_auto_for_dates(
         db.query(RosterShift)
         .filter(
             RosterShift.created_source == "auto",
-            RosterShift.staff_id.is_(None),
-            RosterShift.admin_shaped_at.is_(None),
+            RosterShift.locked.is_(False),
             RosterShift.status == ShiftStatus.SCHEDULED,
             RosterShift.date.in_(target_set),
         )
@@ -955,11 +943,7 @@ def _rebuild_window_auto_for_dates(
                 ShiftStatus.SCHEDULED,
                 ShiftStatus.CONFIRMED,
             ]),
-            or_(
-                RosterShift.created_source != "auto",
-                RosterShift.staff_id.isnot(None),
-                RosterShift.admin_shaped_at.isnot(None),
-            ),
+            RosterShift.locked.is_(True),
             or_(
                 RosterShift.date.in_(expanded),
                 RosterShift.end_date.in_(expanded),
@@ -984,7 +968,11 @@ def _rebuild_window_auto_for_dates(
     groups: dict[tuple[date_type, str, str], dict] = {}
     for booking in bookings:
         for event_type, start_dt, end_dt in _events_for_booking(booking):
-            op_date, window = _template_for_event(templates, start_dt, end_dt)
+            match = _template_for_event(templates, event_type, start_dt, end_dt, settings)
+            if match is None:
+                summary["orphans"] = summary.get("orphans", 0) + 1
+                continue
+            op_date, window = match
             if op_date not in target_set:
                 continue
             summary["events"] += 1
@@ -999,10 +987,6 @@ def _rebuild_window_auto_for_dates(
                     "booking_ids": set(),
                 },
             )
-            if start_dt < group["start"]:
-                group["start"] = start_dt
-            if end_dt > group["end"]:
-                group["end"] = end_dt
             group["booking_ids"].add(booking.id)
 
     for group in sorted(groups.values(), key=lambda item: (item["op_date"], item["start"])):
@@ -1105,8 +1089,7 @@ def trim_window_auto_shifts_for_date(
         db.query(RosterShift)
         .filter(
             RosterShift.created_source == "auto",
-            RosterShift.staff_id.is_(None),
-            RosterShift.admin_shaped_at.is_(None),
+            RosterShift.locked.is_(False),
             RosterShift.status == ShiftStatus.SCHEDULED,
             RosterShift.date == target_date,
         )
@@ -1125,16 +1108,20 @@ def trim_window_auto_shifts_for_date(
         for booking in getattr(shift, "bookings", []) or []:
             if not _booking_in_scope(booking):
                 continue
-            for _event_type, start_dt, end_dt in _events_for_booking(booking):
-                if shift_start <= start_dt and end_dt <= shift_end:
-                    event_starts.append(start_dt)
-                    event_ends.append(end_dt)
+            for event_type, start_dt, end_dt in _events_for_booking(booking):
+                coverage_start, coverage_end = _template_event_coverage(
+                    event_type, start_dt, end_dt, settings,
+                    include_start_buffer=True,
+                )
+                if shift_start <= coverage_start and coverage_end <= shift_end:
+                    event_starts.append(coverage_start)
+                    event_ends.append(coverage_end)
         if not event_starts:
             result["skipped"] += 1
             continue
 
-        desired_start = min(event_starts) - timedelta(minutes=settings.start_buffer_minutes)
-        desired_end = max(event_ends) + timedelta(minutes=settings.end_buffer_minutes)
+        desired_start = min(event_starts)
+        desired_end = max(event_ends)
         new_start = max(shift_start, desired_start)
         new_end = min(shift_end, desired_end)
         if new_end <= new_start:
@@ -1720,14 +1707,10 @@ def delete_all_auto_shifts(
     open-ended right edge (`>= date_from`). Only date_to set → open-ended
     left edge (`<= date_to`).
     """
-    # Driver-trust rule (2026-05-28): admin_shaped_at IS NULL keeps
-    # split/merged/duplicated/time-edited rows out of the wipe set, even
-    # if they're unassigned. They're admin-shaped, the admin owns the
-    # window — preserve them.
+    # Operator lock is the explicit preservation flag for auto-shifts.
     query = db.query(RosterShift).filter(
         RosterShift.created_source == "auto",
-        RosterShift.staff_id.is_(None),
-        RosterShift.admin_shaped_at.is_(None),
+        RosterShift.locked.is_(False),
         RosterShift.status == ShiftStatus.SCHEDULED,
     )
     if date_from is not None:

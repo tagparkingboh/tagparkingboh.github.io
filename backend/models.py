@@ -583,8 +583,12 @@ class RosterShiftDuplicateRequest(BaseModel):
     add_unassigned_fleet: bool = False
 
 
-class RosterShiftDependentsUpdate(BaseModel):
-    dependents_independent: bool
+class RosterShiftIndependentUpdate(BaseModel):
+    independent_from_parent: bool
+
+
+class RosterShiftLockedUpdate(BaseModel):
+    locked: bool
 
 
 class RosterShiftMergeRequest(BaseModel):
@@ -665,13 +669,14 @@ class RosterShiftResponse(BaseModel):
     # edit/duplicate/split/merge, so the Calendar can distinguish it from a
     # fresh engine-created shift.
     admin_shaped_at: Optional[datetime] = None
+    locked: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     suppressed_at: Optional[datetime] = None
     suppressed_by_user_id: Optional[int] = None
     suppression_reason: Optional[str] = None
     parent_shift_id: Optional[int] = None
-    dependents_independent: bool = False
+    independent_from_parent: bool = False
     pool_parent_shift_id: Optional[int] = None
     pool_child_shift_ids: List[int] = Field(default_factory=list)
 
@@ -742,7 +747,8 @@ class TeamShiftResponse(BaseModel):
     last_name: str
     phone: Optional[str] = None
     parent_shift_id: Optional[int] = None
-    dependents_independent: bool = False
+    locked: bool = False
+    independent_from_parent: bool = False
     pool_parent_shift_id: Optional[int] = None
     pool_child_shift_ids: List[int] = Field(default_factory=list)
     date: date_type

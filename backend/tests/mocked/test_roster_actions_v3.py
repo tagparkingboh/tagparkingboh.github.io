@@ -82,7 +82,8 @@ def make_shift(
     s.suppressed_by_user_id = None
     s.suppression_reason = None
     s.parent_shift_id = None
-    s.dependents_independent = False
+    s.independent_from_parent = False
+    s.locked = False
     # Driver-trust pivot 2026-05-28: explicit NULL so admin_shaped_at
     # behaves like a fresh DB row (not a MagicMock auto-attribute) when
     # endpoints read it for stamp-or-not decisions.
@@ -439,7 +440,8 @@ class TestDuplicateDependencyPoolHUEB:
         body = r.json()
         assert len(body) == 2
         assert {row["parent_shift_id"] for row in body} == {7000}
-        assert {row["dependents_independent"] for row in body} == {False}
+        assert {row["independent_from_parent"] for row in body} == {False}
+        assert {row["locked"] for row in body} == {False}
         created_shifts = [obj for obj in state["added"] if isinstance(obj, RosterShift)]
         assert len(created_shifts) == 2
         assert all(s.parent_shift_id == 7000 for s in created_shifts)
@@ -511,48 +513,67 @@ class TestDuplicateDependencyPoolHUEB:
         assert "Cycle detected in roster shift dependency tree" in r.json()["detail"]
         db.rollback.assert_called()
 
-    def test_H_toggle_false_resyncs_children(self, rig):
+    def test_H_toggle_child_false_resyncs_branch(self, rig):
         client, db, state = rig
         parent = make_shift(id=7002, shift_date=date(2026, 7, 2))
-        parent.dependents_independent = True
+        child = make_shift(id=7003, shift_date=date(2026, 7, 2))
+        child.parent_shift_id = 7002
+        child.independent_from_parent = True
         state["shifts_by_id"][7002] = parent
+        state["shifts_by_id"][7003] = child
 
-        with patch("routers.roster.sync_shift_pool_from_parent", return_value=[7003]) as sync:
+        with patch("routers.roster.sync_shift_pool_for_shift", return_value=[7003]) as sync:
             r = client.patch(
-                "/api/roster/7002/dependents-independent",
-                json={"dependents_independent": False},
+                "/api/roster/7003/independent-from-parent",
+                json={"independent_from_parent": False},
             )
 
         assert r.status_code == 200, r.text
-        assert parent.dependents_independent is False
-        sync.assert_called_once_with(db, 7002)
+        assert child.independent_from_parent is False
+        sync.assert_called_once_with(db, 7003)
 
-    def test_H_toggle_true_detaches_without_resync(self, rig):
+    def test_H_toggle_child_true_detaches_without_resync(self, rig):
         client, db, state = rig
         parent = make_shift(id=7004, shift_date=date(2026, 7, 2))
+        child = make_shift(id=7005, shift_date=date(2026, 7, 2))
+        child.parent_shift_id = 7004
         state["shifts_by_id"][7004] = parent
+        state["shifts_by_id"][7005] = child
 
-        with patch("routers.roster.sync_shift_pool_from_parent", return_value=[]) as sync:
+        with patch("routers.roster.sync_shift_pool_for_shift", return_value=[]) as sync:
             r = client.patch(
-                "/api/roster/7004/dependents-independent",
-                json={"dependents_independent": True},
+                "/api/roster/7005/independent-from-parent",
+                json={"independent_from_parent": True},
             )
 
         assert r.status_code == 200, r.text
-        assert parent.dependents_independent is True
+        assert child.independent_from_parent is True
         sync.assert_not_called()
 
-    def test_H_toggle_rejects_pre_july_parent(self, rig):
+    def test_H_toggle_rejects_pre_july_child(self, rig):
         client, db, state = rig
         parent = make_shift(id=7005, shift_date=date(2026, 6, 30), end_date=date(2026, 7, 1))
+        child = make_shift(id=7006, shift_date=date(2026, 6, 30), end_date=date(2026, 7, 1))
+        child.parent_shift_id = 7005
         state["shifts_by_id"][7005] = parent
+        state["shifts_by_id"][7006] = child
 
         r = client.patch(
-            "/api/roster/7005/dependents-independent",
-            json={"dependents_independent": False},
+            "/api/roster/7006/independent-from-parent",
+            json={"independent_from_parent": False},
         )
 
         assert r.status_code == 422
+
+    def test_H_lock_toggle_sets_shift_lock(self, rig):
+        client, db, state = rig
+        shift = make_shift(id=7015, shift_date=date(2026, 7, 2))
+        state["shifts_by_id"][7015] = shift
+
+        r = client.patch("/api/roster/7015/locked", json={"locked": True})
+
+        assert r.status_code == 200, r.text
+        assert shift.locked is True
 
     def test_U_synced_child_booking_edit_returns_409(self, rig):
         client, db, state = rig
@@ -574,9 +595,9 @@ class TestDuplicateDependencyPoolHUEB:
     def test_H_independent_child_booking_edit_is_allowed(self, rig):
         client, db, state = rig
         parent = make_shift(id=7008, staff_id=None, shift_date=date(2026, 7, 2))
-        parent.dependents_independent = True
         child = make_shift(id=7009, staff_id=None, shift_date=date(2026, 7, 2))
         child.parent_shift_id = 7008
+        child.independent_from_parent = True
         booking = make_booking(id=7090, ref="TAG-POOL7090", dropoff_dt=datetime(2026, 7, 2, 9, 30))
         state["shifts_by_id"][7008] = parent
         state["shifts_by_id"][7009] = child
@@ -584,6 +605,23 @@ class TestDuplicateDependencyPoolHUEB:
 
         with patch("routers.roster.sync_shift_pool_for_shift", return_value=[]):
             r = client.put("/api/roster/7009", json={"booking_ids": [7090]})
+
+        assert r.status_code == 200, r.text
+        assert state["committed"] is True
+
+    def test_H_locked_child_booking_edit_is_allowed(self, rig):
+        client, db, state = rig
+        parent = make_shift(id=7016, staff_id=None, shift_date=date(2026, 7, 2))
+        child = make_shift(id=7017, staff_id=None, shift_date=date(2026, 7, 2))
+        child.parent_shift_id = 7016
+        child.locked = True
+        booking = make_booking(id=7170, ref="TAG-POOL7170", dropoff_dt=datetime(2026, 7, 2, 9, 30))
+        state["shifts_by_id"][7016] = parent
+        state["shifts_by_id"][7017] = child
+        state["bookings_by_id"][7170] = booking
+
+        with patch("routers.roster.sync_shift_pool_for_shift", return_value=[]):
+            r = client.put("/api/roster/7017", json={"booking_ids": [7170]})
 
         assert r.status_code == 200, r.text
         assert state["committed"] is True

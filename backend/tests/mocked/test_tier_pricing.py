@@ -429,14 +429,21 @@ class TestTierWithPeakDay:
 
     def test_late_tier_peak_sunday_pickup(self, mock_pricing):
         """Late tier + Sunday pickup = base + 2×tier + peak."""
-        # Explicitly find a Thursday drop-off in late tier range (<7 days)
-        drop_off = date.today() + timedelta(days=1)
-        while drop_off.weekday() != 3:  # Find Thursday
-            drop_off += timedelta(days=1)
-        pickup = drop_off + timedelta(days=3)  # Sunday
+        # Find a late-tier drop-off whose 1-4 day pickup lands on Sunday.
+        # This keeps the test stable when today is itself Thursday, where
+        # "next Thursday" would be 7 days out and no longer late-tier.
+        for offset in range(1, 7):
+            candidate_dropoff = date.today() + timedelta(days=offset)
+            duration = (6 - candidate_dropoff.weekday()) % 7
+            if 1 <= duration <= 4:
+                drop_off = candidate_dropoff
+                pickup = drop_off + timedelta(days=duration)
+                break
+        else:
+            pytest.fail("Could not find late-tier Sunday pickup fixture")
 
-        price = BookingService.calculate_price_for_duration(3, drop_off, pickup)
-        # 3 days = days_1_4_price (65) + 2×tier (20) + peak (10) = 95
+        price = BookingService.calculate_price_for_duration(duration, drop_off, pickup)
+        # 1-4 days = days_1_4_price (65) + 2×tier (20) + peak (10) = 95
         assert price == 95.0
 
     def test_late_tier_non_peak(self, mock_pricing):

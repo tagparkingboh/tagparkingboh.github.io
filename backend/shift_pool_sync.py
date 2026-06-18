@@ -1,7 +1,8 @@
 """Synchronized booking pools for duplicated roster shifts.
 
-The pool is directional: a parent shift owns the booking set, and its children
-mirror it while the parent remains `dependents_independent = false`.
+The pool is directional: a child follows its parent while the child is neither
+locked nor independent. Locked/independent nodes keep their own bookings and can
+still act as sources for descendants.
 """
 from __future__ import annotations
 
@@ -26,6 +27,14 @@ def shift_pool_sync_enabled(shift: RosterShift | None) -> bool:
     return bool(
         isinstance(shift_date, date_type)
         and shift_date >= get_roster_effective_date()
+    )
+
+
+def shift_pool_child_follows_parent(shift: RosterShift | None) -> bool:
+    return bool(
+        shift_pool_sync_enabled(shift)
+        and getattr(shift, "locked", False) is not True
+        and getattr(shift, "independent_from_parent", False) is not True
     )
 
 
@@ -64,7 +73,8 @@ def synced_booking_source_shift(db: Session, shift: RosterShift) -> RosterShift:
     """Return the source shift for writes to a synced pool.
 
     For a synced child, booking-link writes belong on the nearest ancestor whose
-    dependency edge is still synced. Detached children remain their own source.
+    incoming dependency edge is still synced. Locked/independent children remain
+    their own source.
     """
     current = shift
     seen: set[int] = set()
@@ -77,6 +87,8 @@ def synced_booking_source_shift(db: Session, shift: RosterShift) -> RosterShift:
         parent_id = _int_id(getattr(current, "parent_shift_id", None))
         if current_id is None or parent_id is None:
             break
+        if not shift_pool_child_follows_parent(current):
+            break
         if current_id in seen:
             raise _cycle_error(current_id)
         seen.add(current_id)
@@ -88,7 +100,6 @@ def synced_booking_source_shift(db: Session, shift: RosterShift) -> RosterShift:
         if (
             parent is None
             or not shift_pool_sync_enabled(parent)
-            or getattr(parent, "dependents_independent", False) is True
         ):
             break
         current = parent
@@ -144,11 +155,7 @@ def sync_shift_pool_from_parent(db: Session, parent_shift_id: int) -> list[int]:
         visited.add(parent_id)
 
         parent = db.query(RosterShift).filter(RosterShift.id == parent_id).first()
-        if (
-            parent is None
-            or not shift_pool_sync_enabled(parent)
-            or getattr(parent, "dependents_independent", False) is True
-        ):
+        if parent is None or not shift_pool_sync_enabled(parent):
             return
 
         desired = parent_booking_ids(db, parent.id)
@@ -166,8 +173,9 @@ def sync_shift_pool_from_parent(db: Session, parent_shift_id: int) -> list[int]:
                 continue
             if child_id in visited:
                 raise _cycle_error(child_id)
-            if set_shift_booking_ids(db, child.id, desired):
-                changed_shift_ids.append(child.id)
+            if shift_pool_child_follows_parent(child):
+                if set_shift_booking_ids(db, child.id, desired):
+                    changed_shift_ids.append(child.id)
             walk(child.id)
 
     walk(parent_shift_id)

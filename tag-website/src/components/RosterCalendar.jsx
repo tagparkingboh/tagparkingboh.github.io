@@ -1837,9 +1837,8 @@ function RosterCalendar({
 
   const isSyncedChildShift = useCallback((shift) => {
     if (!shift?.parent_shift_id) return false
-    const parent = shifts.find((s) => s.id === shift.parent_shift_id)
-    return !parent || !parent.dependents_independent
-  }, [shifts])
+    return !shift.locked && !shift.independent_from_parent
+  }, [])
 
   // Close detail modal handler
   const closeDetailModal = () => {
@@ -2450,18 +2449,18 @@ function RosterCalendar({
     }
   }
 
-  const toggleDependentsIndependent = async (shift, checked) => {
+  const toggleIndependentFromParent = async (shift, checked) => {
     if (!shift?.id) return
     setActionSubmitting(true)
     setActionError('')
     try {
-      const r = await authFetch(`${API_URL}/api/roster/${shift.id}/dependents-independent`, {
+      const r = await authFetch(`${API_URL}/api/roster/${shift.id}/independent-from-parent`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ dependents_independent: checked }),
+        body: JSON.stringify({ independent_from_parent: checked }),
       })
       if (!r.ok) {
         const err = await r.json().catch(() => ({}))
@@ -2469,6 +2468,34 @@ function RosterCalendar({
         return
       }
       setSuccessMessage(checked ? 'Pool detached' : 'Pool synced')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
+  const toggleShiftLocked = async (shift, checked) => {
+    if (!shift?.id) return
+    setActionSubmitting(true)
+    setActionError('')
+    try {
+      const r = await authFetch(`${API_URL}/api/roster/${shift.id}/locked`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ locked: checked }),
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      setSuccessMessage(checked ? 'Shift locked' : 'Shift unlocked')
       setTimeout(() => setSuccessMessage(''), 3000)
       refreshAfterAction()
     } catch (err) {
@@ -4285,9 +4312,11 @@ function RosterCalendar({
                                 ? `Parent for ${poolChildIds.length} synced duplicate${poolChildIds.length === 1 ? '' : 's'}`
                                 : isSyncedPoolChild
                                   ? `Synced duplicate of shift ${shift.parent_shift_id}`
-                                  : `Independent duplicate of shift ${shift.parent_shift_id}`}
+                                  : shift.locked
+                                    ? `Locked duplicate of shift ${shift.parent_shift_id}`
+                                    : `Independent duplicate of shift ${shift.parent_shift_id}`}
                             >
-                              {isPoolParent ? `Pool parent · ${poolChildIds.length}` : `${isSyncedPoolChild ? 'Pool child' : 'Independent child'} · #${shift.parent_shift_id}`}
+                              {isPoolParent ? `Pool parent · ${poolChildIds.length}` : `${isSyncedPoolChild ? 'Pool child' : shift.locked ? 'Locked child' : 'Independent child'} · #${shift.parent_shift_id}`}
                             </div>
                           )}
                         </div>
@@ -4295,13 +4324,24 @@ function RosterCalendar({
                         {isShiftExpanded && (
                         <>
                         <div className="shift-card-body">
-                          {isAdmin && isPoolParent && (
+                          {isAdmin && (
                             <label className="shift-pool-toggle" onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
-                                checked={Boolean(shift.dependents_independent)}
+                                checked={Boolean(shift.locked)}
                                 disabled={actionSubmitting}
-                                onChange={(e) => toggleDependentsIndependent(shift, e.target.checked)}
+                                onChange={(e) => toggleShiftLocked(shift, e.target.checked)}
+                              />
+                              <span>Locked</span>
+                            </label>
+                          )}
+                          {isAdmin && isPoolChild && (
+                            <label className="shift-pool-toggle" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(shift.independent_from_parent)}
+                                disabled={actionSubmitting}
+                                onChange={(e) => toggleIndependentFromParent(shift, e.target.checked)}
                               />
                               <span>Independent</span>
                             </label>
@@ -4313,7 +4353,7 @@ function RosterCalendar({
                           )}
                           {isPoolChild && !isSyncedPoolChild && (
                             <div className="shift-pool-note">
-                              Independent from parent shift #{shift.parent_shift_id}
+                              {shift.locked ? 'Locked from' : 'Independent from'} parent shift #{shift.parent_shift_id}
                             </div>
                           )}
                           {shift.staff_first_name ? (

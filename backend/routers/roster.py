@@ -19,7 +19,7 @@ from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Sessio
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
-    RosterShiftDependentsUpdate, RosterShiftDuplicateRequest, RosterShiftMergeRequest, RosterShiftSplitRequest,
+    RosterShiftIndependentUpdate, RosterShiftLockedUpdate, RosterShiftDuplicateRequest, RosterShiftMergeRequest, RosterShiftSplitRequest,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
     ShiftExceptionResponse,
     ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo,
@@ -546,8 +546,9 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
             if isinstance(getattr(shift, "suppression_reason", None), str)
             else None
         ),
+        locked=_shift_bool_attr(shift, "locked"),
         parent_shift_id=_shift_int_attr(shift, "parent_shift_id"),
-        dependents_independent=_shift_bool_attr(shift, "dependents_independent"),
+        independent_from_parent=_shift_bool_attr(shift, "independent_from_parent"),
         pool_parent_shift_id=pool_parent_shift_id,
         pool_child_shift_ids=direct_child_ids,
     )
@@ -1884,21 +1885,23 @@ async def update_shift(
     return shift_to_response(shift, db)
 
 
-@router.patch("/roster/{shift_id}/dependents-independent", response_model=RosterShiftResponse)
-async def patch_shift_dependents_independent(
+@router.patch("/roster/{shift_id}/independent-from-parent", response_model=RosterShiftResponse)
+async def patch_shift_independent_from_parent(
     shift_id: int,
-    body: RosterShiftDependentsUpdate,
+    body: RosterShiftIndependentUpdate,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Toggle whether a duplicate parent keeps its children synced.
+    """Toggle whether this child follows its parent.
 
-    `true` detaches children in place. `false` re-syncs recursive children to
-    the parent's current non-cancelled booking set.
+    `true` detaches this node in place. `false` re-syncs this branch from the
+    nearest synced source.
     """
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
+    if _shift_int_attr(shift, "parent_shift_id") is None:
+        raise HTTPException(status_code=422, detail="Only duplicate children can be made independent.")
     if not shift_pool_sync_enabled(shift):
         raise HTTPException(
             status_code=422,
@@ -1908,15 +1911,39 @@ async def patch_shift_dependents_independent(
             ),
         )
 
-    shift.dependents_independent = body.dependents_independent
-    if not body.dependents_independent:
+    shift.independent_from_parent = body.independent_from_parent
+    if not body.independent_from_parent:
         try:
             db.flush()
-            sync_shift_pool_from_parent(db, shift.id)
+            sync_shift_pool_for_shift(db, shift.id)
         except ValueError as exc:
             db.rollback()
             raise HTTPException(status_code=409, detail=str(exc))
 
+    db.commit()
+    db.refresh(shift)
+    return shift_to_response(shift, db)
+
+
+@router.patch("/roster/{shift_id}/locked", response_model=RosterShiftResponse)
+async def patch_shift_locked(
+    shift_id: int,
+    body: RosterShiftLockedUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Set the explicit auto/pool mutation lock for one shift."""
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    shift.locked = body.locked
+    if not body.locked:
+        try:
+            db.flush()
+            sync_shift_pool_for_shift(db, shift.id)
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(exc))
     db.commit()
     db.refresh(shift)
     return shift_to_response(shift, db)
@@ -2280,7 +2307,7 @@ async def duplicate_shift(
             # never reshapes its window even when staff_id is NULL.
             admin_shaped_at=datetime.now(timezone.utc),
             parent_shift_id=source.id if should_create_dependency else None,
-            dependents_independent=False,
+            independent_from_parent=False,
         )
         db.add(new_shift)
         db.flush()
@@ -2858,7 +2885,8 @@ async def get_team_shifts(
             start_time=format_time(s.start_time),
             end_time=format_time(s.end_time),
             parent_shift_id=_shift_int_attr(s, "parent_shift_id"),
-            dependents_independent=_shift_bool_attr(s, "dependents_independent"),
+            locked=_shift_bool_attr(s, "locked"),
+            independent_from_parent=_shift_bool_attr(s, "independent_from_parent"),
             pool_parent_shift_id=_shift_pool_parent_id(s, pool_child_ids),
             pool_child_shift_ids=pool_child_ids,
         ))

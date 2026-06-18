@@ -54,7 +54,8 @@ def make_shift(
     end_date=None,
     id=10,
     parent_shift_id=None,
-    dependents_independent=False,
+    independent_from_parent=False,
+    locked=False,
 ):
     s = MagicMock()
     s.id = id
@@ -65,7 +66,8 @@ def make_shift(
     s.start_time = start_time
     s.end_time = end_time
     s.parent_shift_id = parent_shift_id
-    s.dependents_independent = dependents_independent
+    s.independent_from_parent = independent_from_parent
+    s.locked = locked
     return s
 
 
@@ -134,7 +136,8 @@ class TestTeamShiftsHappy:
             "start_time": "08:00",
             "end_time": "16:00",
             "parent_shift_id": None,
-            "dependents_independent": False,
+            "locked": False,
+            "independent_from_parent": False,
             "pool_parent_shift_id": None,
             "pool_child_shift_ids": [],
         }

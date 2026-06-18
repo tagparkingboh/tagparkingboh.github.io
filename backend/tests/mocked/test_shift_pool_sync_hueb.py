@@ -19,7 +19,7 @@ from shift_pool_sync import (
 )
 
 
-def make_shift(id, *, shift_date=date(2026, 7, 2), parent_shift_id=None, independent=False):
+def make_shift(id, *, shift_date=date(2026, 7, 2), parent_shift_id=None, independent=False, locked=False):
     s = RosterShift(
         id=id,
         staff_id=None,
@@ -33,7 +33,8 @@ def make_shift(id, *, shift_date=date(2026, 7, 2), parent_shift_id=None, indepen
         created_source="manual",
         intended_driver_type="jockey",
         parent_shift_id=parent_shift_id,
-        dependents_independent=independent,
+        independent_from_parent=independent,
+        locked=locked,
     )
     s.bookings = []
     return s
@@ -159,7 +160,7 @@ def test_H_recursive_sync_copies_parent_confirmed_and_refunded_set():
     assert linked_ids(db, 3) == [10, 11]
 
 
-def test_H_independent_parent_stops_sync_at_that_edge():
+def test_H_independence_is_read_on_child_not_parent():
     db = FakeDB()
     db.shifts = {
         1: make_shift(1, independent=True),
@@ -174,8 +175,8 @@ def test_H_independent_parent_stops_sync_at_that_edge():
 
     changed = sync_shift_pool_from_parent(db, 1)
 
-    assert changed == []
-    assert linked_ids(db, 2) == [99]
+    assert changed == [2]
+    assert linked_ids(db, 2) == [10]
 
 
 def test_H_pre_effective_parent_never_syncs_even_if_child_reaches_cutover(monkeypatch):
@@ -288,14 +289,14 @@ def test_I_amendment_after_pool_keeps_link_set_and_never_reshapes_windows():
     assert (child.date, child.end_date, child.start_time, child.end_time) == window_before
 
 
-def test_H_booking_added_to_detached_child_stays_then_resync_discards():
-    """While the parent is Independent, a booking added directly to a child
+def test_H_booking_added_to_independent_child_stays_then_resync_discards():
+    """While the child is Independent, a booking added directly to that child
     stays only on that child. Un-checking Independent re-syncs and discards
     the divergence (child snaps back to the parent's set)."""
     db = FakeDB()
     db.shifts = {
-        1: make_shift(1, independent=True),      # parent detached
-        2: make_shift(2, parent_shift_id=1),
+        1: make_shift(1),
+        2: make_shift(2, parent_shift_id=1, independent=True),
     }
     db.bookings = {
         10: make_booking(10),
@@ -307,16 +308,35 @@ def test_H_booking_added_to_detached_child_stays_then_resync_discards():
     link(db, 2, 10)
     link(db, 2, 77)                              # child diverged: has 77, missing 11
 
-    # Detached: syncing from the parent must not touch the child.
+    # Independent child: syncing from the parent must not touch the child.
     changed = sync_shift_pool_from_parent(db, 1)
     assert changed == []
     assert linked_ids(db, 2) == [10, 77]         # 77 stays only here
 
     # Un-check Independent -> children snap back, 77 discarded, 11 restored.
-    db.shifts[1].dependents_independent = False
+    db.shifts[2].independent_from_parent = False
     changed = sync_shift_pool_from_parent(db, 1)
     assert 2 in changed
     assert linked_ids(db, 2) == [10, 11]
+
+
+def test_H_locked_child_prunes_incoming_sync_but_sources_descendants():
+    db = FakeDB()
+    db.shifts = {
+        1: make_shift(1),
+        2: make_shift(2, parent_shift_id=1, locked=True),
+        3: make_shift(3, parent_shift_id=2),
+    }
+    db.bookings = {10: make_booking(10), 20: make_booking(20)}
+    link(db, 1, 10)
+    link(db, 2, 20)
+
+    changed = sync_shift_pool_from_parent(db, 1)
+
+    assert 2 not in changed
+    assert linked_ids(db, 2) == [20]
+    assert 3 in changed
+    assert linked_ids(db, 3) == [20]
 
 
 def test_B_env_override_enables_pool_sync_before_july(monkeypatch):
