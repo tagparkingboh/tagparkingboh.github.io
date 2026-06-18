@@ -61,10 +61,9 @@ from roster_planner import (
     group_events_by_gap,
     round_to_shift_type,
 )
+from roster_effective_date import get_roster_effective_date
 
 logger = logging.getLogger(__name__)
-
-TEMPLATE_ROSTER_EFFECTIVE_DATE = date_type(2026, 7, 1)
 
 
 def _scalar_value(value):
@@ -906,7 +905,8 @@ def _rebuild_window_auto_for_dates(
     focus_booking_id: Optional[int] = None,
 ) -> dict:
     summary = _summary()
-    target_set = {d for d in set(target_dates) if d >= TEMPLATE_ROSTER_EFFECTIVE_DATE}
+    effective_date = get_roster_effective_date()
+    target_set = {d for d in set(target_dates) if d >= effective_date}
     if not target_set:
         return summary
 
@@ -1058,8 +1058,9 @@ def rebuild_auto_for_dates(
     if not target_set:
         return _summary()
 
-    pre_effective = {d for d in target_set if d < TEMPLATE_ROSTER_EFFECTIVE_DATE}
-    window_effective = {d for d in target_set if d >= TEMPLATE_ROSTER_EFFECTIVE_DATE}
+    effective_date = get_roster_effective_date()
+    pre_effective = {d for d in target_set if d < effective_date}
+    window_effective = {d for d in target_set if d >= effective_date}
     result = _summary()
     if pre_effective:
         _merge_summary(
@@ -1097,7 +1098,7 @@ def trim_window_auto_shifts_for_date(
     claimed/admin-owned rows.
     """
     result = {"trimmed": 0, "skipped": 0}
-    if target_date < TEMPLATE_ROSTER_EFFECTIVE_DATE:
+    if target_date < get_roster_effective_date():
         return result
 
     shifts = (
@@ -1631,12 +1632,13 @@ def _affected_dates_for_booking(booking: Booking) -> set[date_type]:
     if the flight crosses midnight) so the rebuild scope catches both
     sides of an asymmetric pickup window."""
     dates: set[date_type] = set()
+    effective_date = get_roster_effective_date()
     for _et, start_dt, end_dt in _events_for_booking(booking):
         dates.add(start_dt.date())
         dates.add(end_dt.date())
         for dt in (start_dt, end_dt):
             if (
-                dt.date() >= TEMPLATE_ROSTER_EFFECTIVE_DATE
+                dt.date() >= effective_date
                 and dt.time() < time_type(2, 0)
             ):
                 dates.add(dt.date() - timedelta(days=1))

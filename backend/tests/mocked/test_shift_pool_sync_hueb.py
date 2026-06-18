@@ -178,11 +178,12 @@ def test_H_independent_parent_stops_sync_at_that_edge():
     assert linked_ids(db, 2) == [99]
 
 
-def test_H_pre_july_parent_never_syncs_even_if_tail_reaches_july():
+def test_H_pre_effective_parent_never_syncs_even_if_child_reaches_cutover(monkeypatch):
+    monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-05-10")
     db = FakeDB()
     db.shifts = {
-        1: make_shift(1, shift_date=date(2026, 6, 30)),
-        2: make_shift(2, shift_date=date(2026, 7, 1), parent_shift_id=1),
+        1: make_shift(1, shift_date=date(2026, 5, 9)),
+        2: make_shift(2, shift_date=date(2026, 5, 10), parent_shift_id=1),
     }
     db.bookings = {
         10: make_booking(10),

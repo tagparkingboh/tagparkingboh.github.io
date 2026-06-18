@@ -10,9 +10,7 @@ from datetime import date as date_type
 from sqlalchemy.orm import Session
 
 from db_models import Booking, BookingStatus, RosterShift, ShiftBookingLink
-
-
-SHIFT_POOL_SYNC_START_DATE = date_type(2026, 7, 1)
+from roster_effective_date import get_roster_effective_date
 
 
 def _enum_value(value):
@@ -27,7 +25,7 @@ def shift_pool_sync_enabled(shift: RosterShift | None) -> bool:
     shift_date = getattr(shift, "date", None) if shift is not None else None
     return bool(
         isinstance(shift_date, date_type)
-        and shift_date >= SHIFT_POOL_SYNC_START_DATE
+        and shift_date >= get_roster_effective_date()
     )
 
 

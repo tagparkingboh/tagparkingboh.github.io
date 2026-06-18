@@ -1022,16 +1022,18 @@ class TestAutoRosterSweepScheduler:
 
 class TestTemplateRosterWindowTrimScheduler:
     def test_B_pre_effective_date_is_noop_but_closes_db(self, monkeypatch):
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-05-10")
         db = MagicMock()
         monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
 
-        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 6, 30))
+        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 5, 9))
 
         assert result == {"trimmed": 0, "skipped": 0, "pre_effective": True}
         db.rollback.assert_not_called()
         db.close.assert_called_once()
 
     def test_H_july_target_runs_trim_with_planner_settings(self, monkeypatch):
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-05-10")
         db = MagicMock()
         calls = {}
         monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
@@ -1045,15 +1047,16 @@ class TestTemplateRosterWindowTrimScheduler:
 
         monkeypatch.setattr("auto_roster.trim_window_auto_shifts_for_date", fake_trim)
 
-        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 7, 2))
+        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 5, 10))
 
         assert result == {"trimmed": 2, "skipped": 1}
         assert calls["db"] is db
-        assert calls["target_date"] == date_type(2026, 7, 2)
+        assert calls["target_date"] == date_type(2026, 5, 10)
         assert calls["settings"].gap_max_minutes == 190
         db.close.assert_called_once()
 
     def test_U_trim_failure_rolls_back_and_closes(self, monkeypatch):
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-05-10")
         db = MagicMock()
         monkeypatch.setattr(email_scheduler, "get_db", lambda: db)
         monkeypatch.setattr("routers.roster._load_planner_settings_rows", lambda d: {})
@@ -1063,7 +1066,7 @@ class TestTemplateRosterWindowTrimScheduler:
 
         monkeypatch.setattr("auto_roster.trim_window_auto_shifts_for_date", boom)
 
-        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 7, 2))
+        result = email_scheduler.process_template_roster_window_trim(date_type(2026, 5, 11))
 
         assert result["failed"] is True
         assert "trim failed" in result["error"]

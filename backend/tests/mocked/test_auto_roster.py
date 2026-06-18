@@ -2735,7 +2735,7 @@ class TestAutoRosterCoverageEdges:
 
 
 class TestTemplateRosterWindows:
-    """Phase 2 standard shift windows, effective 2026-07-01 onward."""
+    """Phase 2 standard shift windows after the runtime effective date."""
 
     def test_H_july_dropoffs_slot_into_one_config_window(self):
         b1 = mk_booking(
@@ -2843,7 +2843,8 @@ class TestTemplateRosterWindows:
         assert shift.end_time == time(2, 0)
         assert {obj.booking_id for obj in db._added if isinstance(obj, ShiftBookingLink)} == {3020, 3021}
 
-    def test_B_effective_date_routes_june_to_cluster_and_july_to_windows(self, monkeypatch):
+    def test_B_effective_date_routes_pre_cutover_to_cluster_and_cutover_to_windows(self, monkeypatch):
+        monkeypatch.setenv("TEMPLATE_ROSTER_EFFECTIVE_DATE", "2026-05-10")
         calls = []
 
         def fake_cluster(_db, target_dates, _settings, focus_booking_id=None):
@@ -2859,14 +2860,14 @@ class TestTemplateRosterWindows:
 
         result = rebuild_auto_for_dates(
             MagicMock(),
-            {date(2026, 6, 30), date(2026, 7, 1)},
+            {date(2026, 5, 9), date(2026, 5, 10), date(2026, 5, 11)},
             mk_settings(),
             focus_booking_id=44,
         )
 
         assert calls == [
-            ("cluster", {date(2026, 6, 30)}, 44),
-            ("windows", {date(2026, 7, 1)}, 44),
+            ("cluster", {date(2026, 5, 9)}, 44),
+            ("windows", {date(2026, 5, 10), date(2026, 5, 11)}, 44),
         ]
         assert result["created"] == 3
 

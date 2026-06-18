@@ -871,20 +871,19 @@ def process_template_roster_window_trim(target_date=None):
     """Daily T-1 cutoff trim for standard roster windows.
 
     Runs at 20:00 Europe/London for tomorrow's operational day. The auto-roster
-    helper gates itself to 2026-07-01+ and only reshapes untouched auto shifts.
+    helper gates itself to the template-roster effective date and only reshapes
+    untouched auto shifts.
     """
     london = pytz.timezone("Europe/London")
     trim_date = target_date or (datetime.now(london).date() + timedelta(days=1))
     db = get_db()
     try:
-        from auto_roster import (
-            TEMPLATE_ROSTER_EFFECTIVE_DATE,
-            trim_window_auto_shifts_for_date,
-        )
+        from auto_roster import trim_window_auto_shifts_for_date
         from roster_planner import PlannerSettings
+        from roster_effective_date import get_roster_effective_date
         from routers.roster import _load_planner_settings_rows
 
-        if trim_date < TEMPLATE_ROSTER_EFFECTIVE_DATE:
+        if trim_date < get_roster_effective_date():
             logger.info(
                 "template_roster_window_trim skipped target_date=%s reason=pre_effective",
                 trim_date.isoformat(),

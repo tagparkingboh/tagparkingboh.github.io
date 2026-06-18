@@ -49,12 +49,12 @@ from roster_planner_runner import (
     _shift_covers_event_window,
 )
 from shift_pool_sync import (
-    SHIFT_POOL_SYNC_START_DATE,
     shift_pool_sync_enabled,
     sync_shift_pool_for_shift,
     sync_shift_pool_from_parent,
     validate_shift_parent_assignment,
 )
+from roster_effective_date import get_roster_effective_date
 import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -1853,7 +1853,7 @@ async def patch_shift_dependents_independent(
             status_code=422,
             detail=(
                 f"Duplicate dependency sync is only available for shifts dated "
-                f"{SHIFT_POOL_SYNC_START_DATE.isoformat()} or later."
+                f"{get_roster_effective_date().isoformat()} or later."
             ),
         )
 
