@@ -9,21 +9,17 @@ import RosterCalendar from './components/RosterCalendar'
 import BookingsSection from './components/admin/BookingsSection'
 import CalendarSection from './components/admin/CalendarSection'
 import ManualBookingSection from './components/admin/ManualBookingSection'
-import PayrollSection from './components/admin/PayrollSection'
 import TestResultsSection from './components/admin/qa/TestResultsSection'
 import ConnectionPoolSection from './components/admin/qa/ConnectionPoolSection'
 import AuditLogsSection from './components/admin/qa/AuditLogsSection'
 import ErrorLogsSection from './components/admin/qa/ErrorLogsSection'
 import SqlInterfaceSection from './components/admin/qa/SqlInterfaceSection'
 import RosterPlannerSection from './components/admin/qa/RosterPlannerSection'
-import LeadsSection from './components/admin/LeadsSection'
-import CustomersSection from './components/admin/CustomersSection'
-import TestimonialsSection from './components/admin/TestimonialsSection'
-import PromoModalsSection from './components/admin/PromoModalsSection'
-import PricingSection from './components/admin/PricingSection'
-import UsersSection from './components/admin/UsersSection'
 import FlightsSection from './components/admin/FlightsSection'
 import MessagesSection from './components/admin/MessagesSection'
+import StaffSectionPage from './components/admin/StaffSectionPage'
+import CustomersSectionPage from './components/admin/CustomersSectionPage'
+import SettingsSectionPage from './components/admin/SettingsSectionPage'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -5473,16 +5469,10 @@ function Admin() {
           <CalendarSection token={token} />
         )}
 
-        {activeTab === 'payroll' && (
-          <PayrollSection token={token} />
-        )}
-
-        {activeTab === 'manual-booking' && (
-          <ManualBookingSection token={token} />
-        )}
-
-        {activeTab === 'users' && (
-          <UsersSection
+        {(activeTab === 'payroll' || activeTab === 'users') && (
+          <StaffSectionPage
+            activeTab={activeTab}
+            token={token}
             userSuccessMessage={userSuccessMessage}
             error={error}
             userSearchTerm={userSearchTerm}
@@ -5506,6 +5496,10 @@ function Admin() {
             handleDeleteUser={handleDeleteUser}
             deletingUser={deletingUser}
           />
+        )}
+
+        {activeTab === 'manual-booking' && (
+          <ManualBookingSection token={token} />
         )}
 
         {activeTab === 'flights' && (
@@ -8041,26 +8035,9 @@ function Admin() {
           </div>
         )}
 
-        {activeTab === 'leads' && (
-          <LeadsSection
-            fetchLeads={fetchLeads}
-            loadingLeads={loadingLeads}
-            leadSearchTerm={leadSearchTerm}
-            setLeadSearchTerm={setLeadSearchTerm}
-            leads={leads}
-            leadDateFrom={leadDateFrom}
-            setLeadDateFrom={setLeadDateFrom}
-            leadDateTo={leadDateTo}
-            setLeadDateTo={setLeadDateTo}
-            expandedLeadMonths={expandedLeadMonths}
-            setExpandedLeadMonths={setExpandedLeadMonths}
-            expandedLeadId={expandedLeadId}
-            setExpandedLeadId={setExpandedLeadId}
-          />
-        )}
-
-        {activeTab === 'customers' && (
-          <CustomersSection
+        {(activeTab === 'leads' || activeTab === 'customers') && (
+          <CustomersSectionPage
+            activeTab={activeTab}
             customers={customers}
             filteredCustomers={filteredCustomers}
             loadingCustomers={loadingCustomers}
@@ -8102,11 +8079,25 @@ function Admin() {
               setActiveTab('marketing')
               setMarketingSubTab('referrals')
             }}
+            fetchLeads={fetchLeads}
+            loadingLeads={loadingLeads}
+            leadSearchTerm={leadSearchTerm}
+            setLeadSearchTerm={setLeadSearchTerm}
+            leads={leads}
+            leadDateFrom={leadDateFrom}
+            setLeadDateFrom={setLeadDateFrom}
+            leadDateTo={leadDateTo}
+            setLeadDateTo={setLeadDateTo}
+            expandedLeadMonths={expandedLeadMonths}
+            setExpandedLeadMonths={setExpandedLeadMonths}
+            expandedLeadId={expandedLeadId}
+            setExpandedLeadId={setExpandedLeadId}
           />
         )}
 
-        {activeTab === 'pricing' && (
-          <PricingSection
+        {(activeTab === 'pricing' || activeTab === 'testimonials' || activeTab === 'promo-modals') && (
+          <SettingsSectionPage
+            activeTab={activeTab}
             pricing={pricing}
             fetchPricing={fetchPricing}
             pricingMessage={pricingMessage}
@@ -8114,6 +8105,34 @@ function Admin() {
             setPricing={setPricing}
             savingPricing={savingPricing}
             savePricing={savePricing}
+            testimonials={testimonials}
+            loadingTestimonials={loadingTestimonials}
+            fetchTestimonials={fetchTestimonials}
+            testimonialSuccessMessage={testimonialSuccessMessage}
+            testimonialFilter={testimonialFilter}
+            setTestimonialFilter={setTestimonialFilter}
+            testimonialSort={testimonialSort}
+            setTestimonialSort={setTestimonialSort}
+            openAddTestimonialModal={openAddTestimonialModal}
+            renderStars={renderStars}
+            openEditTestimonialModal={openEditTestimonialModal}
+            handleToggleTestimonialStatus={handleToggleTestimonialStatus}
+            setTestimonialToDelete={setTestimonialToDelete}
+            setShowDeleteTestimonialModal={setShowDeleteTestimonialModal}
+            promoModals={promoModals}
+            loadingPromoModals={loadingPromoModals}
+            fetchPromoModals={fetchPromoModals}
+            promoModalSuccessMessage={promoModalSuccessMessage}
+            setEditingPromoModal={setEditingPromoModal}
+            setPromoModalForm={setPromoModalForm}
+            setPromoCodeIsMultiUse={setPromoCodeIsMultiUse}
+            setSelectedPromoCodeInfo={setSelectedPromoCodeInfo}
+            setShowPromoModalForm={setShowPromoModalForm}
+            fetchPromoCodesForModal={fetchPromoCodesForModal}
+            openEditPromoModal={openEditPromoModal}
+            handleTogglePromoModalStatus={handleTogglePromoModalStatus}
+            setPromoModalToDelete={setPromoModalToDelete}
+            setShowDeletePromoModal={setShowDeletePromoModal}
           />
         )}
 
@@ -11403,46 +11422,6 @@ function Admin() {
         {/* QA - Roster Planner (shadow mode, read-only) */}
         {activeTab === 'qa-roster-planner' && (
           <RosterPlannerSection apiUrl={API_URL} token={token} />
-        )}
-
-        {/* Testimonials Section */}
-        {activeTab === 'testimonials' && (
-          <TestimonialsSection
-            testimonials={testimonials}
-            loadingTestimonials={loadingTestimonials}
-            fetchTestimonials={fetchTestimonials}
-            testimonialSuccessMessage={testimonialSuccessMessage}
-            testimonialFilter={testimonialFilter}
-            setTestimonialFilter={setTestimonialFilter}
-            testimonialSort={testimonialSort}
-            setTestimonialSort={setTestimonialSort}
-            openAddTestimonialModal={openAddTestimonialModal}
-            renderStars={renderStars}
-            openEditTestimonialModal={openEditTestimonialModal}
-            handleToggleTestimonialStatus={handleToggleTestimonialStatus}
-            setTestimonialToDelete={setTestimonialToDelete}
-            setShowDeleteTestimonialModal={setShowDeleteTestimonialModal}
-          />
-        )}
-
-        {/* Promo Modals Section */}
-        {activeTab === 'promo-modals' && (
-          <PromoModalsSection
-            promoModals={promoModals}
-            loadingPromoModals={loadingPromoModals}
-            fetchPromoModals={fetchPromoModals}
-            promoModalSuccessMessage={promoModalSuccessMessage}
-            setEditingPromoModal={setEditingPromoModal}
-            setPromoModalForm={setPromoModalForm}
-            setPromoCodeIsMultiUse={setPromoCodeIsMultiUse}
-            setSelectedPromoCodeInfo={setSelectedPromoCodeInfo}
-            setShowPromoModalForm={setShowPromoModalForm}
-            fetchPromoCodesForModal={fetchPromoCodesForModal}
-            openEditPromoModal={openEditPromoModal}
-            handleTogglePromoModalStatus={handleTogglePromoModalStatus}
-            setPromoModalToDelete={setPromoModalToDelete}
-            setShowDeletePromoModal={setShowDeletePromoModal}
-          />
         )}
 
         {activeTab === 'bookings' && bookingsScrollTopVisible && (
