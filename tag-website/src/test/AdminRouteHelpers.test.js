@@ -5,7 +5,13 @@ import {
   getAdminItemIdForSelection,
   getAdminRouteForItem,
   getDefaultRouteForCategory,
+  ADMIN_ITEM_META,
+  ADMIN_ITEM_META_BY_ID,
+  NAV_STRUCTURE,
+  ADMIN_ITEM_BY_ROUTE,
   ADMIN_DEFAULT_ROUTE,
+  ADMIN_DEFAULT_ITEM_ID,
+  ADMIN_ROUTE_BY_ITEM_ID,
 } from '../Admin'
 
 describe('admin route helpers', () => {
@@ -60,5 +66,26 @@ describe('admin route helpers', () => {
     expect(getDefaultRouteForCategory('Operations')).toBe('/admin/operations/bookings')
     expect(getDefaultRouteForCategory('QA')).toBe('/admin/qa/test-results')
     expect(getDefaultRouteForCategory('Unknown')).toBe(ADMIN_DEFAULT_ROUTE)
+  })
+
+  it('keeps route mapping and metadata consistent', () => {
+    const itemMetaIds = new Set(ADMIN_ITEM_META.map(item => item.itemId))
+    for (const [itemId, route] of Object.entries(ADMIN_ROUTE_BY_ITEM_ID)) {
+      expect(ADMIN_ITEM_BY_ROUTE[route]).toBe(itemId)
+      expect(itemMetaIds.has(itemId)).toBe(true)
+    }
+    for (const [route, itemId] of Object.entries(ADMIN_ITEM_BY_ROUTE)) {
+      expect(ADMIN_ROUTE_BY_ITEM_ID[itemId]).toBe(route)
+      expect(itemMetaIds.has(itemId)).toBe(true)
+    }
+    expect(ADMIN_ITEM_META_BY_ID[ADMIN_DEFAULT_ITEM_ID].route).toBe(ADMIN_DEFAULT_ROUTE)
+  })
+
+  it('has one item per nav entry and no duplicate nav ids', () => {
+    const navItemIds = NAV_STRUCTURE.flatMap(category => category.items.map(item => item.id))
+    expect(new Set(navItemIds).size).toBe(navItemIds.length)
+    for (const itemId of navItemIds) {
+      expect(Object.prototype.hasOwnProperty.call(ADMIN_ROUTE_BY_ITEM_ID, itemId)).toBe(true)
+    }
   })
 })
