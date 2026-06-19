@@ -12787,3 +12787,19 @@ function Admin() {
 }
 
 export default Admin
+export {
+  ADMIN_ROUTE_BY_ITEM_ID,
+  ADMIN_ITEM_BY_ROUTE,
+  ADMIN_DEFAULT_ITEM_ID,
+  ADMIN_DEFAULT_ROUTE,
+  ADMIN_ITEM_META,
+  ADMIN_ITEM_META_BY_ID,
+  ADMIN_ITEM_META_BY_ID as adminItemMetaById,
+  NAV_STRUCTURE,
+  getAdminItemIdForPath,
+  getAdminRouteForItem,
+  getAdminSelectionForItem,
+  getAdminItemIdForSelection,
+  getDefaultRouteForCategory,
+}
+export { getAdminItemIdForPath as getActiveRouteItemFromLocation }
