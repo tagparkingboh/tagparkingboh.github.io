@@ -507,7 +507,7 @@ function Admin() {
   const [activeTab, setActiveTab] = useState(initialAdminSelection.activeTab)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
     typeof window !== 'undefined' &&
-    window.matchMedia?.('(max-width: 768px)').matches
+    window.matchMedia?.('(max-width: 1024px)').matches
   ))
   const [expandedCategories, setExpandedCategories] = useState(() => {
     // Expand the category containing the current tab
@@ -5210,7 +5210,7 @@ function Admin() {
   const handleTabSelect = (tabId) => {
     applyAdminItemSelection(tabId)
     navigate(getAdminRouteForItem(tabId))
-    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches) {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1024px)').matches) {
       setSidebarCollapsed(true)
     }
   }

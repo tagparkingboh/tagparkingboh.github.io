@@ -307,6 +307,27 @@
   display: none;
 }
 
+/* Tablet and Mobile Responsive */
+@media (max-width: 1024px) {
+  .admin-sidebar {
+    position: fixed;
+    left: 0;
+    top: 60px;
+    bottom: 0;
+    z-index: 99;
+    transform: translateX(0);
+  }
+
+  .sidebar-collapsed .admin-sidebar {
+    transform: translateX(-100%);
+    width: 240px;
+  }
+
+  .admin-main {
+    padding: 16px;
+  }
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .admin-sidebar {
