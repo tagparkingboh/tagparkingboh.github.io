@@ -6765,13 +6765,24 @@ function Admin() {
         {/* Main Content */}
         <main className="admin-main">
         <nav className="admin-breadcrumbs" aria-label="Admin breadcrumb">
-          <Link to={ADMIN_DEFAULT_ROUTE}>Admin</Link>
-          <span className="admin-breadcrumb-separator">/</span>
-          <Link to={getDefaultRouteForCategory(activeAdminItemMeta.category)}>
-            {activeAdminItemMeta.category}
-          </Link>
-          <span className="admin-breadcrumb-separator">/</span>
-          <span aria-current="page">{activeAdminItemMeta.itemLabel}</span>
+          <ol className="admin-breadcrumb-list">
+            <li className="admin-breadcrumb-item">
+              <Link to={ADMIN_DEFAULT_ROUTE} className="admin-breadcrumb-link">
+                <span className="admin-breadcrumb-icon" aria-hidden="true">⌂</span>
+                <span>Admin</span>
+              </Link>
+            </li>
+            <li className="admin-breadcrumb-separator" aria-hidden="true">›</li>
+            <li className="admin-breadcrumb-item">
+              <Link to={getDefaultRouteForCategory(activeAdminItemMeta.category)} className="admin-breadcrumb-link">
+                {activeAdminItemMeta.category}
+              </Link>
+            </li>
+            <li className="admin-breadcrumb-separator" aria-hidden="true">›</li>
+            <li className="admin-breadcrumb-item admin-breadcrumb-current" aria-current="page">
+              {activeAdminItemMeta.itemLabel}
+            </li>
+          </ol>
         </nav>
         {error && <div className="admin-error">{error}</div>}
         {successMessage && <div className="admin-success">{successMessage}</div>}
