@@ -238,12 +238,13 @@ const ADMIN_ITEM_META_BY_ID = Object.fromEntries(
 )
 
 const getAdminItemIdForPath = (pathname) => {
-  const normalisedPath = pathname.replace(/\/+$/, '') || '/admin'
-  if (normalisedPath === '/admin') return ADMIN_DEFAULT_ITEM_ID
-  if (ADMIN_ITEM_BY_ROUTE[normalisedPath]) {
-    return ADMIN_ITEM_BY_ROUTE[normalisedPath]
+  const normalisedPath = (pathname || '').replace(/\/+$/, '') || '/admin'
+  const lowerPath = normalisedPath.toLowerCase()
+  if (lowerPath === '/admin') return ADMIN_DEFAULT_ITEM_ID
+  if (ADMIN_ITEM_BY_ROUTE[lowerPath]) {
+    return ADMIN_ITEM_BY_ROUTE[lowerPath]
   }
-  const categoryMatch = normalisedPath.match(/^\/admin\/([^/]+)$/)
+  const categoryMatch = lowerPath.match(/^\/admin\/([^/]+)$/)
   if (!categoryMatch) return null
   const categorySlug = categoryMatch[1].toLowerCase()
   return ADMIN_ITEM_ID_BY_CATEGORY_SLUG[categorySlug] || null
