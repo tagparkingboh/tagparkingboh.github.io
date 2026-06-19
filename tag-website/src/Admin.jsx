@@ -8,7 +8,6 @@ import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import OperationsSectionPage from './components/admin/OperationsSectionPage'
 import MessagesSection from './components/admin/MessagesSection'
-import SettingsSectionPage from './components/admin/SettingsSectionPage'
 import QASectionPage from './components/admin/QASectionPage'
 import ReportsSectionPage from './components/admin/ReportsSectionPage'
 import MarketingSectionPage from './components/admin/MarketingSectionPage'
@@ -16,6 +15,9 @@ import PayrollPage from './components/admin/staff/PayrollPage'
 import UsersPage from './components/admin/staff/UsersPage'
 import CustomersPage from './components/admin/customers/CustomersPage'
 import LeadsPage from './components/admin/customers/LeadsPage'
+import PricingPage from './components/admin/settings/PricingPage'
+import TestimonialsPage from './components/admin/settings/TestimonialsPage'
+import PromoModalsPage from './components/admin/settings/PromoModalsPage'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -5848,6 +5850,50 @@ function Admin() {
     setExpandedLeadId,
   }
 
+  const pricingSectionProps = {
+    pricing,
+    fetchPricing,
+    pricingMessage,
+    loadingPricing,
+    setPricing,
+    savingPricing,
+    savePricing,
+  }
+
+  const testimonialsSectionProps = {
+    testimonials,
+    loadingTestimonials,
+    fetchTestimonials,
+    testimonialSuccessMessage,
+    testimonialFilter,
+    setTestimonialFilter,
+    testimonialSort,
+    setTestimonialSort,
+    openAddTestimonialModal,
+    renderStars,
+    openEditTestimonialModal,
+    handleToggleTestimonialStatus,
+    setTestimonialToDelete,
+    setShowDeleteTestimonialModal,
+  }
+
+  const promoModalsSectionProps = {
+    promoModals,
+    loadingPromoModals,
+    fetchPromoModals,
+    promoModalSuccessMessage,
+    setEditingPromoModal,
+    setPromoModalForm,
+    setPromoCodeIsMultiUse,
+    setSelectedPromoCodeInfo,
+    setShowPromoModalForm,
+    fetchPromoCodesForModal,
+    openEditPromoModal,
+    handleTogglePromoModalStatus,
+    setPromoModalToDelete,
+    setShowDeletePromoModal,
+  }
+
   const qaSectionProps = {
     activeTab,
     API_URL,
@@ -6067,46 +6113,9 @@ function Admin() {
         {activeTab === 'customers' && <CustomersPage {...customersPageProps} />}
         {activeTab === 'leads' && <LeadsPage {...leadsPageProps} />}
 
-        {(activeTab === 'pricing' || activeTab === 'testimonials' || activeTab === 'promo-modals') && (
-          <SettingsSectionPage
-            activeTab={activeTab}
-            pricing={pricing}
-            fetchPricing={fetchPricing}
-            pricingMessage={pricingMessage}
-            loadingPricing={loadingPricing}
-            setPricing={setPricing}
-            savingPricing={savingPricing}
-            savePricing={savePricing}
-            testimonials={testimonials}
-            loadingTestimonials={loadingTestimonials}
-            fetchTestimonials={fetchTestimonials}
-            testimonialSuccessMessage={testimonialSuccessMessage}
-            testimonialFilter={testimonialFilter}
-            setTestimonialFilter={setTestimonialFilter}
-            testimonialSort={testimonialSort}
-            setTestimonialSort={setTestimonialSort}
-            openAddTestimonialModal={openAddTestimonialModal}
-            renderStars={renderStars}
-            openEditTestimonialModal={openEditTestimonialModal}
-            handleToggleTestimonialStatus={handleToggleTestimonialStatus}
-            setTestimonialToDelete={setTestimonialToDelete}
-            setShowDeleteTestimonialModal={setShowDeleteTestimonialModal}
-            promoModals={promoModals}
-            loadingPromoModals={loadingPromoModals}
-            fetchPromoModals={fetchPromoModals}
-            promoModalSuccessMessage={promoModalSuccessMessage}
-            setEditingPromoModal={setEditingPromoModal}
-            setPromoModalForm={setPromoModalForm}
-            setPromoCodeIsMultiUse={setPromoCodeIsMultiUse}
-            setSelectedPromoCodeInfo={setSelectedPromoCodeInfo}
-            setShowPromoModalForm={setShowPromoModalForm}
-            fetchPromoCodesForModal={fetchPromoCodesForModal}
-            openEditPromoModal={openEditPromoModal}
-            handleTogglePromoModalStatus={handleTogglePromoModalStatus}
-            setPromoModalToDelete={setPromoModalToDelete}
-            setShowDeletePromoModal={setShowDeletePromoModal}
-          />
-        )}
+        {activeTab === 'pricing' && <PricingPage {...pricingSectionProps} />}
+        {activeTab === 'testimonials' && <TestimonialsPage {...testimonialsSectionProps} />}
+        {activeTab === 'promo-modals' && <PromoModalsPage {...promoModalsSectionProps} />}
 
         <ReportsSectionPage {...reportsSectionProps} />
 
