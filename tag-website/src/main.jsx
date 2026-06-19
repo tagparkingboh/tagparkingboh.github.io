@@ -35,7 +35,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/vehicle-inspection-terms" element={<VehicleInspectionTerms />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/*" element={<Admin />} />
           <Route path="/employee" element={<Employee />} />
         </Routes>
       </AuthProvider>

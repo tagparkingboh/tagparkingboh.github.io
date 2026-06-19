@@ -194,6 +194,38 @@
   max-width: 100%;
 }
 
+.admin-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.admin-breadcrumbs a {
+  color: #475569;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.admin-breadcrumbs a:hover {
+  color: #1a1a2e;
+  text-decoration: underline;
+}
+
+.admin-breadcrumbs span[aria-current="page"] {
+  color: #111827;
+  font-weight: 600;
+}
+
+.admin-breadcrumb-separator {
+  color: #94a3b8;
+}
+
 /* Legacy support - keep admin-content styles for compatibility */
 .admin-content {
   padding: 24px;
@@ -224,6 +256,20 @@
 
   .admin-main {
     padding: 16px;
+  }
+
+  .admin-breadcrumbs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+    margin-bottom: 10px;
+    padding-bottom: 2px;
+    font-size: 12px;
+  }
+
+  .admin-breadcrumbs a:first-child,
+  .admin-breadcrumbs a:first-child + .admin-breadcrumb-separator {
+    display: none;
   }
 
   .admin-header h1 {
@@ -2340,6 +2386,11 @@
     padding: 16px;
   }
 
+  .admin-section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .admin-table th,
   .admin-table td {
     padding: 10px 12px;
@@ -2428,6 +2479,33 @@
 
   .booking-actions .action-btn {
     width: 100%;
+  }
+
+  .stats-summary-cards {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .stats-card {
+    padding: 16px;
+  }
+
+  .stats-card-value {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-main {
+    padding: 12px;
+  }
+
+  .admin-breadcrumbs {
+    margin-bottom: 8px;
+  }
+
+  .stats-summary-cards {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -7933,6 +8011,7 @@
 
 .qa-history {
   margin-bottom: 32px;
+  overflow-x: auto;
 }
 
 .qa-history .admin-table {

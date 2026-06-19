@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, useRef } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -10,6 +10,8 @@ import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
 import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
+import TestResultsSection from './components/admin/qa/TestResultsSection'
+import ConnectionPoolSection from './components/admin/qa/ConnectionPoolSection'
 import { taxStatusClass, motStatusClass, shouldShowAlert, formatIsoDateUk } from './dvlaCompliance'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
@@ -156,6 +158,130 @@ const NAV_STRUCTURE = [
     ]
   },
 ]
+
+const ADMIN_ROUTE_BY_ITEM_ID = {
+  bookings: '/admin/operations/bookings',
+  calendar: '/admin/operations/calendar',
+  'manual-booking': '/admin/operations/manual-booking',
+  flights: '/admin/operations/flights',
+  messages: '/admin/operations/messages',
+  payroll: '/admin/staff/payroll',
+  users: '/admin/staff/users',
+  customers: '/admin/customers/customers',
+  leads: '/admin/customers/abandoned-leads',
+  marketing: '/admin/marketing/subscribers',
+  promotions: '/admin/marketing/promotions',
+  campaigns: '/admin/marketing/email-campaigns',
+  referrals: '/admin/marketing/referrals',
+  sources: '/admin/marketing/sources',
+  'reports-growth': '/admin/reports/booking-growth',
+  'reports-financial': '/admin/reports/financial',
+  'reports-sessions': '/admin/reports/session-tracking',
+  'reports-analytics': '/admin/reports/abandoned-carts',
+  'reports-forecast': '/admin/reports/bookings-forecast',
+  'reports-occupancy': '/admin/reports/occupancy',
+  'reports-routes': '/admin/reports/popular-routes',
+  'reports-map': '/admin/reports/location-maps',
+  pricing: '/admin/settings/pricing',
+  testimonials: '/admin/settings/testimonials',
+  'promo-modals': '/admin/settings/promo-modals',
+  'qa-tests': '/admin/qa/test-results',
+  'qa-connection-pool': '/admin/qa/connection-pool',
+  'qa-audit': '/admin/qa/audit-logs',
+  'qa-errors': '/admin/qa/error-logs',
+  'qa-sql': '/admin/qa/sql-interface',
+  'qa-roster-planner': '/admin/qa/roster-planner',
+}
+
+const ADMIN_ITEM_BY_ROUTE = Object.fromEntries(
+  Object.entries(ADMIN_ROUTE_BY_ITEM_ID).map(([itemId, route]) => [route, itemId])
+)
+
+const ADMIN_DEFAULT_ITEM_ID = 'bookings'
+const ADMIN_DEFAULT_ROUTE = ADMIN_ROUTE_BY_ITEM_ID[ADMIN_DEFAULT_ITEM_ID]
+
+const ADMIN_ITEM_META = NAV_STRUCTURE.flatMap(category =>
+  category.items.map(item => ({
+    itemId: item.id,
+    itemLabel: item.label,
+    category: category.category,
+    route: ADMIN_ROUTE_BY_ITEM_ID[item.id],
+    restrictToUserIds: category.restrictToUserIds,
+  }))
+)
+
+const ADMIN_ITEM_META_BY_ID = Object.fromEntries(
+  ADMIN_ITEM_META.map(item => [item.itemId, item])
+)
+
+const getAdminItemIdForPath = (pathname) => {
+  const normalisedPath = pathname.replace(/\/+$/, '') || '/admin'
+  if (normalisedPath === '/admin') return ADMIN_DEFAULT_ITEM_ID
+  return ADMIN_ITEM_BY_ROUTE[normalisedPath] || null
+}
+
+const getAdminRouteForItem = (itemId) => ADMIN_ROUTE_BY_ITEM_ID[itemId] || ADMIN_DEFAULT_ROUTE
+
+const getAdminSelectionForItem = (itemId) => {
+  const marketingSubTabs = {
+    marketing: 'subscribers',
+    promotions: 'promotions',
+    campaigns: 'campaigns',
+    referrals: 'referrals',
+    sources: 'sources',
+  }
+  const reportsSubTabs = {
+    'reports-growth': 'growth',
+    'reports-occupancy': 'occupancy',
+    'reports-routes': 'popular',
+    'reports-map': 'map',
+    'reports-financial': 'financial',
+    'reports-sessions': 'sessions',
+    'reports-analytics': 'analytics',
+    'reports-forecast': 'forecast',
+  }
+
+  if (marketingSubTabs[itemId]) {
+    return { activeTab: 'marketing', marketingSubTab: marketingSubTabs[itemId] }
+  }
+  if (reportsSubTabs[itemId]) {
+    return { activeTab: 'reports', reportsSubTab: reportsSubTabs[itemId] }
+  }
+  return { activeTab: itemId }
+}
+
+const getAdminItemIdForSelection = (activeTab, marketingSubTab, reportsSubTab) => {
+  if (activeTab === 'marketing') {
+    const marketingItemBySubTab = {
+      subscribers: 'marketing',
+      promotions: 'promotions',
+      campaigns: 'campaigns',
+      referrals: 'referrals',
+      sources: 'sources',
+    }
+    return marketingItemBySubTab[marketingSubTab] || 'marketing'
+  }
+  if (activeTab === 'reports') {
+    const reportsItemBySubTab = {
+      growth: 'reports-growth',
+      occupancy: 'reports-occupancy',
+      popular: 'reports-routes',
+      map: 'reports-map',
+      financial: 'reports-financial',
+      sessions: 'reports-sessions',
+      analytics: 'reports-analytics',
+      forecast: 'reports-forecast',
+    }
+    return reportsItemBySubTab[reportsSubTab] || 'reports-growth'
+  }
+  return activeTab
+}
+
+const getDefaultRouteForCategory = (categoryName) => {
+  const category = NAV_STRUCTURE.find(cat => cat.category === categoryName)
+  const firstItem = category?.items?.[0]
+  return firstItem ? getAdminRouteForItem(firstItem.id) : ADMIN_DEFAULT_ROUTE
+}
 
 // Photo slots - must match Employee.jsx
 const PHOTO_SLOTS = [
@@ -318,14 +444,26 @@ const formatMarketingSource = (source) => {
 function Admin() {
   const { user, token, loading, isAuthenticated, isAdmin, logout, authFetch } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const requestedInitialAdminItemId = getAdminItemIdForPath(location.pathname) || ADMIN_DEFAULT_ITEM_ID
+  const requestedInitialAdminItemMeta = ADMIN_ITEM_META_BY_ID[requestedInitialAdminItemId]
+  const initialRouteAllowed = requestedInitialAdminItemMeta && (
+    !requestedInitialAdminItemMeta.restrictToUserIds ||
+    requestedInitialAdminItemMeta.restrictToUserIds.includes(user?.id)
+  )
+  const initialAdminItemId = initialRouteAllowed ? requestedInitialAdminItemId : ADMIN_DEFAULT_ITEM_ID
+  const initialAdminSelection = getAdminSelectionForItem(initialAdminItemId)
 
-  const [activeTab, setActiveTab] = useState('bookings')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [activeTab, setActiveTab] = useState(initialAdminSelection.activeTab)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(max-width: 768px)').matches
+  ))
   const [expandedCategories, setExpandedCategories] = useState(() => {
     // Expand the category containing the current tab
     const expanded = {}
     NAV_STRUCTURE.forEach(cat => {
-      if (cat.items.some(item => item.id === 'bookings')) {
+      if (cat.items.some(item => item.id === initialAdminItemId)) {
         expanded[cat.category] = true
       }
     })
@@ -422,7 +560,7 @@ function Admin() {
   const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
   // Marketing sub-tab state
-  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers', 'promotions', 'campaigns', 'referrals', or 'sources'
+  const [marketingSubTab, setMarketingSubTab] = useState(initialAdminSelection.marketingSubTab || 'subscribers') // 'subscribers', 'promotions', 'campaigns', 'referrals', or 'sources'
   const [referralsDashboard, setReferralsDashboard] = useState({ stats: {}, customers: [], code_usage: [] })
   const [loadingReferrals, setLoadingReferrals] = useState(false)
   const [referralsFilter, setReferralsFilter] = useState('all')
@@ -681,7 +819,7 @@ function Admin() {
   const [loadingLocations, setLoadingLocations] = useState(false)
 
   // Booking stats state (for growth charts)
-  const [reportsSubTab, setReportsSubTab] = useState('growth') // 'growth', 'map', or 'occupancy'
+  const [reportsSubTab, setReportsSubTab] = useState(initialAdminSelection.reportsSubTab || 'growth') // 'growth', 'map', or 'occupancy'
   const [bookingStats, setBookingStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [statsChartType, setStatsChartType] = useState('monthly') // 'daily', 'weekly', 'monthly', 'cumulative'
@@ -1007,6 +1145,22 @@ function Admin() {
     return testEmailDomains.includes(domain) || domain?.includes('test') || domain?.includes('staging')
   }
 
+  const applyAdminItemSelection = (itemId) => {
+    const selection = getAdminSelectionForItem(itemId)
+    setActiveTab(selection.activeTab)
+    if (selection.marketingSubTab) {
+      setMarketingSubTab(selection.marketingSubTab)
+    }
+    if (selection.reportsSubTab) {
+      setReportsSubTab(selection.reportsSubTab)
+    }
+    NAV_STRUCTURE.forEach(cat => {
+      if (cat.items.some(item => item.id === itemId)) {
+        setExpandedCategories(prev => ({ ...prev, [cat.category]: true }))
+      }
+    })
+  }
+
   // Redirect if not authenticated or not admin
   useEffect(() => {
     if (!loading) {
@@ -1017,6 +1171,29 @@ function Admin() {
       }
     }
   }, [loading, isAuthenticated, isAdmin, navigate])
+
+  useEffect(() => {
+    if (loading || !isAuthenticated || !isAdmin) return
+
+    const normalisedPath = location.pathname.replace(/\/+$/, '') || '/admin'
+    const routeItemId = getAdminItemIdForPath(normalisedPath)
+    const routeItemMeta = routeItemId ? ADMIN_ITEM_META_BY_ID[routeItemId] : null
+    const routeAllowed = routeItemMeta && (
+      !routeItemMeta.restrictToUserIds ||
+      routeItemMeta.restrictToUserIds.includes(user?.id)
+    )
+
+    if (normalisedPath === '/admin') {
+      navigate(ADMIN_DEFAULT_ROUTE, { replace: true })
+      return
+    }
+    if (!routeItemId || !routeAllowed) {
+      navigate(ADMIN_DEFAULT_ROUTE, { replace: true })
+      return
+    }
+
+    applyAdminItemSelection(routeItemId)
+  }, [loading, isAuthenticated, isAdmin, location.pathname, navigate, user?.id])
 
   // Fetch bookings when tab is active
   useEffect(() => {
@@ -6473,11 +6650,6 @@ function Admin() {
     return null
   }
 
-  // Helper to check if a tab belongs to a category
-  const isTabInCategory = (category, tabId) => {
-    return category.items.some(item => item.id === tabId)
-  }
-
   // Toggle category expansion
   const toggleCategory = (categoryName) => {
     setExpandedCategories(prev => ({
@@ -6488,56 +6660,11 @@ function Admin() {
 
   // Handle tab selection - also expand the parent category
   const handleTabSelect = (tabId) => {
-    // For marketing sub-tabs, set activeTab to 'marketing' and set marketingSubTab
-    if (tabId === 'marketing') {
-      setActiveTab('marketing')
-      setMarketingSubTab('subscribers')
-    } else if (tabId === 'promotions') {
-      setActiveTab('marketing')
-      setMarketingSubTab('promotions')
-    } else if (tabId === 'campaigns') {
-      setActiveTab('marketing')
-      setMarketingSubTab('campaigns')
-    } else if (tabId === 'referrals') {
-      setActiveTab('marketing')
-      setMarketingSubTab('referrals')
-    } else if (tabId === 'sources') {
-      setActiveTab('marketing')
-      setMarketingSubTab('sources')
-    // For reports sub-tabs, set activeTab to 'reports' and set reportsSubTab
-    } else if (tabId === 'reports-growth') {
-      setActiveTab('reports')
-      setReportsSubTab('growth')
-    } else if (tabId === 'reports-occupancy') {
-      setActiveTab('reports')
-      setReportsSubTab('occupancy')
-    } else if (tabId === 'reports-routes') {
-      setActiveTab('reports')
-      setReportsSubTab('popular')
-    } else if (tabId === 'reports-map') {
-      setActiveTab('reports')
-      setReportsSubTab('map')
-    } else if (tabId === 'reports-financial') {
-      setActiveTab('reports')
-      setReportsSubTab('financial')
-    } else if (tabId === 'reports-sessions') {
-      setActiveTab('reports')
-      setReportsSubTab('sessions')
-    } else if (tabId === 'reports-analytics') {
-      setActiveTab('reports')
-      setReportsSubTab('analytics')
-    } else if (tabId === 'reports-forecast') {
-      setActiveTab('reports')
-      setReportsSubTab('forecast')
-    } else {
-      setActiveTab(tabId)
+    applyAdminItemSelection(tabId)
+    navigate(getAdminRouteForItem(tabId))
+    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches) {
+      setSidebarCollapsed(true)
     }
-    // Expand the category containing this tab
-    NAV_STRUCTURE.forEach(cat => {
-      if (isTabInCategory(cat, tabId)) {
-        setExpandedCategories(prev => ({ ...prev, [cat.category]: true }))
-      }
-    })
   }
 
   // Check if a nav item is active
@@ -6564,6 +6691,9 @@ function Admin() {
     }
     return false
   }
+
+  const activeAdminItemId = getAdminItemIdForSelection(activeTab, marketingSubTab, reportsSubTab)
+  const activeAdminItemMeta = ADMIN_ITEM_META_BY_ID[activeAdminItemId] || ADMIN_ITEM_META_BY_ID[ADMIN_DEFAULT_ITEM_ID]
 
   return (
     <div className={`admin-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -6634,6 +6764,15 @@ function Admin() {
 
         {/* Main Content */}
         <main className="admin-main">
+        <nav className="admin-breadcrumbs" aria-label="Admin breadcrumb">
+          <Link to={ADMIN_DEFAULT_ROUTE}>Admin</Link>
+          <span className="admin-breadcrumb-separator">/</span>
+          <Link to={getDefaultRouteForCategory(activeAdminItemMeta.category)}>
+            {activeAdminItemMeta.category}
+          </Link>
+          <span className="admin-breadcrumb-separator">/</span>
+          <span aria-current="page">{activeAdminItemMeta.itemLabel}</span>
+        </nav>
         {error && <div className="admin-error">{error}</div>}
         {successMessage && <div className="admin-success">{successMessage}</div>}
 
@@ -15252,261 +15391,24 @@ function Admin() {
 
         {/* QA - Test Results */}
         {activeTab === 'qa-tests' && (
-          <div className="admin-section">
-            <div className="admin-section-header">
-              <h2>Test Results</h2>
-                  <button onClick={fetchTestResults} className="admin-refresh" disabled={loadingTestResults}>
-                    {loadingTestResults ? 'Loading...' : 'Refresh'}
-                  </button>
-                </div>
-
-                {loadingTestResults ? (
-                  <div className="admin-loading-inline">
-                    <div className="spinner-small"></div>
-                    <span>Loading test results...</span>
-                  </div>
-                ) : (
-                  <>
-                    {/* Schedule Info */}
-                    <div className="qa-schedule-info">
-                      <h4>Scheduled Tests</h4>
-                      <p>Automated tests run 4 times per week:</p>
-                      <ul>
-                        <li>Monday at 5:00 AM UTC</li>
-                        <li>Wednesday at 5:00 AM UTC</li>
-                        <li>Friday at 5:00 AM UTC</li>
-                        <li>Saturday at 5:00 AM UTC</li>
-                      </ul>
-                      <p>Tests are run against the <strong>production</strong> environment.</p>
-                    </div>
-
-                    {/* Latest Run Summary */}
-                    {latestTestRun && (
-                      <div className="qa-latest-run">
-                        <h4>Latest Test Run</h4>
-                        <div className="stats-summary-cards">
-                          <div className={`stats-card ${latestTestRun.status === 'passed' ? 'status-confirmed' : latestTestRun.status === 'failed' ? 'status-cancelled' : 'status-pending'}`}>
-                            <div className="stats-card-value" style={{ textTransform: 'uppercase' }}>
-                              {latestTestRun.status}
-                            </div>
-                            <div className="stats-card-label">Status</div>
-                          </div>
-                          <div className="stats-card">
-                            <div className="stats-card-value" style={{ color: '#22c55e' }}>{latestTestRun.tests_passed}</div>
-                            <div className="stats-card-label">Passed</div>
-                          </div>
-                          <div className="stats-card">
-                            <div className="stats-card-value" style={{ color: latestTestRun.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{latestTestRun.tests_failed}</div>
-                            <div className="stats-card-label">Failed</div>
-                          </div>
-                          <div className="stats-card">
-                            <div className="stats-card-value">{latestTestRun.tests_skipped}</div>
-                            <div className="stats-card-label">Skipped</div>
-                          </div>
-                          <div className="stats-card">
-                            <div className="stats-card-value">{latestTestRun.pass_rate?.toFixed(1) || 0}%</div>
-                            <div className="stats-card-label">Pass Rate</div>
-                          </div>
-                          {latestTestRun.coverage_percent !== null && (
-                            <div className="stats-card">
-                              <div className="stats-card-value">{latestTestRun.coverage_percent?.toFixed(1)}%</div>
-                              <div className="stats-card-label">Coverage</div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="qa-run-details">
-                          <p><strong>Environment:</strong> {latestTestRun.environment}</p>
-                          <p><strong>Run Type:</strong> {latestTestRun.run_type}</p>
-                          <p><strong>Duration:</strong> {latestTestRun.duration_seconds ? `${latestTestRun.duration_seconds}s` : 'N/A'}</p>
-                          <p><strong>Started:</strong> {new Date(latestTestRun.started_at).toLocaleString()}</p>
-                          {latestTestRun.branch && <p><strong>Branch:</strong> {latestTestRun.branch}</p>}
-                          {latestTestRun.commit_sha && <p><strong>Commit:</strong> {latestTestRun.commit_sha.substring(0, 7)}</p>}
-                          {latestTestRun.logs_url && (
-                            <p><a href={latestTestRun.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View Logs</a></p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Historical Results */}
-                    <div className="qa-history">
-                      <h4>Test Run History</h4>
-                      {testResults.length === 0 ? (
-                        <p className="admin-empty">No test runs recorded yet.</p>
-                      ) : (
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th>Status</th>
-                              <th>Passed</th>
-                              <th>Failed</th>
-                              <th>Total</th>
-                              <th>Pass Rate</th>
-                              <th>Coverage</th>
-                              <th>Duration</th>
-                              <th>Branch</th>
-                              <th>Logs</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {testResults.map((run) => (
-                              <tr key={run.id} className={run.status === 'failed' ? 'row-warning' : ''}>
-                                <td>{new Date(run.started_at).toLocaleDateString()}</td>
-                                <td>
-                                  <span className={`status-badge status-${run.status === 'passed' ? 'confirmed' : run.status === 'failed' ? 'cancelled' : 'pending'}`}>
-                                    {run.status}
-                                  </span>
-                                </td>
-                                <td style={{ color: '#22c55e' }}>{run.tests_passed}</td>
-                                <td style={{ color: run.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{run.tests_failed}</td>
-                                <td>{run.tests_total}</td>
-                                <td>{run.pass_rate?.toFixed(1) || 0}%</td>
-                                <td>{run.coverage_percent !== null ? `${run.coverage_percent?.toFixed(1)}%` : '-'}</td>
-                                <td>{run.duration_seconds ? `${run.duration_seconds}s` : '-'}</td>
-                                <td>{run.branch || '-'}</td>
-                                <td>
-                                  {run.logs_url ? (
-                                    <a href={run.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View</a>
-                                  ) : '-'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-
-                  </>
-                )}
-          </div>
+          <TestResultsSection
+            loadingTestResults={loadingTestResults}
+            fetchTestResults={fetchTestResults}
+            latestTestRun={latestTestRun}
+            testResults={testResults}
+          />
         )}
 
         {/* QA - Connection Pool */}
         {activeTab === 'qa-connection-pool' && (
-          <div className="admin-section">
-            <div className="admin-section-header">
-              <h2>Connection Pool</h2>
-              <button
-                onClick={() => {
-                  fetchDbHealth()
-                  fetchDbPoolHistory()
-                }}
-                className="admin-refresh"
-                disabled={loadingDbHealth || loadingPoolHistory}
-              >
-                {loadingDbHealth || loadingPoolHistory ? 'Loading...' : 'Refresh'}
-              </button>
-            </div>
-
-            {/* Database Health */}
-            <div className="qa-db-health">
-              <div className="qa-db-health-header">
-                <h4>Database Connection Pool</h4>
-                <button onClick={fetchDbHealth} className="admin-refresh-small" disabled={loadingDbHealth}>
-                  {loadingDbHealth ? '...' : 'Refresh'}
-                </button>
-              </div>
-              {dbHealth ? (
-                <div className="stats-summary-cards">
-                  <div className={`stats-card ${dbHealth.health === 'healthy' ? 'status-confirmed' : dbHealth.health === 'warning' ? 'status-pending' : 'status-cancelled'}`}>
-                    <div className="stats-card-value" style={{ textTransform: 'uppercase' }}>
-                      {dbHealth.health}
-                    </div>
-                    <div className="stats-card-label">Status</div>
-                  </div>
-                  <div className="stats-card">
-                    <div className="stats-card-value" style={{ color: dbHealth.usage_percent >= 70 ? (dbHealth.usage_percent >= 90 ? '#ef4444' : '#f59e0b') : '#22c55e' }}>
-                      {dbHealth.usage_percent}%
-                    </div>
-                    <div className="stats-card-label">Pool Usage</div>
-                  </div>
-                  <div className="stats-card">
-                    <div className="stats-card-value">{dbHealth.checked_out}</div>
-                    <div className="stats-card-label">Active</div>
-                  </div>
-                  <div className="stats-card">
-                    <div className="stats-card-value">{dbHealth.overflow}</div>
-                    <div className="stats-card-label">Overflow</div>
-                  </div>
-                  <div className="stats-card">
-                    <div className="stats-card-value">{dbHealth.max_connections}</div>
-                    <div className="stats-card-label">Max</div>
-                  </div>
-                </div>
-              ) : (
-                <p className="admin-empty">Unable to fetch database health</p>
-              )}
-            </div>
-
-            {/* Pool History */}
-            <div className="qa-history">
-              <div className="qa-db-health-header">
-                <h4>Connection Pool History</h4>
-                <button onClick={() => fetchDbPoolHistory()} className="admin-refresh-small" disabled={loadingPoolHistory}>
-                  {loadingPoolHistory ? '...' : 'Refresh'}
-                </button>
-              </div>
-              {dbPoolHistory?.circuit_breaker && (
-                <div className="circuit-breaker-status" style={{ marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '6px', fontSize: '13px' }}>
-                  <strong>Circuit Breaker:</strong>{' '}
-                  <span style={{
-                    color: dbPoolHistory.circuit_breaker.state === 'CLOSED' ? '#22c55e' :
-                           dbPoolHistory.circuit_breaker.state === 'HALF_OPEN' ? '#f59e0b' : '#ef4444',
-                    fontWeight: 600
-                  }}>
-                    {dbPoolHistory.circuit_breaker.state}
-                  </span>
-                  {dbPoolHistory.circuit_breaker.rejected_count > 0 && (
-                    <span style={{ marginLeft: '16px', color: '#6b7280' }}>
-                      Rejected: {dbPoolHistory.circuit_breaker.rejected_count} requests
-                    </span>
-                  )}
-                </div>
-              )}
-              {!dbPoolHistory || dbPoolHistory.snapshots?.length === 0 ? (
-                <p className="admin-empty">No pool history recorded yet. Snapshots are taken every minute.</p>
-              ) : (
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Status</th>
-                      <th>Usage</th>
-                      <th>Active</th>
-                      <th>Overflow</th>
-                      <th>Available</th>
-                      <th>Trigger</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dbPoolHistory.snapshots?.slice(0, 50).map((snapshot) => (
-                      <tr key={snapshot.id} className={snapshot.health_status !== 'healthy' ? 'row-warning' : ''}>
-                        <td>{new Date(snapshot.timestamp).toLocaleString()}</td>
-                        <td>
-                          <span className={`status-badge status-${snapshot.health_status === 'healthy' ? 'confirmed' : snapshot.health_status === 'warning' ? 'pending' : 'cancelled'}`}>
-                            {snapshot.health_status}
-                          </span>
-                        </td>
-                        <td style={{ color: snapshot.usage_percent >= 70 ? (snapshot.usage_percent >= 90 ? '#ef4444' : '#f59e0b') : '#22c55e', fontWeight: 600 }}>
-                          {snapshot.usage_percent}%
-                        </td>
-                        <td>{snapshot.checked_out}</td>
-                        <td style={{ color: snapshot.overflow > 0 ? '#f59e0b' : 'inherit' }}>{snapshot.overflow}</td>
-                        <td>{snapshot.checked_in}</td>
-                        <td style={{ fontSize: '12px', color: '#6b7280' }}>{snapshot.trigger}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {dbPoolHistory?.snapshot_count > 50 && (
-                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-                  Showing 50 of {dbPoolHistory.snapshot_count} snapshots from the last 24 hours
-                </p>
-              )}
-            </div>
-          </div>
+          <ConnectionPoolSection
+            loadingDbHealth={loadingDbHealth}
+            loadingPoolHistory={loadingPoolHistory}
+            fetchDbHealth={fetchDbHealth}
+            fetchDbPoolHistory={fetchDbPoolHistory}
+            dbHealth={dbHealth}
+            dbPoolHistory={dbPoolHistory}
+          />
         )}
 
         {/* QA - Audit Logs */}
