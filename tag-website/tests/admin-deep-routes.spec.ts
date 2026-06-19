@@ -377,4 +377,33 @@ test.describe('admin route deep links', () => {
     await expect(page.locator('.admin-layout')).toHaveClass(/sidebar-collapsed/)
     expect(new URL(page.url()).pathname).toBe('/admin/reports/financial')
   })
+
+  test('back and forward follow route transitions', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 })
+    await page.route('**/api/**', buildApiRouteMock)
+    await page.addInitScript(
+      ({ adminUser }) => {
+        window.localStorage.setItem('auth_token', 'smoke-token')
+        window.localStorage.setItem('auth_user', JSON.stringify(adminUser))
+      },
+      { adminUser: defaultAdminUser }
+    )
+
+    await page.goto('/admin/operations/bookings')
+    const breadcrumb = page.locator('.admin-breadcrumb-item.admin-breadcrumb-current')
+    await expect(breadcrumb).toHaveText('Bookings')
+
+    await page.getByRole('button', { name: 'Reports' }).click()
+    await page.getByRole('button', { name: 'Financial' }).click()
+    expect(new URL(page.url()).pathname).toBe('/admin/reports/financial')
+    await expect(breadcrumb).toHaveText('Financial')
+
+    await page.goBack()
+    await expect(breadcrumb).toHaveText('Bookings')
+    expect(new URL(page.url()).pathname).toBe('/admin/operations/bookings')
+
+    await page.goForward()
+    expect(new URL(page.url()).pathname).toBe('/admin/reports/financial')
+    await expect(breadcrumb).toHaveText('Financial')
+  })
 })
