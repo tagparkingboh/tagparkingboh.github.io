@@ -3,12 +3,13 @@ import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import ManualBooking from './components/ManualBooking'
-import { formatDestination } from './utils/formatDestination'
 import BookingCalendar from './components/BookingCalendar'
+import { formatDestination } from './utils/formatDestination'
 import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
-import Payroll from './components/Payroll'
+import CalendarSection from './components/admin/CalendarSection'
+import ManualBookingSection from './components/admin/ManualBookingSection'
+import PayrollSection from './components/admin/PayrollSection'
 import TestResultsSection from './components/admin/qa/TestResultsSection'
 import ConnectionPoolSection from './components/admin/qa/ConnectionPoolSection'
 import AuditLogsSection from './components/admin/qa/AuditLogsSection'
@@ -7118,21 +7119,15 @@ function Admin() {
         )}
 
         {activeTab === 'calendar' && (
-          <div className="admin-section">
-            <RosterCalendar token={token} isAdmin={true} />
-          </div>
+          <CalendarSection token={token} />
         )}
 
         {activeTab === 'payroll' && (
-          <div className="admin-section">
-            <Payroll token={token} />
-          </div>
+          <PayrollSection token={token} />
         )}
 
         {activeTab === 'manual-booking' && (
-          <div className="admin-section">
-            <ManualBooking token={token} />
-          </div>
+          <ManualBookingSection token={token} />
         )}
 
         {activeTab === 'users' && (
