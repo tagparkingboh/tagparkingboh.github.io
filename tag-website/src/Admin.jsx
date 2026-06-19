@@ -8,12 +8,13 @@ import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import OperationsSectionPage from './components/admin/OperationsSectionPage'
 import MessagesSection from './components/admin/MessagesSection'
-import StaffSectionPage from './components/admin/StaffSectionPage'
 import CustomersSectionPage from './components/admin/CustomersSectionPage'
 import SettingsSectionPage from './components/admin/SettingsSectionPage'
 import QASectionPage from './components/admin/QASectionPage'
 import ReportsSectionPage from './components/admin/ReportsSectionPage'
 import MarketingSectionPage from './components/admin/MarketingSectionPage'
+import PayrollPage from './components/admin/staff/PayrollPage'
+import UsersPage from './components/admin/staff/UsersPage'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -5757,6 +5758,35 @@ function Admin() {
     weeklyPageIndex,
   }
 
+  const staffPayrollPageProps = {
+    token,
+  }
+
+  const staffUsersPageProps = {
+    userSuccessMessage,
+    error,
+    userSearchTerm,
+    setUserSearchTerm,
+    filteredUsers,
+    loadingUsers,
+    openAddUserModal,
+    openEditUserModal,
+    handleToggleUserField,
+    setUserToDelete,
+    setShowDeleteUserModal,
+    showUserModal,
+    setShowUserModal,
+    editingUser,
+    userForm,
+    setUserForm,
+    handleSaveUser,
+    savingUser,
+    showDeleteUserModal,
+    userToDelete,
+    handleDeleteUser,
+    deletingUser,
+  }
+
   const qaSectionProps = {
     activeTab,
     API_URL,
@@ -5966,34 +5996,8 @@ function Admin() {
           deletingFlightId={deletingFlightId}
         />
 
-        {(activeTab === 'payroll' || activeTab === 'users') && (
-          <StaffSectionPage
-            activeTab={activeTab}
-            token={token}
-            userSuccessMessage={userSuccessMessage}
-            error={error}
-            userSearchTerm={userSearchTerm}
-            setUserSearchTerm={setUserSearchTerm}
-            filteredUsers={filteredUsers}
-            loadingUsers={loadingUsers}
-            openAddUserModal={openAddUserModal}
-            openEditUserModal={openEditUserModal}
-            handleToggleUserField={handleToggleUserField}
-            setUserToDelete={setUserToDelete}
-            setShowDeleteUserModal={setShowDeleteUserModal}
-            showUserModal={showUserModal}
-            setShowUserModal={setShowUserModal}
-            editingUser={editingUser}
-            userForm={userForm}
-            setUserForm={setUserForm}
-            handleSaveUser={handleSaveUser}
-            savingUser={savingUser}
-            showDeleteUserModal={showDeleteUserModal}
-            userToDelete={userToDelete}
-            handleDeleteUser={handleDeleteUser}
-            deletingUser={deletingUser}
-          />
-        )}
+        {activeTab === 'payroll' && <PayrollPage {...staffPayrollPageProps} />}
+        {activeTab === 'users' && <UsersPage {...staffUsersPageProps} />}
 
         <MessagesSection {...messagesSectionProps} />
 
