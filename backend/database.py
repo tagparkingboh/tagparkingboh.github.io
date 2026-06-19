@@ -64,9 +64,12 @@ def _record_threshold_snapshot(trigger: str, usage_percent: float, checked_out: 
 # Get database URL from environment (PostgreSQL required)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# Pool configuration - increased from 10+20 to handle traffic spikes
-POOL_SIZE = 15
-MAX_OVERFLOW = 30
+# Pool configuration - env-driven so it can be tuned without a redeploy.
+# Defaults 25/50 (75 total). Constraint: (POOL_SIZE + MAX_OVERFLOW) * web_replicas
+# + ~7 (SQL-console engine) + 3 (reserved) must stay <= Postgres max_connections
+# (100 on prod). Per-process pool, so halve these if scaling web to >1 replica.
+POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "25"))
+MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "50"))
 POOL_WARNING_THRESHOLD = 0.7  # Warn when 70% of pool is in use
 
 # Engine will be None if DATABASE_URL is not set (allows imports without DB)
