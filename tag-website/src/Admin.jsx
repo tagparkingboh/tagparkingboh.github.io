@@ -8,13 +8,14 @@ import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import OperationsSectionPage from './components/admin/OperationsSectionPage'
 import MessagesSection from './components/admin/MessagesSection'
-import CustomersSectionPage from './components/admin/CustomersSectionPage'
 import SettingsSectionPage from './components/admin/SettingsSectionPage'
 import QASectionPage from './components/admin/QASectionPage'
 import ReportsSectionPage from './components/admin/ReportsSectionPage'
 import MarketingSectionPage from './components/admin/MarketingSectionPage'
 import PayrollPage from './components/admin/staff/PayrollPage'
 import UsersPage from './components/admin/staff/UsersPage'
+import CustomersPage from './components/admin/customers/CustomersPage'
+import LeadsPage from './components/admin/customers/LeadsPage'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -5787,6 +5788,66 @@ function Admin() {
     deletingUser,
   }
 
+  const customersPageProps = {
+    customers,
+    filteredCustomers,
+    loadingCustomers,
+    customerSearchTerm,
+    setCustomerSearchTerm,
+    customerDateFrom,
+    setCustomerDateFrom,
+    customerDateTo,
+    setCustomerDateTo,
+    fetchCustomers,
+    customerMessage,
+    expandedCustomerMonths,
+    setExpandedCustomerMonths,
+    formatMarketingSource,
+    openCustomerModal,
+    showCustomerModal,
+    selectedCustomer,
+    loadingCustomerDetail,
+    closeCustomerModal,
+    editingCustomerId,
+    setEditingCustomerId,
+    editCustomerForm,
+    setEditCustomerForm,
+    saveEditFromModal,
+    savingCustomer,
+    startEditFromModal,
+    deleteCustomerFromModal,
+    deletingCustomerId,
+    showAddVehicleForm,
+    setShowAddVehicleForm,
+    newVehicleForm,
+    setNewVehicleForm,
+    vehicleLookupLoading,
+    handleVehicleLookup,
+    handleAddVehicle,
+    addingVehicle,
+    onViewReferralDetails: () => {
+      closeCustomerModal()
+      setActiveTab('marketing')
+      setMarketingSubTab('referrals')
+    },
+  }
+
+  const leadsPageProps = {
+    fetchLeads,
+    loadingLeads,
+    leadSearchTerm,
+    setLeadSearchTerm,
+    leads,
+    leadDateFrom,
+    setLeadDateFrom,
+    leadDateTo,
+    setLeadDateTo,
+    expandedLeadMonths,
+    setExpandedLeadMonths,
+    expandedLeadId,
+    setExpandedLeadId,
+  }
+
   const qaSectionProps = {
     activeTab,
     API_URL,
@@ -6003,65 +6064,8 @@ function Admin() {
 
         <MarketingSectionPage {...marketingSectionProps} />
 
-        {(activeTab === 'leads' || activeTab === 'customers') && (
-          <CustomersSectionPage
-            activeTab={activeTab}
-            customers={customers}
-            filteredCustomers={filteredCustomers}
-            loadingCustomers={loadingCustomers}
-            customerSearchTerm={customerSearchTerm}
-            setCustomerSearchTerm={setCustomerSearchTerm}
-            customerDateFrom={customerDateFrom}
-            setCustomerDateFrom={setCustomerDateFrom}
-            customerDateTo={customerDateTo}
-            setCustomerDateTo={setCustomerDateTo}
-            fetchCustomers={fetchCustomers}
-            customerMessage={customerMessage}
-            expandedCustomerMonths={expandedCustomerMonths}
-            setExpandedCustomerMonths={setExpandedCustomerMonths}
-            formatMarketingSource={formatMarketingSource}
-            openCustomerModal={openCustomerModal}
-            showCustomerModal={showCustomerModal}
-            selectedCustomer={selectedCustomer}
-            loadingCustomerDetail={loadingCustomerDetail}
-            closeCustomerModal={closeCustomerModal}
-            editingCustomerId={editingCustomerId}
-            setEditingCustomerId={setEditingCustomerId}
-            editCustomerForm={editCustomerForm}
-            setEditCustomerForm={setEditCustomerForm}
-            saveEditFromModal={saveEditFromModal}
-            savingCustomer={savingCustomer}
-            startEditFromModal={startEditFromModal}
-            deleteCustomerFromModal={deleteCustomerFromModal}
-            deletingCustomerId={deletingCustomerId}
-            showAddVehicleForm={showAddVehicleForm}
-            setShowAddVehicleForm={setShowAddVehicleForm}
-            newVehicleForm={newVehicleForm}
-            setNewVehicleForm={setNewVehicleForm}
-            vehicleLookupLoading={vehicleLookupLoading}
-            handleVehicleLookup={handleVehicleLookup}
-            handleAddVehicle={handleAddVehicle}
-            addingVehicle={addingVehicle}
-            onViewReferralDetails={() => {
-              closeCustomerModal()
-              setActiveTab('marketing')
-              setMarketingSubTab('referrals')
-            }}
-            fetchLeads={fetchLeads}
-            loadingLeads={loadingLeads}
-            leadSearchTerm={leadSearchTerm}
-            setLeadSearchTerm={setLeadSearchTerm}
-            leads={leads}
-            leadDateFrom={leadDateFrom}
-            setLeadDateFrom={setLeadDateFrom}
-            leadDateTo={leadDateTo}
-            setLeadDateTo={setLeadDateTo}
-            expandedLeadMonths={expandedLeadMonths}
-            setExpandedLeadMonths={setExpandedLeadMonths}
-            expandedLeadId={expandedLeadId}
-            setExpandedLeadId={setExpandedLeadId}
-          />
-        )}
+        {activeTab === 'customers' && <CustomersPage {...customersPageProps} />}
+        {activeTab === 'leads' && <LeadsPage {...leadsPageProps} />}
 
         {(activeTab === 'pricing' || activeTab === 'testimonials' || activeTab === 'promo-modals') && (
           <SettingsSectionPage

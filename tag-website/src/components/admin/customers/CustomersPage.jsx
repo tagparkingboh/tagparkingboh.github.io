@@ -1,0 +1,83 @@
+import CustomersSection from '../CustomersSection'
+
+const CustomersPage = ({
+  customers,
+  filteredCustomers,
+  loadingCustomers,
+  customerSearchTerm,
+  setCustomerSearchTerm,
+  customerDateFrom,
+  setCustomerDateFrom,
+  customerDateTo,
+  setCustomerDateTo,
+  fetchCustomers,
+  customerMessage,
+  expandedCustomerMonths,
+  setExpandedCustomerMonths,
+  formatMarketingSource,
+  openCustomerModal,
+  showCustomerModal,
+  selectedCustomer,
+  loadingCustomerDetail,
+  closeCustomerModal,
+  editingCustomerId,
+  setEditingCustomerId,
+  editCustomerForm,
+  setEditCustomerForm,
+  saveEditFromModal,
+  savingCustomer,
+  startEditFromModal,
+  deleteCustomerFromModal,
+  deletingCustomerId,
+  showAddVehicleForm,
+  setShowAddVehicleForm,
+  newVehicleForm,
+  setNewVehicleForm,
+  vehicleLookupLoading,
+  handleVehicleLookup,
+  handleAddVehicle,
+  addingVehicle,
+  onViewReferralDetails,
+}) => (
+  <CustomersSection
+    customers={customers}
+    filteredCustomers={filteredCustomers}
+    loadingCustomers={loadingCustomers}
+    customerSearchTerm={customerSearchTerm}
+    setCustomerSearchTerm={setCustomerSearchTerm}
+    customerDateFrom={customerDateFrom}
+    setCustomerDateFrom={setCustomerDateFrom}
+    customerDateTo={customerDateTo}
+    setCustomerDateTo={setCustomerDateTo}
+    fetchCustomers={fetchCustomers}
+    customerMessage={customerMessage}
+    expandedCustomerMonths={expandedCustomerMonths}
+    setExpandedCustomerMonths={setExpandedCustomerMonths}
+    formatMarketingSource={formatMarketingSource}
+    openCustomerModal={openCustomerModal}
+    showCustomerModal={showCustomerModal}
+    selectedCustomer={selectedCustomer}
+    loadingCustomerDetail={loadingCustomerDetail}
+    closeCustomerModal={closeCustomerModal}
+    editingCustomerId={editingCustomerId}
+    setEditingCustomerId={setEditingCustomerId}
+    editCustomerForm={editCustomerForm}
+    setEditCustomerForm={setEditCustomerForm}
+    saveEditFromModal={saveEditFromModal}
+    savingCustomer={savingCustomer}
+    startEditFromModal={startEditFromModal}
+    deleteCustomerFromModal={deleteCustomerFromModal}
+    deletingCustomerId={deletingCustomerId}
+    showAddVehicleForm={showAddVehicleForm}
+    setShowAddVehicleForm={setShowAddVehicleForm}
+    newVehicleForm={newVehicleForm}
+    setNewVehicleForm={setNewVehicleForm}
+    vehicleLookupLoading={vehicleLookupLoading}
+    handleVehicleLookup={handleVehicleLookup}
+    handleAddVehicle={handleAddVehicle}
+    addingVehicle={addingVehicle}
+    onViewReferralDetails={onViewReferralDetails}
+  />
+)
+
+export default CustomersPage
