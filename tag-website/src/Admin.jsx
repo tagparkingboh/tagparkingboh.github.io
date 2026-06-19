@@ -6,8 +6,11 @@ import 'react-datepicker/dist/react-datepicker.css'
 import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
-import OperationsSectionPage from './components/admin/OperationsSectionPage'
-import MessagesSection from './components/admin/MessagesSection'
+import BookingsPage from './components/admin/operations/BookingsPage'
+import CalendarPage from './components/admin/operations/CalendarPage'
+import ManualBookingPage from './components/admin/operations/ManualBookingPage'
+import FlightsPage from './components/admin/operations/FlightsPage'
+import MessagesPage from './components/admin/messages/MessagesPage'
 import QASectionPage from './components/admin/QASectionPage'
 import ReportsSectionPage from './components/admin/ReportsSectionPage'
 import MarketingSectionPage from './components/admin/MarketingSectionPage'
@@ -5391,6 +5394,69 @@ function Admin() {
     },
   }
 
+  const bookingsPageProps = {
+    bookingSectionProps,
+  }
+
+  const calendarPageProps = {
+    token,
+  }
+
+  const manualBookingPageProps = {
+    token,
+  }
+
+  const flightsPageProps = {
+    fetchFlights,
+    exportFlights,
+    loadingFlights,
+    exportingFlights,
+    flightsMessage,
+    flightsSubTab,
+    setFlightsSubTab,
+    setEditingFlightId,
+    flightAirlineFilter,
+    setFlightAirlineFilter,
+    flightFilters,
+    flightNumberFilter,
+    setFlightNumberFilter,
+    departures,
+    arrivals,
+    flightDestFilter,
+    setFlightDestFilter,
+    flightOriginFilter,
+    setFlightOriginFilter,
+    flightMonthFilter,
+    setFlightMonthFilter,
+    flightsSortAsc,
+    setFlightsSortAsc,
+    departuresByMonth,
+    arrivalsByMonth,
+    collapsedFlightMonths,
+    toggleFlightMonth,
+    editingFlightId,
+    setEditFlightForm,
+    editFlightForm,
+    savingFlight,
+    saveFlightEdit,
+    cancelEditFlight,
+    startEditFlight,
+    confirmDeleteFlight,
+    showAddFlightModal,
+    setShowAddFlightModal,
+    addFlightForm,
+    setAddFlightForm,
+    resetAddFlightForm,
+    handleAddFlight,
+    addingFlight,
+    showDeleteFlightModal,
+    flightToDelete,
+    setShowDeleteFlightModal,
+    setFlightToDelete,
+    handleDeleteFlight,
+    deletingFlightId,
+  }
+
   const messagesSectionProps = {
     fetchSmsMessages,
     fetchSmsStats,
@@ -6049,64 +6115,15 @@ function Admin() {
         {error && <div className="admin-error">{error}</div>}
         {successMessage && <div className="admin-success">{successMessage}</div>}
 
-        <OperationsSectionPage
-          activeTab={activeTab}
-          bookingSectionProps={bookingSectionProps}
-          token={token}
-          fetchFlights={fetchFlights}
-          exportFlights={exportFlights}
-          loadingFlights={loadingFlights}
-          exportingFlights={exportingFlights}
-          flightsMessage={flightsMessage}
-          flightsSubTab={flightsSubTab}
-          setFlightsSubTab={setFlightsSubTab}
-          setEditingFlightId={setEditingFlightId}
-          flightAirlineFilter={flightAirlineFilter}
-          setFlightAirlineFilter={setFlightAirlineFilter}
-          flightFilters={flightFilters}
-          flightNumberFilter={flightNumberFilter}
-          setFlightNumberFilter={setFlightNumberFilter}
-          departures={departures}
-          arrivals={arrivals}
-          flightDestFilter={flightDestFilter}
-          setFlightDestFilter={setFlightDestFilter}
-          flightOriginFilter={flightOriginFilter}
-          setFlightOriginFilter={setFlightOriginFilter}
-          flightMonthFilter={flightMonthFilter}
-          setFlightMonthFilter={setFlightMonthFilter}
-          flightsSortAsc={flightsSortAsc}
-          setFlightsSortAsc={setFlightsSortAsc}
-          departuresByMonth={departuresByMonth}
-          arrivalsByMonth={arrivalsByMonth}
-          collapsedFlightMonths={collapsedFlightMonths}
-          toggleFlightMonth={toggleFlightMonth}
-          editingFlightId={editingFlightId}
-          setEditFlightForm={setEditFlightForm}
-          editFlightForm={editFlightForm}
-          savingFlight={savingFlight}
-          saveFlightEdit={saveFlightEdit}
-          cancelEditFlight={cancelEditFlight}
-          startEditFlight={startEditFlight}
-          confirmDeleteFlight={confirmDeleteFlight}
-          showAddFlightModal={showAddFlightModal}
-          setShowAddFlightModal={setShowAddFlightModal}
-          addFlightForm={addFlightForm}
-          setAddFlightForm={setAddFlightForm}
-          resetAddFlightForm={resetAddFlightForm}
-          handleAddFlight={handleAddFlight}
-          addingFlight={addingFlight}
-          showDeleteFlightModal={showDeleteFlightModal}
-          flightToDelete={flightToDelete}
-          setShowDeleteFlightModal={setShowDeleteFlightModal}
-          setFlightToDelete={setFlightToDelete}
-          handleDeleteFlight={handleDeleteFlight}
-          deletingFlightId={deletingFlightId}
-        />
+        {activeTab === 'bookings' && <BookingsPage {...bookingsPageProps} />}
+        {activeTab === 'calendar' && <CalendarPage {...calendarPageProps} />}
+        {activeTab === 'manual-booking' && <ManualBookingPage {...manualBookingPageProps} />}
+        {activeTab === 'flights' && <FlightsPage {...flightsPageProps} />}
 
         {activeTab === 'payroll' && <PayrollPage {...staffPayrollPageProps} />}
         {activeTab === 'users' && <UsersPage {...staffUsersPageProps} />}
 
-        <MessagesSection {...messagesSectionProps} />
+        {activeTab === 'messages' && <MessagesPage {...messagesSectionProps} />}
 
         <MarketingSectionPage {...marketingSectionProps} />
 
