@@ -13,6 +13,7 @@ import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
 import TestResultsSection from './components/admin/qa/TestResultsSection'
 import ConnectionPoolSection from './components/admin/qa/ConnectionPoolSection'
 import AuditLogsSection from './components/admin/qa/AuditLogsSection'
+import ErrorLogsSection from './components/admin/qa/ErrorLogsSection'
 import { taxStatusClass, motStatusClass, shouldShowAlert, formatIsoDateUk } from './dvlaCompliance'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
@@ -15445,160 +15446,20 @@ function Admin() {
 
         {/* QA - Error Logs */}
         {activeTab === 'qa-errors' && (
-          <div className="admin-section">
-            <div className="admin-section-header">
-              <h2>Error Logs</h2>
-                  <button onClick={() => fetchErrorLogs(true)} className="admin-refresh" disabled={loadingErrorLogs}>
-                    {loadingErrorLogs ? 'Loading...' : 'Refresh'}
-                  </button>
-                </div>
-
-                {/* Filters */}
-                <div className="qa-logs-filters">
-                  <input
-                    type="text"
-                    placeholder="Search (message, endpoint, session)..."
-                    value={errorLogsFilters.search}
-                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, search: e.target.value })}
-                    className="admin-filter-input"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Booking Reference..."
-                    value={errorLogsFilters.booking_reference}
-                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, booking_reference: e.target.value })}
-                    className="admin-filter-input"
-                  />
-                  <select
-                    value={errorLogsFilters.severity}
-                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, severity: e.target.value })}
-                    className="admin-filter-select"
-                  >
-                    <option value="">All Severities</option>
-                    {errorSeverities.map((sev) => (
-                      <option key={sev} value={sev}>{sev}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={errorLogsFilters.error_type}
-                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, error_type: e.target.value })}
-                    className="admin-filter-select"
-                  >
-                    <option value="">All Types</option>
-                    {errorTypes.map((type) => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="From: DD/MM/YYYY HH:MM"
-                    value={errorLogsFilters.date_from}
-                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, date_from: e.target.value })}
-                    className="admin-filter-input datetime-uk"
-                    title="From Date (UK timezone)"
-                  />
-                  <input
-                    type="text"
-                    placeholder="To: DD/MM/YYYY HH:MM"
-                    value={errorLogsFilters.date_to}
-                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, date_to: e.target.value })}
-                    className="admin-filter-input datetime-uk"
-                    title="To Date (UK timezone)"
-                  />
-                  <button
-                    onClick={() => setErrorLogsFilters({ search: '', booking_reference: '', severity: '', error_type: '', date_from: '', date_to: '' })}
-                    className="admin-btn"
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <p className="qa-logs-count">Showing {errorLogs.length} of {errorLogsTotalCount} logs</p>
-
-                {loadingErrorLogs ? (
-                  <div className="admin-loading-inline">
-                    <div className="spinner-small"></div>
-                    <span>Loading error logs...</span>
-                  </div>
-                ) : errorLogs.length === 0 ? (
-                  <p className="admin-empty">No error logs found.</p>
-                ) : (
-                  <>
-                    <table className="admin-table qa-logs-table">
-                      <thead>
-                        <tr>
-                          <th>Time</th>
-                          <th>Severity</th>
-                          <th>Type</th>
-                          <th>Message</th>
-                          <th>Booking Ref</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {errorLogs.map((log) => {
-                          const isExpanded = expandedErrorLog === log.id
-                          return (
-                            <Fragment key={log.id}>
-                              <tr onClick={() => setExpandedErrorLog(isExpanded ? null : log.id)} className={`qa-log-row qa-severity-${log.severity}`}>
-                                <td>{new Date(log.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} UK</td>
-                                <td><span className={`qa-severity-badge qa-severity-${log.severity}`}>{log.severity}</span></td>
-                                <td>{log.error_type || '-'}</td>
-                                <td className="qa-message-cell">{log.message ? (log.message.length > 80 ? log.message.substring(0, 80) + '...' : log.message) : '-'}</td>
-                                <td>{log.booking_reference || '-'}</td>
-                              </tr>
-                              {isExpanded && (
-                                <tr className="qa-log-expanded">
-                                  <td colSpan="5">
-                                    <div className="qa-log-details">
-                                      <p><strong>Full Message:</strong></p>
-                                      <pre>{log.message}</pre>
-                                      {log.stack_trace && (
-                                        <>
-                                          <p><strong>Stack Trace:</strong></p>
-                                          <pre className="qa-stack-trace">{log.stack_trace}</pre>
-                                        </>
-                                      )}
-                                      {log.endpoint && <p><strong>Endpoint:</strong> {log.endpoint}</p>}
-                                      {log.error_code && <p><strong>Error Code:</strong> {log.error_code}</p>}
-                                      {log.session_id && <p><strong>Session:</strong> {log.session_id}</p>}
-                                      {log.ip_address && <p><strong>IP:</strong> {log.ip_address}</p>}
-                                      {log.request_data && (
-                                        <>
-                                          <p><strong>Request Data:</strong></p>
-                                          <pre>{typeof log.request_data === 'string' ? log.request_data : JSON.stringify(log.request_data, null, 2)}</pre>
-                                        </>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </Fragment>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-
-                    {/* Pagination */}
-                    <div className="qa-logs-pagination">
-                      <button
-                        onClick={() => { const newOffset = Math.max(0, errorLogsOffset - 50); setErrorLogsOffset(newOffset); fetchErrorLogs(false, newOffset) }}
-                        disabled={errorLogsOffset === 0 || loadingErrorLogs}
-                        className="admin-btn"
-                      >
-                        Previous
-                      </button>
-                      <span>Page {Math.floor(errorLogsOffset / 50) + 1} of {Math.ceil(errorLogsTotalCount / 50)}</span>
-                      <button
-                        onClick={() => { const newOffset = errorLogsOffset + 50; setErrorLogsOffset(newOffset); fetchErrorLogs(false, newOffset) }}
-                        disabled={errorLogsOffset + 50 >= errorLogsTotalCount || loadingErrorLogs}
-                        className="admin-btn"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </>
-                )}
-          </div>
+          <ErrorLogsSection
+            errorLogs={errorLogs}
+            loadingErrorLogs={loadingErrorLogs}
+            errorLogsTotalCount={errorLogsTotalCount}
+            fetchErrorLogs={fetchErrorLogs}
+            errorLogsFilters={errorLogsFilters}
+            setErrorLogsFilters={setErrorLogsFilters}
+            errorSeverities={errorSeverities}
+            errorTypes={errorTypes}
+            expandedErrorLog={expandedErrorLog}
+            setExpandedErrorLog={setExpandedErrorLog}
+            errorLogsOffset={errorLogsOffset}
+            setErrorLogsOffset={setErrorLogsOffset}
+          />
         )}
 
         {/* QA - SQL Interface */}
