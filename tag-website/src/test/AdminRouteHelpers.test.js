@@ -84,6 +84,16 @@ describe('admin route helpers', () => {
     expect(ADMIN_ITEM_META_BY_ID[ADMIN_DEFAULT_ITEM_ID].route).toBe(ADMIN_DEFAULT_ROUTE)
   })
 
+  it('round-trips nav items through selection and route helpers', () => {
+    const navItemIds = NAV_STRUCTURE.flatMap(category => category.items.map(item => item.id))
+    for (const itemId of navItemIds) {
+      const selection = getAdminSelectionForItem(itemId)
+      expect(getAdminItemIdForSelection(selection.activeTab, selection.marketingSubTab, selection.reportsSubTab)).toBe(itemId)
+      expect(getAdminItemIdForPath(getAdminRouteForItem(itemId))).toBe(itemId)
+      expect(ADMIN_ROUTE_BY_ITEM_ID[itemId]).toBe(getAdminRouteForItem(itemId))
+    }
+  })
+
   it('has one item per nav entry and no duplicate nav ids', () => {
     const navItemIds = NAV_STRUCTURE.flatMap(category => category.items.map(item => item.id))
     expect(new Set(navItemIds).size).toBe(navItemIds.length)
