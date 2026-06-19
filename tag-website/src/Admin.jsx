@@ -5173,6 +5173,126 @@ function Admin() {
     return date.toLocaleString('en-GB', { timeZone: 'Europe/London' })
   }
 
+  const formatPence = (amountPence) => (
+    amountPence === null || amountPence === undefined ? '-' : `£${(amountPence / 100).toFixed(2)}`
+  )
+
+  const filteredReferralCustomers = useMemo(() => {
+    return referralsDashboard.customers || []
+  }, [referralsDashboard.customers])
+
+  const filteredReferralUsage = useMemo(() => {
+    return referralsDashboard.code_usage || []
+  }, [referralsDashboard.code_usage])
+
+  const referralsPagination = referralsDashboard.pagination || {}
+  const referralsDashboardHasLoaded = Boolean(
+    referralsDashboard.pagination ||
+    (referralsDashboard.customers || []).length ||
+    (referralsDashboard.code_usage || []).length ||
+    Object.keys(referralsDashboard.stats || {}).length
+  )
+  const referralCustomerTotal = referralsPagination.customer_total || 0
+  const referralUsageTotal = referralsPagination.code_usage_filtered_total ?? (referralsPagination.code_usage_total ?? 0)
+  const referralCustomerStart = referralCustomerTotal ? referralsCustomerOffset + 1 : 0
+  const referralCustomerEnd = Math.min(referralsCustomerOffset + referralsCustomerPageSize, referralCustomerTotal)
+  const referralUsageStart = referralUsageTotal ? referralsUsageOffset + 1 : 0
+  const referralUsageEnd = Math.min(referralsUsageOffset + referralsUsagePageSize, referralUsageTotal)
+
+  // Filter subscribers
+  const filteredSubscribers = useMemo(() => {
+    let filtered = [...subscribers]
+
+    // Hide test emails by default
+    if (hideTestEmails) {
+      filtered = filtered.filter(s => !isTestEmail(s.email))
+    }
+
+    // Apply status filter
+    if (subscriberStatusFilter !== 'all') {
+      filtered = filtered.filter(s => {
+        if (subscriberStatusFilter === 'pending') return !s.promo_10_sent && !s.promo_free_sent && !s.unsubscribed
+        if (subscriberStatusFilter === 'sent') return (s.promo_10_sent || s.promo_free_sent) && !s.promo_10_used && !s.promo_free_used && !s.unsubscribed
+        if (subscriberStatusFilter === 'used') return s.promo_10_used || s.promo_free_used
+        if (subscriberStatusFilter === 'unsubscribed') return s.unsubscribed
+        return true
+      })
+    }
+
+    // Apply search filter
+    if (subscriberSearchTerm.trim()) {
+      const search = subscriberSearchTerm.toLowerCase().trim()
+      filtered = filtered.filter(s =>
+        s.first_name?.toLowerCase().includes(search) ||
+        s.last_name?.toLowerCase().includes(search) ||
+        s.email?.toLowerCase().includes(search) ||
+        s.promo_code?.toLowerCase().includes(search) ||
+        s.promo_10_code?.toLowerCase().includes(search) ||
+        s.promo_free_code?.toLowerCase().includes(search) ||
+        `${s.first_name} ${s.last_name}`.toLowerCase().includes(search)
+      )
+    }
+
+    // Apply date filter
+    if (subscriberDateFrom || subscriberDateTo) {
+      filtered = filtered.filter(s => {
+        const subDate = s.subscribed_at ? new Date(s.subscribed_at) : null
+        if (!subDate) return false
+        if (subscriberDateFrom) {
+          const fromDate = new Date(subscriberDateFrom)
+          fromDate.setHours(0, 0, 0, 0)
+          if (subDate < fromDate) return false
+        }
+        if (subscriberDateTo) {
+          const toDate = new Date(subscriberDateTo)
+          toDate.setHours(23, 59, 59, 999)
+          if (subDate > toDate) return false
+        }
+        return true
+      })
+    }
+
+    return filtered
+  }, [subscribers, subscriberSearchTerm, subscriberStatusFilter, hideTestEmails, subscriberDateFrom, subscriberDateTo])
+
+  const filteredCustomers = useMemo(() => {
+    let filtered = [...customers]
+
+    // Apply search filter
+    if (customerSearchTerm.trim()) {
+      const search = customerSearchTerm.toLowerCase().trim()
+      filtered = filtered.filter(c =>
+        c.first_name?.toLowerCase().includes(search) ||
+        c.last_name?.toLowerCase().includes(search) ||
+        c.email?.toLowerCase().includes(search) ||
+        c.phone?.includes(search) ||
+        c.billing_postcode?.toLowerCase().includes(search) ||
+        `${c.first_name} ${c.last_name}`.toLowerCase().includes(search)
+      )
+    }
+
+    // Apply date filter
+    if (customerDateFrom || customerDateTo) {
+      filtered = filtered.filter(c => {
+        const custDate = c.created_at ? new Date(c.created_at) : null
+        if (!custDate) return false
+        if (customerDateFrom) {
+          const fromDate = new Date(customerDateFrom)
+          fromDate.setHours(0, 0, 0, 0)
+          if (custDate < fromDate) return false
+        }
+        if (customerDateTo) {
+          const toDate = new Date(customerDateTo)
+          toDate.setHours(23, 59, 59, 999)
+          if (custDate > toDate) return false
+        }
+        return true
+      })
+    }
+
+    return filtered
+  }, [customers, customerSearchTerm, customerDateFrom, customerDateTo])
+
   if (loading) {
     return (
       <div className="admin-loading">
