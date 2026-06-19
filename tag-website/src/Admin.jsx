@@ -12,8 +12,19 @@ import ManualBookingPage from './components/admin/operations/ManualBookingPage'
 import FlightsPage from './components/admin/operations/FlightsPage'
 import MessagesPage from './components/admin/messages/MessagesPage'
 import QASectionPage from './components/admin/QASectionPage'
-import ReportsSectionPage from './components/admin/ReportsSectionPage'
-import MarketingSectionPage from './components/admin/MarketingSectionPage'
+import SubscribersPage from './components/admin/marketing/SubscribersPage'
+import PromotionsPage from './components/admin/marketing/PromotionsPage'
+import CampaignsPage from './components/admin/marketing/CampaignsPage'
+import ReferralsPage from './components/admin/marketing/ReferralsPage'
+import SourcesPage from './components/admin/marketing/SourcesPage'
+import BookingGrowthPage from './components/admin/reports/BookingGrowthPage'
+import FinancialsPage from './components/admin/reports/FinancialsPage'
+import SessionsPage from './components/admin/reports/SessionsPage'
+import AbandonedCartsPage from './components/admin/reports/AbandonedCartsPage'
+import ForecastPage from './components/admin/reports/ForecastPage'
+import OccupancyPage from './components/admin/reports/OccupancyPage'
+import PopularRoutesPage from './components/admin/reports/PopularRoutesPage'
+import LocationMapsPage from './components/admin/reports/LocationMapsPage'
 import PayrollPage from './components/admin/staff/PayrollPage'
 import UsersPage from './components/admin/staff/UsersPage'
 import CustomersPage from './components/admin/customers/CustomersPage'
@@ -6125,7 +6136,11 @@ function Admin() {
 
         {activeTab === 'messages' && <MessagesPage {...messagesSectionProps} />}
 
-        <MarketingSectionPage {...marketingSectionProps} />
+        {activeTab === 'marketing' && marketingSubTab === 'subscribers' && <SubscribersPage {...marketingSectionProps} />}
+        {activeTab === 'marketing' && marketingSubTab === 'promotions' && <PromotionsPage {...marketingSectionProps} />}
+        {activeTab === 'marketing' && marketingSubTab === 'campaigns' && <CampaignsPage {...marketingSectionProps} />}
+        {activeTab === 'marketing' && marketingSubTab === 'referrals' && <ReferralsPage {...marketingSectionProps} />}
+        {activeTab === 'marketing' && marketingSubTab === 'sources' && <SourcesPage {...marketingSectionProps} />}
 
         {activeTab === 'customers' && <CustomersPage {...customersPageProps} />}
         {activeTab === 'leads' && <LeadsPage {...leadsPageProps} />}
@@ -6134,7 +6149,14 @@ function Admin() {
         {activeTab === 'testimonials' && <TestimonialsPage {...testimonialsSectionProps} />}
         {activeTab === 'promo-modals' && <PromoModalsPage {...promoModalsSectionProps} />}
 
-        <ReportsSectionPage {...reportsSectionProps} />
+        {activeTab === 'reports' && reportsSubTab === 'growth' && <BookingGrowthPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'financial' && <FinancialsPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'sessions' && <SessionsPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'analytics' && <AbandonedCartsPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'forecast' && <ForecastPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'occupancy' && <OccupancyPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'popular' && <PopularRoutesPage {...reportsSectionProps} />}
+        {activeTab === 'reports' && reportsSubTab === 'map' && <LocationMapsPage {...reportsSectionProps} />}
 
         <QASectionPage {...qaSectionProps} />
 
