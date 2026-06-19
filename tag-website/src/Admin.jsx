@@ -221,6 +221,18 @@ const ADMIN_ITEM_META = NAV_STRUCTURE.flatMap(category =>
   }))
 )
 
+const normalizeAdminCategorySlug = (categoryName) =>
+  String(categoryName || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
+
+const ADMIN_ITEM_ID_BY_CATEGORY_SLUG = Object.fromEntries(
+  NAV_STRUCTURE
+    .filter(category => category.items?.length)
+    .map(category => [normalizeAdminCategorySlug(category.category), category.items[0].id])
+)
+
 const ADMIN_ITEM_META_BY_ID = Object.fromEntries(
   ADMIN_ITEM_META.map(item => [item.itemId, item])
 )
@@ -228,7 +240,13 @@ const ADMIN_ITEM_META_BY_ID = Object.fromEntries(
 const getAdminItemIdForPath = (pathname) => {
   const normalisedPath = pathname.replace(/\/+$/, '') || '/admin'
   if (normalisedPath === '/admin') return ADMIN_DEFAULT_ITEM_ID
-  return ADMIN_ITEM_BY_ROUTE[normalisedPath] || null
+  if (ADMIN_ITEM_BY_ROUTE[normalisedPath]) {
+    return ADMIN_ITEM_BY_ROUTE[normalisedPath]
+  }
+  const categoryMatch = normalisedPath.match(/^\/admin\/([^/]+)$/)
+  if (!categoryMatch) return null
+  const categorySlug = categoryMatch[1].toLowerCase()
+  return ADMIN_ITEM_ID_BY_CATEGORY_SLUG[categorySlug] || null
 }
 
 const getAdminRouteForItem = (itemId) => ADMIN_ROUTE_BY_ITEM_ID[itemId] || ADMIN_DEFAULT_ROUTE

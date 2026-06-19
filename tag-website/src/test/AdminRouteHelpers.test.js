@@ -36,8 +36,13 @@ describe('admin route helpers', () => {
   it('returns null for unknown admin paths', () => {
     expect(getAdminItemIdForPath('/admin/not-a-section')).toBeNull()
     expect(getAdminItemIdForPath('/random/path')).toBeNull()
-    expect(getAdminItemIdForPath('/admin/operations')).toBeNull()
-    expect(getAdminItemIdForPath('/admin/reports')).toBeNull()
+    expect(getAdminItemIdForPath('/admin/operations')).toBe('bookings')
+    expect(getAdminItemIdForPath('/admin/staff')).toBe('payroll')
+    expect(getAdminItemIdForPath('/admin/customers')).toBe('customers')
+    expect(getAdminItemIdForPath('/admin/marketing')).toBe('marketing')
+    expect(getAdminItemIdForPath('/admin/reports')).toBe('reports-growth')
+    expect(getAdminItemIdForPath('/admin/settings')).toBe('pricing')
+    expect(getAdminItemIdForPath('/admin/qa')).toBe('qa-tests')
   })
 
   it('derives route item selections from item ids', () => {
