@@ -9,12 +9,12 @@ import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
-import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
 import TestResultsSection from './components/admin/qa/TestResultsSection'
 import ConnectionPoolSection from './components/admin/qa/ConnectionPoolSection'
 import AuditLogsSection from './components/admin/qa/AuditLogsSection'
 import ErrorLogsSection from './components/admin/qa/ErrorLogsSection'
 import SqlInterfaceSection from './components/admin/qa/SqlInterfaceSection'
+import RosterPlannerSection from './components/admin/qa/RosterPlannerSection'
 import { taxStatusClass, motStatusClass, shouldShowAlert, formatIsoDateUk } from './dvlaCompliance'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
@@ -15494,9 +15494,7 @@ function Admin() {
 
         {/* QA - Roster Planner (shadow mode, read-only) */}
         {activeTab === 'qa-roster-planner' && (
-          <div className="admin-section">
-            <PlannedRosterCalendar apiUrl={API_URL} token={token} />
-          </div>
+          <RosterPlannerSection apiUrl={API_URL} token={token} />
         )}
 
         {/* Testimonials Section */}
