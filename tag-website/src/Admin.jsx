@@ -294,6 +294,26 @@ const getDefaultRouteForCategory = (categoryName) => {
   return firstItem ? getAdminRouteForItem(firstItem.id) : ADMIN_DEFAULT_ROUTE
 }
 
+const isNavItemActiveForState = (activeTab, marketingSubTab, reportsSubTab, itemId) => {
+  if (itemId === 'marketing' && activeTab === 'marketing' && marketingSubTab === 'subscribers') return true
+  if (itemId === 'promotions' && activeTab === 'marketing' && marketingSubTab === 'promotions') return true
+  if (itemId === 'campaigns' && activeTab === 'marketing' && marketingSubTab === 'campaigns') return true
+  if (itemId === 'referrals' && activeTab === 'marketing' && marketingSubTab === 'referrals') return true
+  if (itemId === 'sources' && activeTab === 'marketing' && marketingSubTab === 'sources') return true
+  if (itemId === 'reports-growth' && activeTab === 'reports' && reportsSubTab === 'growth') return true
+  if (itemId === 'reports-occupancy' && activeTab === 'reports' && reportsSubTab === 'occupancy') return true
+  if (itemId === 'reports-routes' && activeTab === 'reports' && reportsSubTab === 'popular') return true
+  if (itemId === 'reports-map' && activeTab === 'reports' && reportsSubTab === 'map') return true
+  if (itemId === 'reports-financial' && activeTab === 'reports' && reportsSubTab === 'financial') return true
+  if (itemId === 'reports-sessions' && activeTab === 'reports' && reportsSubTab === 'sessions') return true
+  if (itemId === 'reports-analytics' && activeTab === 'reports' && reportsSubTab === 'analytics') return true
+  if (itemId === 'reports-forecast' && activeTab === 'reports' && reportsSubTab === 'forecast') return true
+  const subTabIds = ['marketing', 'promotions', 'campaigns', 'referrals', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics', 'reports-forecast']
+  if (!subTabIds.includes(itemId)) {
+    return activeTab === itemId
+  }
+  return false
+}
 // Photo slots - must match Employee.jsx
 const PHOTO_SLOTS = [
   { key: 'front', label: 'Front' },
@@ -5177,29 +5197,7 @@ function Admin() {
   }
 
   // Check if a nav item is active
-  const isNavItemActive = (itemId) => {
-    // Marketing sub-tabs
-    if (itemId === 'marketing' && activeTab === 'marketing' && marketingSubTab === 'subscribers') return true
-    if (itemId === 'promotions' && activeTab === 'marketing' && marketingSubTab === 'promotions') return true
-    if (itemId === 'campaigns' && activeTab === 'marketing' && marketingSubTab === 'campaigns') return true
-    if (itemId === 'referrals' && activeTab === 'marketing' && marketingSubTab === 'referrals') return true
-    if (itemId === 'sources' && activeTab === 'marketing' && marketingSubTab === 'sources') return true
-    // Reports sub-tabs
-    if (itemId === 'reports-growth' && activeTab === 'reports' && reportsSubTab === 'growth') return true
-    if (itemId === 'reports-occupancy' && activeTab === 'reports' && reportsSubTab === 'occupancy') return true
-    if (itemId === 'reports-routes' && activeTab === 'reports' && reportsSubTab === 'popular') return true
-    if (itemId === 'reports-map' && activeTab === 'reports' && reportsSubTab === 'map') return true
-    if (itemId === 'reports-financial' && activeTab === 'reports' && reportsSubTab === 'financial') return true
-    if (itemId === 'reports-sessions' && activeTab === 'reports' && reportsSubTab === 'sessions') return true
-    if (itemId === 'reports-analytics' && activeTab === 'reports' && reportsSubTab === 'analytics') return true
-    if (itemId === 'reports-forecast' && activeTab === 'reports' && reportsSubTab === 'forecast') return true
-    // Standard tabs (exclude marketing and reports sub-tab ids)
-    const subTabIds = ['marketing', 'promotions', 'campaigns', 'referrals', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics', 'reports-forecast']
-    if (!subTabIds.includes(itemId)) {
-      return activeTab === itemId
-    }
-    return false
-  }
+  const isNavItemActive = (itemId) => isNavItemActiveForState(activeTab, marketingSubTab, reportsSubTab, itemId)
 
   const activeAdminItemId = getAdminItemIdForSelection(activeTab, marketingSubTab, reportsSubTab)
   const activeAdminItemMeta = ADMIN_ITEM_META_BY_ID[activeAdminItemId] || ADMIN_ITEM_META_BY_ID[ADMIN_DEFAULT_ITEM_ID]
@@ -12801,5 +12799,6 @@ export {
   getAdminSelectionForItem,
   getAdminItemIdForSelection,
   getDefaultRouteForCategory,
+  isNavItemActiveForState,
 }
 export { getAdminItemIdForPath as getActiveRouteItemFromLocation }

@@ -12,6 +12,7 @@ import {
   ADMIN_DEFAULT_ROUTE,
   ADMIN_DEFAULT_ITEM_ID,
   ADMIN_ROUTE_BY_ITEM_ID,
+  isNavItemActiveForState,
 } from '../Admin'
 
 describe('admin route helpers', () => {
@@ -87,5 +88,23 @@ describe('admin route helpers', () => {
     for (const itemId of navItemIds) {
       expect(Object.prototype.hasOwnProperty.call(ADMIN_ROUTE_BY_ITEM_ID, itemId)).toBe(true)
     }
+  })
+
+  it('identifies active nav item for standard section tabs', () => {
+    expect(isNavItemActiveForState('bookings', null, null, 'bookings')).toBe(true)
+    expect(isNavItemActiveForState('calendar', null, null, 'calendar')).toBe(true)
+    expect(isNavItemActiveForState('bookings', null, null, 'calendar')).toBe(false)
+  })
+
+  it('identifies active nav item for marketing nested tabs', () => {
+    expect(isNavItemActiveForState('marketing', 'subscribers', null, 'marketing')).toBe(true)
+    expect(isNavItemActiveForState('marketing', 'campaigns', null, 'campaigns')).toBe(true)
+    expect(isNavItemActiveForState('marketing', 'campaigns', null, 'marketing')).toBe(false)
+  })
+
+  it('identifies active nav item for reports nested tabs', () => {
+    expect(isNavItemActiveForState('reports', null, 'financial', 'reports-financial')).toBe(true)
+    expect(isNavItemActiveForState('reports', null, 'popular', 'reports-routes')).toBe(true)
+    expect(isNavItemActiveForState('reports', null, 'financial', 'reports-growth')).toBe(false)
   })
 })
