@@ -1,9 +1,9 @@
-import TestResultsSection from './qa/TestResultsSection'
-import ConnectionPoolSection from './qa/ConnectionPoolSection'
-import AuditLogsSection from './qa/AuditLogsSection'
-import ErrorLogsSection from './qa/ErrorLogsSection'
-import SqlInterfaceSection from './qa/SqlInterfaceSection'
-import RosterPlannerSection from './qa/RosterPlannerSection'
+import TestResultsPage from './qa/TestResultsPage'
+import ConnectionPoolPage from './qa/ConnectionPoolPage'
+import AuditLogsPage from './qa/AuditLogsPage'
+import ErrorLogsPage from './qa/ErrorLogsPage'
+import SqlInterfacePage from './qa/SqlInterfacePage'
+import RosterPlannerPage from './qa/RosterPlannerPage'
 
 const QASectionPage = ({
   activeTab,
@@ -70,7 +70,7 @@ const QASectionPage = ({
 }) => {
   if (activeTab === 'qa-tests') {
     return (
-      <TestResultsSection
+      <TestResultsPage
         loadingTestResults={loadingTestResults}
         fetchTestResults={fetchTestResults}
         latestTestRun={latestTestRun}
@@ -81,7 +81,7 @@ const QASectionPage = ({
 
   if (activeTab === 'qa-connection-pool') {
     return (
-      <ConnectionPoolSection
+      <ConnectionPoolPage
         loadingDbHealth={loadingDbHealth}
         loadingPoolHistory={loadingPoolHistory}
         fetchDbHealth={fetchDbHealth}
@@ -94,7 +94,7 @@ const QASectionPage = ({
 
   if (activeTab === 'qa-audit') {
     return (
-      <AuditLogsSection
+      <AuditLogsPage
         auditLogs={auditLogs}
         loadingAuditLogs={loadingAuditLogs}
         fetchAuditLogs={fetchAuditLogs}
@@ -114,7 +114,7 @@ const QASectionPage = ({
 
   if (activeTab === 'qa-errors') {
     return (
-      <ErrorLogsSection
+      <ErrorLogsPage
         errorLogs={errorLogs}
         loadingErrorLogs={loadingErrorLogs}
         errorLogsTotalCount={errorLogsTotalCount}
@@ -133,7 +133,7 @@ const QASectionPage = ({
 
   if (activeTab === 'qa-sql') {
     return (
-      <SqlInterfaceSection
+      <SqlInterfacePage
         sqlSessionToken={sqlSessionToken}
         sqlSessionExpires={sqlSessionExpires}
         logoutSqlSession={logoutSqlSession}
@@ -162,11 +162,10 @@ const QASectionPage = ({
   }
 
   if (activeTab === 'qa-roster-planner') {
-    return <RosterPlannerSection apiUrl={API_URL} token={token} />
+    return <RosterPlannerPage apiUrl={API_URL} token={token} />
   }
 
   return null
 }
 
 export default QASectionPage
-

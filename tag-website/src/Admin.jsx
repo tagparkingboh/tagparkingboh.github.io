@@ -5753,8 +5753,70 @@ function Admin() {
     skippedBookings,
     statsChartType,
     totalBookings,
-  totalCustomers,
+    totalCustomers,
     weeklyPageIndex,
+  }
+
+  const qaSectionProps = {
+    activeTab,
+    API_URL,
+    token,
+    loadingTestResults,
+    fetchTestResults,
+    latestTestRun,
+    testResults,
+    loadingDbHealth,
+    loadingPoolHistory,
+    fetchDbHealth,
+    fetchDbPoolHistory,
+    dbHealth,
+    dbPoolHistory,
+    auditLogs,
+    loadingAuditLogs,
+    fetchAuditLogs,
+    auditLogsTotalCount,
+    auditLogsFilters,
+    setAuditLogsFilters,
+    auditEventTypes,
+    auditLogsAutoRefresh,
+    setAuditLogsAutoRefresh,
+    expandedAuditLog,
+    setExpandedAuditLog,
+    auditLogsOffset,
+    setAuditLogsOffset,
+    errorLogs,
+    loadingErrorLogs,
+    errorLogsTotalCount,
+    fetchErrorLogs,
+    errorLogsFilters,
+    setErrorLogsFilters,
+    errorSeverities,
+    errorTypes,
+    expandedErrorLog,
+    setExpandedErrorLog,
+    sqlSessionToken,
+    sqlSessionExpires,
+    logoutSqlSession,
+    sqlPinModalOpen,
+    setSqlPinModalOpen,
+    sqlPin,
+    setSqlPin,
+    verifySqlPin,
+    sqlPinError,
+    sqlQuery,
+    setSqlQuery,
+    executeSqlQuery,
+    sqlLoading,
+    sqlError,
+    setSqlError,
+    sqlResults,
+    setSqlResults,
+    exportSqlResultsCSV,
+    exportSqlResultsPDF,
+    sqlHistory,
+    sqlTemplates,
+    sqlTemplatesExpanded,
+    setSqlTemplatesExpanded,
   }
 
 
@@ -6040,69 +6102,7 @@ function Admin() {
 
         <ReportsSectionPage {...reportsSectionProps} />
 
-        <QASectionPage
-          activeTab={activeTab}
-          API_URL={API_URL}
-          token={token}
-          loadingTestResults={loadingTestResults}
-          fetchTestResults={fetchTestResults}
-          latestTestRun={latestTestRun}
-          testResults={testResults}
-          loadingDbHealth={loadingDbHealth}
-          loadingPoolHistory={loadingPoolHistory}
-          fetchDbHealth={fetchDbHealth}
-          fetchDbPoolHistory={fetchDbPoolHistory}
-          dbHealth={dbHealth}
-          dbPoolHistory={dbPoolHistory}
-          auditLogs={auditLogs}
-          loadingAuditLogs={loadingAuditLogs}
-          fetchAuditLogs={fetchAuditLogs}
-          auditLogsTotalCount={auditLogsTotalCount}
-          auditLogsFilters={auditLogsFilters}
-          setAuditLogsFilters={setAuditLogsFilters}
-          auditEventTypes={auditEventTypes}
-          auditLogsAutoRefresh={auditLogsAutoRefresh}
-          setAuditLogsAutoRefresh={setAuditLogsAutoRefresh}
-          expandedAuditLog={expandedAuditLog}
-          setExpandedAuditLog={setExpandedAuditLog}
-          auditLogsOffset={auditLogsOffset}
-          setAuditLogsOffset={setAuditLogsOffset}
-          errorLogs={errorLogs}
-          loadingErrorLogs={loadingErrorLogs}
-          errorLogsTotalCount={errorLogsTotalCount}
-          fetchErrorLogs={fetchErrorLogs}
-          errorLogsFilters={errorLogsFilters}
-          setErrorLogsFilters={setErrorLogsFilters}
-          errorSeverities={errorSeverities}
-          errorTypes={errorTypes}
-          expandedErrorLog={expandedErrorLog}
-          setExpandedErrorLog={setExpandedErrorLog}
-          errorLogsOffset={errorLogsOffset}
-          setErrorLogsOffset={setErrorLogsOffset}
-          sqlSessionToken={sqlSessionToken}
-          sqlSessionExpires={sqlSessionExpires}
-          logoutSqlSession={logoutSqlSession}
-          sqlPinModalOpen={sqlPinModalOpen}
-          setSqlPinModalOpen={setSqlPinModalOpen}
-          sqlPin={sqlPin}
-          setSqlPin={setSqlPin}
-          verifySqlPin={verifySqlPin}
-          sqlPinError={sqlPinError}
-          sqlQuery={sqlQuery}
-          setSqlQuery={setSqlQuery}
-          executeSqlQuery={executeSqlQuery}
-          sqlLoading={sqlLoading}
-          sqlError={sqlError}
-          setSqlError={setSqlError}
-          sqlResults={sqlResults}
-          setSqlResults={setSqlResults}
-          exportSqlResultsCSV={exportSqlResultsCSV}
-          exportSqlResultsPDF={exportSqlResultsPDF}
-          sqlHistory={sqlHistory}
-          sqlTemplates={sqlTemplates}
-          sqlTemplatesExpanded={sqlTemplatesExpanded}
-          setSqlTemplatesExpanded={setSqlTemplatesExpanded}
-        />
+        <QASectionPage {...qaSectionProps} />
 
         {activeTab === 'bookings' && bookingsScrollTopVisible && (
           <button
