@@ -9,17 +9,12 @@ import RosterCalendar from './components/RosterCalendar'
 import BookingsSection from './components/admin/BookingsSection'
 import CalendarSection from './components/admin/CalendarSection'
 import ManualBookingSection from './components/admin/ManualBookingSection'
-import TestResultsSection from './components/admin/qa/TestResultsSection'
-import ConnectionPoolSection from './components/admin/qa/ConnectionPoolSection'
-import AuditLogsSection from './components/admin/qa/AuditLogsSection'
-import ErrorLogsSection from './components/admin/qa/ErrorLogsSection'
-import SqlInterfaceSection from './components/admin/qa/SqlInterfaceSection'
-import RosterPlannerSection from './components/admin/qa/RosterPlannerSection'
 import FlightsSection from './components/admin/FlightsSection'
 import MessagesSection from './components/admin/MessagesSection'
 import StaffSectionPage from './components/admin/StaffSectionPage'
 import CustomersSectionPage from './components/admin/CustomersSectionPage'
 import SettingsSectionPage from './components/admin/SettingsSectionPage'
+import QASectionPage from './components/admin/QASectionPage'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -11330,99 +11325,69 @@ function Admin() {
           </div>
         )}
 
-        {/* QA - Test Results */}
-        {activeTab === 'qa-tests' && (
-          <TestResultsSection
-            loadingTestResults={loadingTestResults}
-            fetchTestResults={fetchTestResults}
-            latestTestRun={latestTestRun}
-            testResults={testResults}
-          />
-        )}
-
-        {/* QA - Connection Pool */}
-        {activeTab === 'qa-connection-pool' && (
-          <ConnectionPoolSection
-            loadingDbHealth={loadingDbHealth}
-            loadingPoolHistory={loadingPoolHistory}
-            fetchDbHealth={fetchDbHealth}
-            fetchDbPoolHistory={fetchDbPoolHistory}
-            dbHealth={dbHealth}
-            dbPoolHistory={dbPoolHistory}
-          />
-        )}
-
-        {/* QA - Audit Logs */}
-        {activeTab === 'qa-audit' && (
-          <AuditLogsSection
-            auditLogs={auditLogs}
-            loadingAuditLogs={loadingAuditLogs}
-            fetchAuditLogs={fetchAuditLogs}
-            auditLogsTotalCount={auditLogsTotalCount}
-            auditLogsFilters={auditLogsFilters}
-            setAuditLogsFilters={setAuditLogsFilters}
-            auditEventTypes={auditEventTypes}
-            auditLogsAutoRefresh={auditLogsAutoRefresh}
-            setAuditLogsAutoRefresh={setAuditLogsAutoRefresh}
-            expandedAuditLog={expandedAuditLog}
-            setExpandedAuditLog={setExpandedAuditLog}
-            auditLogsOffset={auditLogsOffset}
-            setAuditLogsOffset={setAuditLogsOffset}
-          />
-        )}
-
-
-        {/* QA - Error Logs */}
-        {activeTab === 'qa-errors' && (
-          <ErrorLogsSection
-            errorLogs={errorLogs}
-            loadingErrorLogs={loadingErrorLogs}
-            errorLogsTotalCount={errorLogsTotalCount}
-            fetchErrorLogs={fetchErrorLogs}
-            errorLogsFilters={errorLogsFilters}
-            setErrorLogsFilters={setErrorLogsFilters}
-            errorSeverities={errorSeverities}
-            errorTypes={errorTypes}
-            expandedErrorLog={expandedErrorLog}
-            setExpandedErrorLog={setExpandedErrorLog}
-            errorLogsOffset={errorLogsOffset}
-            setErrorLogsOffset={setErrorLogsOffset}
-          />
-        )}
-
-        {/* QA - SQL Interface */}
-        {activeTab === 'qa-sql' && (
-          <SqlInterfaceSection
-            sqlSessionToken={sqlSessionToken}
-            sqlSessionExpires={sqlSessionExpires}
-            logoutSqlSession={logoutSqlSession}
-            sqlPinModalOpen={sqlPinModalOpen}
-            setSqlPinModalOpen={setSqlPinModalOpen}
-            sqlPin={sqlPin}
-            setSqlPin={setSqlPin}
-            verifySqlPin={verifySqlPin}
-            sqlPinError={sqlPinError}
-            sqlQuery={sqlQuery}
-            setSqlQuery={setSqlQuery}
-            executeSqlQuery={executeSqlQuery}
-            sqlLoading={sqlLoading}
-            sqlError={sqlError}
-            setSqlError={setSqlError}
-            sqlResults={sqlResults}
-            setSqlResults={setSqlResults}
-            exportSqlResultsCSV={exportSqlResultsCSV}
-            exportSqlResultsPDF={exportSqlResultsPDF}
-            sqlHistory={sqlHistory}
-            sqlTemplates={sqlTemplates}
-            sqlTemplatesExpanded={sqlTemplatesExpanded}
-            setSqlTemplatesExpanded={setSqlTemplatesExpanded}
-          />
-        )}
-
-        {/* QA - Roster Planner (shadow mode, read-only) */}
-        {activeTab === 'qa-roster-planner' && (
-          <RosterPlannerSection apiUrl={API_URL} token={token} />
-        )}
+        <QASectionPage
+          activeTab={activeTab}
+          API_URL={API_URL}
+          token={token}
+          loadingTestResults={loadingTestResults}
+          fetchTestResults={fetchTestResults}
+          latestTestRun={latestTestRun}
+          testResults={testResults}
+          loadingDbHealth={loadingDbHealth}
+          loadingPoolHistory={loadingPoolHistory}
+          fetchDbHealth={fetchDbHealth}
+          fetchDbPoolHistory={fetchDbPoolHistory}
+          dbHealth={dbHealth}
+          dbPoolHistory={dbPoolHistory}
+          auditLogs={auditLogs}
+          loadingAuditLogs={loadingAuditLogs}
+          fetchAuditLogs={fetchAuditLogs}
+          auditLogsTotalCount={auditLogsTotalCount}
+          auditLogsFilters={auditLogsFilters}
+          setAuditLogsFilters={setAuditLogsFilters}
+          auditEventTypes={auditEventTypes}
+          auditLogsAutoRefresh={auditLogsAutoRefresh}
+          setAuditLogsAutoRefresh={setAuditLogsAutoRefresh}
+          expandedAuditLog={expandedAuditLog}
+          setExpandedAuditLog={setExpandedAuditLog}
+          auditLogsOffset={auditLogsOffset}
+          setAuditLogsOffset={setAuditLogsOffset}
+          errorLogs={errorLogs}
+          loadingErrorLogs={loadingErrorLogs}
+          errorLogsTotalCount={errorLogsTotalCount}
+          fetchErrorLogs={fetchErrorLogs}
+          errorLogsFilters={errorLogsFilters}
+          setErrorLogsFilters={setErrorLogsFilters}
+          errorSeverities={errorSeverities}
+          errorTypes={errorTypes}
+          expandedErrorLog={expandedErrorLog}
+          setExpandedErrorLog={setExpandedErrorLog}
+          errorLogsOffset={errorLogsOffset}
+          setErrorLogsOffset={setErrorLogsOffset}
+          sqlSessionToken={sqlSessionToken}
+          sqlSessionExpires={sqlSessionExpires}
+          logoutSqlSession={logoutSqlSession}
+          sqlPinModalOpen={sqlPinModalOpen}
+          setSqlPinModalOpen={setSqlPinModalOpen}
+          sqlPin={sqlPin}
+          setSqlPin={setSqlPin}
+          verifySqlPin={verifySqlPin}
+          sqlPinError={sqlPinError}
+          sqlQuery={sqlQuery}
+          setSqlQuery={setSqlQuery}
+          executeSqlQuery={executeSqlQuery}
+          sqlLoading={sqlLoading}
+          sqlError={sqlError}
+          setSqlError={setSqlError}
+          sqlResults={sqlResults}
+          setSqlResults={setSqlResults}
+          exportSqlResultsCSV={exportSqlResultsCSV}
+          exportSqlResultsPDF={exportSqlResultsPDF}
+          sqlHistory={sqlHistory}
+          sqlTemplates={sqlTemplates}
+          sqlTemplatesExpanded={sqlTemplatesExpanded}
+          setSqlTemplatesExpanded={setSqlTemplatesExpanded}
+        />
 
         {activeTab === 'bookings' && bookingsScrollTopVisible && (
           <button
