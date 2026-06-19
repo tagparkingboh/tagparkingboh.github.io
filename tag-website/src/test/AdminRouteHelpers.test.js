@@ -36,6 +36,8 @@ describe('admin route helpers', () => {
   it('returns null for unknown admin paths', () => {
     expect(getAdminItemIdForPath('/admin/not-a-section')).toBeNull()
     expect(getAdminItemIdForPath('/random/path')).toBeNull()
+    expect(getAdminItemIdForPath('/admin/operations')).toBeNull()
+    expect(getAdminItemIdForPath('/admin/reports')).toBeNull()
   })
 
   it('derives route item selections from item ids', () => {
