@@ -3,10 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import 'react-datepicker/dist/react-datepicker.css'
 import AdminContentRouter from './components/admin/AdminContentRouter'
+import AdminOverlayLayers from './components/admin/AdminOverlayLayers'
 import AdminShellLayout from './components/admin/AdminShellLayout'
-import AdminModals from './components/admin/AdminModals'
-import PromoModalsModals from './components/admin/settings/PromoModalsModals'
-import TestimonialsModals from './components/admin/settings/TestimonialsModals'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -6179,9 +6177,10 @@ function Admin() {
       />
     </AdminShellLayout>
 
-      <PromoModalsModals {...settingsModalsProps} />
-      <TestimonialsModals {...settingsModalsProps} />
-      <AdminModals {...bookingModalsProps} />
+      <AdminOverlayLayers
+        settingsModalsProps={settingsModalsProps}
+        bookingModalsProps={bookingModalsProps}
+      />
     </>
   )
 }
