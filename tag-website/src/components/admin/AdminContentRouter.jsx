@@ -1,9 +1,20 @@
 import OperationsSectionPage from './operations/OperationsSectionPage'
 import StaffSectionPage from './staff/StaffSectionPage'
-import MarketingSectionPage from './marketing/MarketingSectionPage'
 import CustomersSectionPage from './customers/CustomersSectionPage'
+import SubscribersPage from './marketing/SubscribersPage'
+import PromotionsPage from './marketing/PromotionsPage'
+import CampaignsPage from './marketing/CampaignsPage'
+import ReferralsPage from './marketing/ReferralsPage'
+import SourcesPage from './marketing/SourcesPage'
 import SettingsSectionPage from './settings/SettingsSectionPage'
-import ReportsSectionPage from './reports/ReportsSectionPage'
+import BookingGrowthPage from './reports/BookingGrowthPage'
+import OccupancyPage from './reports/OccupancyPage'
+import PopularRoutesPage from './reports/PopularRoutesPage'
+import LocationMapsPage from './reports/LocationMapsPage'
+import FinancialsPage from './reports/FinancialsPage'
+import SessionsPage from './reports/SessionsPage'
+import AbandonedCartsPage from './reports/AbandonedCartsPage'
+import ForecastPage from './reports/ForecastPage'
 import QASectionPage from './QASectionPage'
 import { AdminBreadcrumbs } from './AdminShell'
 
@@ -51,7 +62,20 @@ const AdminContentRouter = ({
         <StaffSectionPage {...staffSectionProps} />
       ) : null}
 
-      <MarketingSectionPage {...marketingSectionProps} />
+      {(() => {
+        if (activeTab !== 'marketing') return null
+
+        const marketingPages = {
+          subscribers: SubscribersPage,
+          promotions: PromotionsPage,
+          campaigns: CampaignsPage,
+          referrals: ReferralsPage,
+          sources: SourcesPage,
+        }
+        const MarketingPage = marketingPages[marketingSectionProps.marketingSubTab] || SubscribersPage
+
+        return <MarketingPage {...marketingSectionProps} />
+      })()}
 
       {(activeTab === 'customers' || activeTab === 'leads') ? (
         <CustomersSectionPage {...customersSectionProps} />
@@ -61,8 +85,23 @@ const AdminContentRouter = ({
         <SettingsSectionPage {...settingsSectionProps} />
       ) : null}
 
-      <ReportsSectionPage {...reportsSectionProps} />
+      {(() => {
+        if (activeTab !== 'reports') return null
 
+        const reportsPages = {
+          growth: BookingGrowthPage,
+          occupancy: OccupancyPage,
+          popular: PopularRoutesPage,
+          map: LocationMapsPage,
+          financial: FinancialsPage,
+          sessions: SessionsPage,
+          analytics: AbandonedCartsPage,
+          forecast: ForecastPage,
+        }
+        const ReportsPage = reportsPages[reportsSectionProps.reportsSubTab] || BookingGrowthPage
+
+        return <ReportsPage {...reportsSectionProps} />
+      })()}
       <QASectionPage {...qaSectionProps} />
 
       {activeTab === 'bookings' && bookingsScrollTopVisible && (
