@@ -3244,6 +3244,79 @@ function Admin() {
     }
   }
 
+  const resetAddFlightForm = () => {
+    setAddFlightForm({
+      date: '',
+      flight_number: '',
+      airline_code: '',
+      airline_name: '',
+      time: '',
+      destination_code: '',
+      destination_name: '',
+      origin_code: '',
+      origin_name: '',
+      capacity_tier: 0,
+      departure_time: '',
+    })
+  }
+
+  const handleAddFlight = async () => {
+    setAddingFlight(true)
+    setFlightsMessage('')
+
+    const isDeparture = flightsSubTab === 'departures'
+    const endpoint = isDeparture
+      ? `${API_URL}/api/admin/flights/departures`
+      : `${API_URL}/api/admin/flights/arrivals`
+    const payload = isDeparture
+      ? {
+          date: addFlightForm.date,
+          flight_number: addFlightForm.flight_number,
+          airline_code: addFlightForm.airline_code,
+          airline_name: addFlightForm.airline_name,
+          departure_time: addFlightForm.time,
+          destination_code: addFlightForm.destination_code,
+          destination_name: addFlightForm.destination_name || null,
+          capacity_tier: Number(addFlightForm.capacity_tier),
+        }
+      : {
+          date: addFlightForm.date,
+          flight_number: addFlightForm.flight_number,
+          airline_code: addFlightForm.airline_code,
+          airline_name: addFlightForm.airline_name,
+          arrival_time: addFlightForm.time,
+          origin_code: addFlightForm.origin_code,
+          origin_name: addFlightForm.origin_name || null,
+          departure_time: addFlightForm.departure_time || null,
+        }
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (response.ok) {
+        setFlightsMessage(`Flight ${addFlightForm.flight_number} added successfully`)
+        setShowAddFlightModal(false)
+        resetAddFlightForm()
+        fetchFlights()
+        setTimeout(() => setFlightsMessage(''), 3000)
+      } else {
+        const data = await response.json()
+        setFlightsMessage(`Error: ${data.detail || 'Failed to add flight'}`)
+      }
+    } catch (err) {
+      setFlightsMessage('Network error adding flight')
+    } finally {
+      setAddingFlight(false)
+    }
+  }
+
   const confirmDeleteFlight = (flight) => {
     setFlightToDelete(flight)
     setShowDeleteFlightModal(true)
