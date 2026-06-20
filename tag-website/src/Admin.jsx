@@ -5,20 +5,21 @@ import 'react-datepicker/dist/react-datepicker.css'
 import AdminContentRouter from './components/admin/AdminContentRouter'
 import AdminOverlayLayers from './components/admin/AdminOverlayLayers'
 import AdminShellLayout from './components/admin/AdminShellLayout'
+import useAdminRouteState from './components/admin/useAdminRouteState'
 import {
   ADMIN_DEFAULT_ITEM_ID,
   ADMIN_DEFAULT_ROUTE,
   ADMIN_ITEM_BY_ROUTE,
   ADMIN_ITEM_META,
   ADMIN_ITEM_META_BY_ID,
-  ADMIN_ROUTE_BY_ITEM_ID,
   NAV_STRUCTURE,
+  ADMIN_ROUTE_BY_ITEM_ID,
   getAdminItemIdForPath,
   getAdminItemIdForSelection,
   getAdminRouteForItem,
   getAdminSelectionForItem,
-  getDefaultRouteForCategory,
   isNavItemActiveForState,
+  getDefaultRouteForCategory,
 } from './components/admin/adminRouteConfig'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
@@ -240,29 +241,27 @@ function Admin() {
   const { user, token, loading, isAuthenticated, isAdmin, logout, authFetch } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const requestedInitialAdminItemId = getAdminItemIdForPath(location.pathname) || ADMIN_DEFAULT_ITEM_ID
-  const requestedInitialAdminItemMeta = ADMIN_ITEM_META_BY_ID[requestedInitialAdminItemId]
-  const initialRouteAllowed = requestedInitialAdminItemMeta && (
-    !requestedInitialAdminItemMeta.restrictToUserIds ||
-    requestedInitialAdminItemMeta.restrictToUserIds.includes(user?.id)
-  )
-  const initialAdminItemId = initialRouteAllowed ? requestedInitialAdminItemId : ADMIN_DEFAULT_ITEM_ID
-  const initialAdminSelection = getAdminSelectionForItem(initialAdminItemId)
-
-  const [activeTab, setActiveTab] = useState(initialAdminSelection.activeTab)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(max-width: 1024px)').matches
-  ))
-  const [expandedCategories, setExpandedCategories] = useState(() => {
-    // Expand the category containing the current tab
-    const expanded = {}
-    NAV_STRUCTURE.forEach(cat => {
-      if (cat.items.some(item => item.id === initialAdminItemId)) {
-        expanded[cat.category] = true
-      }
-    })
-    return expanded
+  const {
+    activeTab,
+    setActiveTab,
+    marketingSubTab,
+    setMarketingSubTab,
+    reportsSubTab,
+    setReportsSubTab,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    expandedCategories,
+    isNavItemActive,
+    activeAdminItemMeta,
+    toggleCategory,
+    handleTabSelect,
+  } = useAdminRouteState({
+    user,
+    isAuthenticated,
+    isAdmin,
+    loading,
+    locationPathname: location.pathname,
+    navigate,
   })
   const [bookings, setBookings] = useState([])
   const [bookingsLoadAll, setBookingsLoadAll] = useState(false)
@@ -355,7 +354,6 @@ function Admin() {
   const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
   // Marketing sub-tab state
-  const [marketingSubTab, setMarketingSubTab] = useState(initialAdminSelection.marketingSubTab || 'subscribers') // 'subscribers', 'promotions', 'campaigns', 'referrals', or 'sources'
   const [referralsDashboard, setReferralsDashboard] = useState({ stats: {}, customers: [], code_usage: [] })
   const [loadingReferrals, setLoadingReferrals] = useState(false)
   const [referralsFilter, setReferralsFilter] = useState('all')
@@ -614,7 +612,6 @@ function Admin() {
   const [loadingLocations, setLoadingLocations] = useState(false)
 
   // Booking stats state (for growth charts)
-  const [reportsSubTab, setReportsSubTab] = useState(initialAdminSelection.reportsSubTab || 'growth') // 'growth', 'map', or 'occupancy'
   const [bookingStats, setBookingStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [statsChartType, setStatsChartType] = useState('monthly') // 'daily', 'weekly', 'monthly', 'cumulative'
@@ -940,22 +937,6 @@ function Admin() {
     return testEmailDomains.includes(domain) || domain?.includes('test') || domain?.includes('staging')
   }
 
-  const applyAdminItemSelection = (itemId) => {
-    const selection = getAdminSelectionForItem(itemId)
-    setActiveTab(selection.activeTab)
-    if (selection.marketingSubTab) {
-      setMarketingSubTab(selection.marketingSubTab)
-    }
-    if (selection.reportsSubTab) {
-      setReportsSubTab(selection.reportsSubTab)
-    }
-    NAV_STRUCTURE.forEach(cat => {
-      if (cat.items.some(item => item.id === itemId)) {
-        setExpandedCategories(prev => ({ ...prev, [cat.category]: true }))
-      }
-    })
-  }
-
   // Redirect if not authenticated or not admin
   useEffect(() => {
     if (!loading) {
@@ -966,34 +947,6 @@ function Admin() {
       }
     }
   }, [loading, isAuthenticated, isAdmin, navigate])
-
-  useEffect(() => {
-    if (loading || !isAuthenticated || !isAdmin) return
-
-    const normalisedPath = location.pathname.replace(/\/+$/, '') || '/admin'
-    const routeItemId = getAdminItemIdForPath(normalisedPath)
-    const routeItemMeta = routeItemId ? ADMIN_ITEM_META_BY_ID[routeItemId] : null
-    const routeAllowed = routeItemMeta && (
-      !routeItemMeta.restrictToUserIds ||
-      routeItemMeta.restrictToUserIds.includes(user?.id)
-    )
-
-    if (normalisedPath === '/admin') {
-      navigate(ADMIN_DEFAULT_ROUTE, { replace: true })
-      return
-    }
-    if (!routeItemId || !routeAllowed) {
-      navigate(ADMIN_DEFAULT_ROUTE, { replace: true })
-      return
-    }
-    const canonicalRoute = getAdminRouteForItem(routeItemId)
-    if (normalisedPath !== canonicalRoute) {
-      navigate(canonicalRoute, { replace: true })
-      return
-    }
-
-    applyAdminItemSelection(routeItemId)
-  }, [loading, isAuthenticated, isAdmin, location.pathname, navigate, user?.id])
 
   // Fetch bookings when tab is active
   useEffect(() => {
@@ -5067,29 +5020,6 @@ function Admin() {
   if (!isAuthenticated || !isAdmin) {
     return null
   }
-
-  // Toggle category expansion
-  const toggleCategory = (categoryName) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [categoryName]: !prev[categoryName]
-    }))
-  }
-
-  // Handle tab selection - also expand the parent category
-  const handleTabSelect = (tabId) => {
-    applyAdminItemSelection(tabId)
-    navigate(getAdminRouteForItem(tabId))
-    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1024px)').matches) {
-      setSidebarCollapsed(true)
-    }
-  }
-
-  // Check if a nav item is active
-  const isNavItemActive = (itemId) => isNavItemActiveForState(activeTab, marketingSubTab, reportsSubTab, itemId)
-
-  const activeAdminItemId = getAdminItemIdForSelection(activeTab, marketingSubTab, reportsSubTab)
-  const activeAdminItemMeta = ADMIN_ITEM_META_BY_ID[activeAdminItemId] || ADMIN_ITEM_META_BY_ID[ADMIN_DEFAULT_ITEM_ID]
 
   const bookingSectionProps = {
     bookings,
