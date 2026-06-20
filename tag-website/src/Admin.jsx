@@ -6108,7 +6108,7 @@ function Admin() {
         calendarPageProps={calendarPageProps}
         manualBookingPageProps={manualBookingPageProps}
         flightsPageProps={flightsPageProps}
-        messagesPageProps={messagesPageProps}
+        messagesPageProps={messagesSectionProps}
         staffSectionProps={staffSectionProps}
         marketingSectionProps={marketingSectionProps}
         customersSectionProps={customersSectionProps}

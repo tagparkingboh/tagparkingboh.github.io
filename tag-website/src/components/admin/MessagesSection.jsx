@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 
-const MessagesSection = ({
+  const MessagesSection = ({
   fetchSmsMessages,
   fetchSmsStats,
   loadingMessages,
@@ -32,6 +32,7 @@ const MessagesSection = ({
   setSmsDirectionFilter,
   setSmsStatusFilter,
   smsStatusFilter,
+  showSendSmsModal,
   getSmsStatusBadge,
   smsMessages,
   setExpandedMessageId,
@@ -89,8 +90,10 @@ const MessagesSection = ({
   handleCreateTemplate,
   handleDeleteTemplate,
   messageToDelete,
+  fetchSmsDrafts,
   bulkDeleteThreads,
   deletingThreads,
+  setEditingDraft,
 }) => {
   return (
 <div className="admin-section">
