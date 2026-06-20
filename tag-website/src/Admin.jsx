@@ -3244,6 +3244,42 @@ function Admin() {
     }
   }
 
+  const confirmDeleteFlight = (flight) => {
+    setFlightToDelete(flight)
+    setShowDeleteFlightModal(true)
+  }
+
+  const handleDeleteFlight = async () => {
+    if (!flightToDelete) return
+    setDeletingFlightId(flightToDelete.id)
+    setFlightsMessage('')
+    try {
+      const isDeparture = flightsSubTab === 'departures'
+      const endpoint = isDeparture
+        ? `${API_URL}/api/admin/flights/departures/${flightToDelete.id}`
+        : `${API_URL}/api/admin/flights/arrivals/${flightToDelete.id}`
+
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        setFlightsMessage(`Flight ${flightToDelete.flight_number} deleted successfully`)
+        setShowDeleteFlightModal(false)
+        setFlightToDelete(null)
+        fetchFlights()
+      } else {
+        const data = await response.json()
+        setFlightsMessage(`Error: ${data.detail || 'Failed to delete flight'}`)
+      }
+    } catch (err) {
+      setFlightsMessage(`Error: ${err.message}`)
+    } finally {
+      setDeletingFlightId(null)
+    }
+  }
+
   const exportFlights = async () => {
     setExportingFlights(true)
     try {
