@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, Fragment, useRef } from 'react'
-import { useNavigate, Link, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import 'react-datepicker/dist/react-datepicker.css'
-import { AdminSidebar } from './components/admin/AdminShell'
 import AdminContentRouter from './components/admin/AdminContentRouter'
+import AdminShellLayout from './components/admin/AdminShellLayout'
 import AdminModals from './components/admin/AdminModals'
 import PromoModalsModals from './components/admin/settings/PromoModalsModals'
 import TestimonialsModals from './components/admin/settings/TestimonialsModals'
@@ -6144,74 +6144,45 @@ function Admin() {
 
 
   return (
-    <div className={`admin-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {/* Header */}
-      <header className="admin-header">
-        <div className="admin-header-left">
-          <button
-            className="sidebar-toggle"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {sidebarCollapsed ? '☰' : '✕'}
-          </button>
-          <Link to="/">
-            <img src="/assets/logo.svg" alt="TAG Parking" className="admin-logo" />
-          </Link>
-          <h1>Admin</h1>
-        </div>
-        <div className="admin-header-right">
-          <span className="admin-user">
-            {user?.first_name} {user?.last_name}
-          </span>
-          <button onClick={handleLogout} className="admin-logout">
-            Logout
-          </button>
-        </div>
-      </header>
-
-      <div className="admin-body">
-        <AdminSidebar
-          navStructure={NAV_STRUCTURE}
-          user={user}
-          expandedCategories={expandedCategories}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleCategory={toggleCategory}
-          onSelectItem={handleTabSelect}
-          isItemActive={isNavItemActive}
-        />
-
-        {/* Main Content */}
-        <main className="admin-main">
-          <AdminContentRouter
-            adminDefaultRoute={ADMIN_DEFAULT_ROUTE}
-            activeAdminItemMeta={activeAdminItemMeta}
-            getDefaultRouteForCategory={getDefaultRouteForCategory}
-            error={error}
-            successMessage={successMessage}
-            activeTab={activeTab}
-            bookingsPageProps={bookingsPageProps}
-            calendarPageProps={calendarPageProps}
-            manualBookingPageProps={manualBookingPageProps}
-            flightsPageProps={flightsPageProps}
-            messagesPageProps={messagesPageProps}
-            staffSectionProps={staffSectionProps}
-            marketingSectionProps={marketingSectionProps}
-            customersSectionProps={customersSectionProps}
-            settingsSectionProps={settingsSectionProps}
-            reportsSectionProps={reportsSectionProps}
-            qaSectionProps={qaSectionProps}
-            bookingsScrollTopVisible={bookingsScrollTopVisible}
-            handleScrollToTop={() => window.scrollTo({ top: 0, behavior: 'auto' })}
-          />
-
-        </main>
-      </div>
+    <>
+    <AdminShellLayout
+      user={user}
+      sidebarCollapsed={sidebarCollapsed}
+      onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+      onLogout={handleLogout}
+      navStructure={NAV_STRUCTURE}
+      expandedCategories={expandedCategories}
+      onToggleCategory={toggleCategory}
+      onSelectItem={handleTabSelect}
+      isItemActive={isNavItemActive}
+    >
+      <AdminContentRouter
+        adminDefaultRoute={ADMIN_DEFAULT_ROUTE}
+        activeAdminItemMeta={activeAdminItemMeta}
+        getDefaultRouteForCategory={getDefaultRouteForCategory}
+        error={error}
+        successMessage={successMessage}
+        activeTab={activeTab}
+        bookingsPageProps={bookingsPageProps}
+        calendarPageProps={calendarPageProps}
+        manualBookingPageProps={manualBookingPageProps}
+        flightsPageProps={flightsPageProps}
+        messagesPageProps={messagesPageProps}
+        staffSectionProps={staffSectionProps}
+        marketingSectionProps={marketingSectionProps}
+        customersSectionProps={customersSectionProps}
+        settingsSectionProps={settingsSectionProps}
+        reportsSectionProps={reportsSectionProps}
+        qaSectionProps={qaSectionProps}
+        bookingsScrollTopVisible={bookingsScrollTopVisible}
+        handleScrollToTop={() => window.scrollTo({ top: 0, behavior: 'auto' })}
+      />
+    </AdminShellLayout>
 
       <PromoModalsModals {...settingsModalsProps} />
       <TestimonialsModals {...settingsModalsProps} />
       <AdminModals {...bookingModalsProps} />
-    </div>
+    </>
   )
 }
 
