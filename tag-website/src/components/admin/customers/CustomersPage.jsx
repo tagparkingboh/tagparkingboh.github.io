@@ -171,6 +171,14 @@ const CustomersPage = ({
   // Delete customer from modal
   const deleteCustomerFromModal = async () => {
     if (!selectedCustomer) return
+    if (selectedCustomer.booking_count > 0) return
+
+    const customerName = `${selectedCustomer.first_name || ''} ${selectedCustomer.last_name || ''}`.trim()
+    const confirmMessage = customerName
+      ? `Are you sure you want to delete ${customerName}?`
+      : `Are you sure you want to delete this customer?`
+    const confirmed = window.confirm(confirmMessage)
+    if (!confirmed) return
 
     setDeletingCustomerId(selectedCustomer.id)
     try {
