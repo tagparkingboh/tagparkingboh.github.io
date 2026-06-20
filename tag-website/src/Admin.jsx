@@ -2,11 +2,9 @@ import { useState, useEffect, useMemo, Fragment, useRef } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import 'react-datepicker/dist/react-datepicker.css'
-import BookingCalendar from './components/BookingCalendar'
-import BookingLocationMap from './components/BookingLocationMap'
-import RosterCalendar from './components/RosterCalendar'
 import OperationsSectionPage from './components/admin/operations/OperationsSectionPage'
 import QASectionPage from './components/admin/QASectionPage'
+import { AdminBreadcrumbs, AdminSidebar } from './components/admin/AdminShell'
 import AdminModals from './components/admin/AdminModals'
 import MarketingSectionPage from './components/admin/marketing/MarketingSectionPage'
 import ReportsSectionPage from './components/admin/reports/ReportsSectionPage'
@@ -6179,78 +6177,34 @@ function Admin() {
       </header>
 
       <div className="admin-body">
-        {/* Sidebar */}
-        <aside className="admin-sidebar">
-          <nav className="admin-sidebar-nav">
-            {NAV_STRUCTURE
-              .filter(cat => !cat.restrictToUserIds || cat.restrictToUserIds.includes(user?.id))
-              .map(cat => (
-              <div key={cat.category} className="nav-category">
-                <button
-                  className={`nav-category-header ${expandedCategories[cat.category] ? 'expanded' : ''}`}
-                  onClick={() => toggleCategory(cat.category)}
-                >
-                  <span className="nav-category-icon">{cat.icon}</span>
-                  {!sidebarCollapsed && (
-                    <>
-                      <span className="nav-category-label">{cat.category}</span>
-                      <span className="nav-category-arrow">
-                        {expandedCategories[cat.category] ? '▼' : '▶'}
-                      </span>
-                    </>
-                  )}
-                </button>
-                {expandedCategories[cat.category] && !sidebarCollapsed && (
-                  <div className="nav-category-items">
-                    {cat.items.map(item => (
-                      <button
-                        key={item.id}
-                        className={`nav-item ${isNavItemActive(item.id) ? 'active' : ''}`}
-                        onClick={() => handleTabSelect(item.id)}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
-        </aside>
+        <AdminSidebar
+          navStructure={NAV_STRUCTURE}
+          user={user}
+          expandedCategories={expandedCategories}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleCategory={toggleCategory}
+          onSelectItem={handleTabSelect}
+          isItemActive={isNavItemActive}
+        />
 
         {/* Main Content */}
         <main className="admin-main">
-        <nav className="admin-breadcrumbs" aria-label="Admin breadcrumb">
-          <ol className="admin-breadcrumb-list">
-            <li className="admin-breadcrumb-item">
-              <Link to={ADMIN_DEFAULT_ROUTE} className="admin-breadcrumb-link">
-                <span className="admin-breadcrumb-icon" aria-hidden="true">⌂</span>
-                <span>Admin</span>
-              </Link>
-            </li>
-            <li className="admin-breadcrumb-separator" aria-hidden="true">›</li>
-            <li className="admin-breadcrumb-item">
-              <Link to={getDefaultRouteForCategory(activeAdminItemMeta.category)} className="admin-breadcrumb-link">
-                {activeAdminItemMeta.category}
-              </Link>
-            </li>
-            <li className="admin-breadcrumb-separator" aria-hidden="true">›</li>
-            <li className="admin-breadcrumb-item admin-breadcrumb-current" aria-current="page">
-              {activeAdminItemMeta.itemLabel}
-            </li>
-          </ol>
-        </nav>
-        {error && <div className="admin-error">{error}</div>}
-        {successMessage && <div className="admin-success">{successMessage}</div>}
+          <AdminBreadcrumbs
+            adminDefaultRoute={ADMIN_DEFAULT_ROUTE}
+            activeAdminItemMeta={activeAdminItemMeta}
+            getDefaultRouteForCategory={getDefaultRouteForCategory}
+          />
+          {error && <div className="admin-error">{error}</div>}
+          {successMessage && <div className="admin-success">{successMessage}</div>}
 
-        <OperationsSectionPage
-          activeTab={activeTab}
-          bookingsPageProps={bookingsPageProps}
-          calendarPageProps={calendarPageProps}
-          manualBookingPageProps={manualBookingPageProps}
-          flightsPageProps={flightsPageProps}
-          messagesPageProps={messagesPageProps}
-        />
+          <OperationsSectionPage
+            activeTab={activeTab}
+            bookingsPageProps={bookingsPageProps}
+            calendarPageProps={calendarPageProps}
+            manualBookingPageProps={manualBookingPageProps}
+            flightsPageProps={flightsPageProps}
+            messagesPageProps={messagesPageProps}
+          />
 
         {activeTab === 'payroll' || activeTab === 'users' ? (
           <StaffSectionPage {...staffSectionProps} />
