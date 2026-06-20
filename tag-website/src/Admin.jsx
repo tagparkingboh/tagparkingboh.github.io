@@ -3717,6 +3717,66 @@ function Admin() {
     return groups
   }, [filteredBookings])
 
+  // Group flights by month (YYYY-MM)
+  const departuresByMonth = useMemo(() => {
+    const groups = {}
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December']
+
+    departures.forEach(flight => {
+      if (!flight.date) return
+      const monthKey = flight.date.substring(0, 7)
+      if (!groups[monthKey]) {
+        const [year, month] = monthKey.split('-')
+        groups[monthKey] = {
+          label: `${monthNames[parseInt(month) - 1]} ${year}`,
+          flights: []
+        }
+      }
+      groups[monthKey].flights.push(flight)
+    })
+
+    return Object.keys(groups)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = groups[key]
+        return acc
+      }, {})
+  }, [departures])
+
+  const arrivalsByMonth = useMemo(() => {
+    const groups = {}
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December']
+
+    arrivals.forEach(flight => {
+      if (!flight.date) return
+      const monthKey = flight.date.substring(0, 7)
+      if (!groups[monthKey]) {
+        const [year, month] = monthKey.split('-')
+        groups[monthKey] = {
+          label: `${monthNames[parseInt(month) - 1]} ${year}`,
+          flights: []
+        }
+      }
+      groups[monthKey].flights.push(flight)
+    })
+
+    return Object.keys(groups)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = groups[key]
+        return acc
+      }, {})
+  }, [arrivals])
+
+  const toggleFlightMonth = (monthKey) => {
+    setCollapsedFlightMonths(prev => ({
+      ...prev,
+      [monthKey]: !prev[monthKey]
+    }))
+  }
+
 
   const handleCancelClick = (booking, e) => {
     e.stopPropagation()
