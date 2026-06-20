@@ -4577,6 +4577,649 @@ function Admin() {
     return date.toLocaleString('en-GB', { timeZone: 'Europe/London' })
   }
 
+  // Insert SMS variable at cursor position
+  const insertSmsVariable = (variable, textareaRef, currentValue, setValue) => {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      // Fallback: append to end
+      setValue(prev => ({ ...prev, content: prev.content + variable }))
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const newContent = currentValue.substring(0, start) + variable + currentValue.substring(end)
+    setValue(prev => ({ ...prev, content: newContent }))
+
+    // Restore cursor position after the inserted variable
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + variable.length, start + variable.length)
+    }, 0)
+  }
+
+  // SMS Message functions
+  const fetchSmsMessages = async () => {
+    setLoadingMessages(true)
+    try {
+      const params = new URLSearchParams()
+      if (smsDirectionFilter !== 'all') params.append('direction', smsDirectionFilter)
+      if (smsStatusFilter !== 'all') params.append('status', smsStatusFilter)
+      params.append('limit', '100')
+
+      const response = await fetch(`${API_URL}/api/admin/sms/messages?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsMessages(data.messages || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS messages:', err)
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
+  const fetchSmsTemplates = async () => {
+    setLoadingTemplates(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsTemplates(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS templates:', err)
+    } finally {
+      setLoadingTemplates(false)
+    }
+  }
+
+  const fetchSmsStats = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsStats(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS stats:', err)
+    }
+  }
+
+  // Fetch SMS threads (conversations grouped by phone)
+  const fetchSmsThreads = async () => {
+    setLoadingThreads(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/threads`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsThreads(data.threads || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS threads:', err)
+    } finally {
+      setLoadingThreads(false)
+    }
+  }
+
+  // Fetch conversation messages for a specific thread
+  const fetchConversation = async (phoneNumber, options = {}) => {
+    const { silent = false } = options
+    if (!silent) setLoadingConversation(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/messages/conversation/${encodeURIComponent(phoneNumber)}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setThreadMessages(data.messages || [])
+        // Refresh thread list to update unread counts
+        fetchSmsThreads()
+        fetchSmsStats()
+        // Scroll to bottom of conversation
+        setTimeout(() => {
+          conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        }, 100)
+      }
+    } catch (err) {
+      console.error('Failed to fetch conversation:', err)
+    } finally {
+      if (!silent) setLoadingConversation(false)
+    }
+  }
+
+  // Select a thread and load its messages
+  const selectThread = (thread) => {
+    setSelectedThread(thread)
+    setReplyContent('')
+    fetchConversation(thread.phone_number)
+  }
+
+  // Send a reply in the current conversation
+  const sendReply = async () => {
+    if (!selectedThread || !replyContent.trim()) return
+    setSendingReply(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: selectedThread.phone_number,
+          content: replyContent.trim(),
+          customer_id: selectedThread.customer?.id || null,
+        }),
+      })
+      if (response.ok) {
+        setReplyContent('')
+        fetchConversation(selectedThread.phone_number)
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to send message'}`)
+        setTimeout(() => setMessagesMessage(''), 5000)
+      }
+    } catch (err) {
+      console.error('Failed to send reply:', err)
+      setMessagesMessage('Error: Failed to send message')
+      setTimeout(() => setMessagesMessage(''), 5000)
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
+  // Toggle thread selection for bulk operations
+  const toggleThreadSelection = (phoneNumber, e) => {
+    e.stopPropagation()
+    setSelectedThreads(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(phoneNumber)) {
+        newSet.delete(phoneNumber)
+      } else {
+        newSet.add(phoneNumber)
+      }
+      return newSet
+    })
+  }
+
+  // Select/deselect all threads
+  const toggleSelectAll = () => {
+    if (selectedThreads.size === smsThreads.length) {
+      setSelectedThreads(new Set())
+    } else {
+      setSelectedThreads(new Set(smsThreads.map(t => t.phone_number)))
+    }
+  }
+
+  // Delete a single thread
+  const deleteThread = async (phoneNumber) => {
+    if (!confirm(`Delete all messages with ${phoneNumber}?`)) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/threads/${encodeURIComponent(phoneNumber)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        if (selectedThread?.phone_number === phoneNumber) {
+          setSelectedThread(null)
+          setThreadMessages([])
+        }
+        fetchSmsThreads()
+        fetchSmsStats()
+      }
+    } catch (err) {
+      console.error('Failed to delete thread:', err)
+    }
+  }
+
+  // Bulk delete selected threads
+  const bulkDeleteThreads = async () => {
+    if (selectedThreads.size === 0) return
+    if (!confirm(`Delete ${selectedThreads.size} conversation(s)?`)) return
+
+    setDeletingThreads(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/threads/bulk-delete`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone_numbers: Array.from(selectedThreads) }),
+      })
+      if (response.ok) {
+        if (selectedThread && selectedThreads.has(selectedThread.phone_number)) {
+          setSelectedThread(null)
+          setThreadMessages([])
+        }
+        setSelectedThreads(new Set())
+        fetchSmsThreads()
+        fetchSmsStats()
+      }
+    } catch (err) {
+      console.error('Failed to bulk delete threads:', err)
+    } finally {
+      setDeletingThreads(false)
+    }
+  }
+
+  const fetchSmsDrafts = async () => {
+    setLoadingDrafts(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/drafts`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsDrafts(data.drafts || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS drafts:', err)
+    } finally {
+      setLoadingDrafts(false)
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true)
+    setMessagesMessage('')
+    try {
+      const url = editingDraft
+        ? `${API_URL}/api/admin/sms/drafts/${editingDraft.id}`
+        : `${API_URL}/api/admin/sms/drafts`
+      const method = editingDraft ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: sendSmsForm.phone,
+          content: sendSmsForm.content,
+          booking_id: sendSmsForm.booking_id ? parseInt(sendSmsForm.booking_id) : null,
+          customer_id: sendSmsForm.customer_id ? parseInt(sendSmsForm.customer_id) : null,
+        }),
+      })
+      if (response.ok) {
+        setMessagesMessage(editingDraft ? 'Draft updated!' : 'Draft saved!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setShowSendSmsModal(false)
+        setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
+        setSelectedSmsBooking(null)
+        setSmsBookingSearch('')
+        setSmsBookingResults([])
+        setEditingDraft(null)
+        fetchSmsDrafts()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to save draft'}`)
+      }
+    } catch (err) {
+      console.error('Failed to save draft:', err)
+      setMessagesMessage('Error: Failed to save draft')
+    } finally {
+      setSavingDraft(false)
+    }
+  }
+
+  const handleSendDraft = async (draftId) => {
+    setSendingDraftId(draftId)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/drafts/${draftId}/send`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Draft sent successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        fetchSmsDrafts()
+        fetchSmsMessages()
+        fetchSmsStats()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to send draft'}`)
+      }
+    } catch (err) {
+      console.error('Failed to send draft:', err)
+      setMessagesMessage('Error: Failed to send draft')
+    } finally {
+      setSendingDraftId(null)
+    }
+  }
+
+  const handleDeleteDraft = async (draftId) => {
+    setDeletingDraftId(draftId)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/drafts/${draftId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Draft deleted!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        fetchSmsDrafts()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to delete draft'}`)
+      }
+    } catch (err) {
+      console.error('Failed to delete draft:', err)
+    } finally {
+      setDeletingDraftId(null)
+    }
+  }
+
+  const handleEditDraft = (draft) => {
+    setEditingDraft(draft)
+    setSendSmsForm({
+      phone: draft.phone_number || '',
+      content: draft.content || '',
+      booking_id: draft.booking_id || '',
+      customer_id: draft.customer_id || '',
+    })
+    if (draft.booking_reference) {
+      setSelectedSmsBooking({
+        id: draft.booking_id,
+        reference: draft.booking_reference,
+        customer_first_name: draft.customer_name?.split(' ')[0] || '',
+        customer_last_name: draft.customer_name?.split(' ').slice(1).join(' ') || '',
+      })
+    }
+    setShowSendSmsModal(true)
+  }
+
+  const refreshSmsStatuses = async () => {
+    setLoadingMessages(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/refresh-statuses`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.updated > 0) {
+          setMessagesMessage(`Updated ${data.updated} message status${data.updated > 1 ? 'es' : ''}`)
+        } else {
+          setMessagesMessage('All statuses are up to date')
+        }
+        setTimeout(() => setMessagesMessage(''), 3000)
+        if (selectedThread) {
+          fetchConversation(selectedThread.phone_number, { silent: true })
+        } else {
+          fetchSmsMessages()
+        }
+        fetchSmsStats()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to refresh statuses'}`)
+      }
+    } catch (err) {
+      console.error('Failed to refresh SMS statuses:', err)
+      setMessagesMessage('Error: Failed to refresh statuses')
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
+  const handleSendSms = async () => {
+    setSendingSms(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: sendSmsForm.phone,
+          content: sendSmsForm.content,
+          booking_id: sendSmsForm.booking_id ? parseInt(sendSmsForm.booking_id) : null,
+          customer_id: sendSmsForm.customer_id ? parseInt(sendSmsForm.customer_id) : null,
+        }),
+      })
+
+      if (response.ok) {
+        setMessagesMessage('SMS sent successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setShowSendSmsModal(false)
+        setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
+        fetchSmsMessages()
+        fetchSmsStats()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to send SMS'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setSendingSms(false)
+    }
+  }
+
+  const handleSaveTemplate = async () => {
+    setSavingTemplate(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates/${editingTemplate.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editingTemplate.name,
+          content: editingTemplate.content,
+          description: editingTemplate.description,
+          is_active: editingTemplate.is_active,
+          trigger_event: editingTemplate.trigger_event || null,
+          is_automated: !!editingTemplate.trigger_event,
+        }),
+      })
+
+      if (response.ok) {
+        setMessagesMessage('Template saved successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setShowEditTemplateModal(false)
+        setEditingTemplate(null)
+        fetchSmsTemplates()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to save template'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  const handleCreateTemplate = async () => {
+    setCreatingTemplate(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newTemplate.name,
+          content: newTemplate.content,
+          description: newTemplate.description,
+          is_active: newTemplate.is_active,
+          trigger_event: newTemplate.trigger_event || null,
+          is_automated: !!newTemplate.trigger_event,
+        }),
+      })
+
+      if (response.ok) {
+        setMessagesMessage('Template created successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setShowCreateTemplateModal(false)
+        setNewTemplate({ name: '', content: '', description: '', is_active: true, trigger_event: null })
+        fetchSmsTemplates()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to create template'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setCreatingTemplate(false)
+    }
+  }
+
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete) return
+    setDeletingTemplateId(templateToDelete.id)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates/${templateToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Template deleted successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setTemplateToDelete(null)
+        fetchSmsTemplates()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to delete template'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setDeletingTemplateId(null)
+    }
+  }
+
+  const handleResendMessage = async (messageId) => {
+    setResendingMessageId(messageId)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/messages/${messageId}/resend`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Message resent successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        fetchSmsMessages()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to resend message'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setResendingMessageId(null)
+    }
+  }
+
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete) return
+    setDeletingMessageId(messageToDelete.id)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/messages/${messageToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Message deleted successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setMessageToDelete(null)
+        fetchSmsMessages()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to delete message'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setDeletingMessageId(null)
+    }
+  }
+
+  const searchBookingsForSms = async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSmsBookingResults([])
+      return
+    }
+
+    setSearchingSmsBookings(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings?search=${encodeURIComponent(searchTerm)}&limit=10`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only show bookings with phone numbers
+        const withPhone = (data.bookings || []).filter(b => b.customer?.phone)
+        setSmsBookingResults(withPhone.slice(0, 5))
+      }
+    } catch (err) {
+      console.error('Failed to search bookings:', err)
+    } finally {
+      setSearchingSmsBookings(false)
+    }
+  }
+
+  const selectBookingForSms = (booking) => {
+    setSelectedSmsBooking(booking)
+    setSendSmsForm(prev => ({
+      ...prev,
+      phone: booking.customer?.phone || '',
+      booking_id: booking.id?.toString() || '',
+      customer_id: booking.customer?.id?.toString() || '',
+    }))
+    setSmsBookingSearch('')
+    setSmsBookingResults([])
+  }
+
+  const clearSelectedBooking = () => {
+    setSelectedSmsBooking(null)
+    setSendSmsForm(prev => ({
+      ...prev,
+      phone: '',
+      booking_id: '',
+      customer_id: '',
+    }))
+  }
+
+  const formatPhoneForDisplay = (phone) => {
+    if (!phone) return '-'
+    // Format 447XXXXXXXXX as +44 7XXX XXX XXX
+    if (phone.startsWith('44') && phone.length === 12) {
+      return `+44 ${phone.slice(2, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`
+    }
+    return phone
+  }
+
+  const getSmsStatusBadge = (status) => {
+    const statusColors = {
+      pending: 'status-pending',
+      sent: 'status-confirmed',
+      delivered: 'status-completed',
+      failed: 'status-cancelled',
+    }
+    return statusColors[status] || 'status-pending'
+  }
+
   const formatPence = (amountPence) => (
     amountPence === null || amountPence === undefined ? '-' : `£${(amountPence / 100).toFixed(2)}`
   )
