@@ -25,13 +25,9 @@ import ForecastPage from './components/admin/reports/ForecastPage'
 import OccupancyPage from './components/admin/reports/OccupancyPage'
 import PopularRoutesPage from './components/admin/reports/PopularRoutesPage'
 import LocationMapsPage from './components/admin/reports/LocationMapsPage'
-import PayrollPage from './components/admin/staff/PayrollPage'
-import UsersPage from './components/admin/staff/UsersPage'
-import CustomersPage from './components/admin/customers/CustomersPage'
-import LeadsPage from './components/admin/customers/LeadsPage'
-import PricingPage from './components/admin/settings/PricingPage'
-import TestimonialsPage from './components/admin/settings/TestimonialsPage'
-import PromoModalsPage from './components/admin/settings/PromoModalsPage'
+import SettingsSectionPage from './components/admin/settings/SettingsSectionPage'
+import StaffSectionPage from './components/admin/staff/StaffSectionPage'
+import CustomersSectionPage from './components/admin/customers/CustomersSectionPage'
 import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
@@ -5971,6 +5967,25 @@ function Admin() {
     setShowDeletePromoModal,
   }
 
+  const settingsSectionProps = {
+    activeTab,
+    pricingSectionProps,
+    testimonialsSectionProps,
+    promoModalsSectionProps,
+  }
+
+  const staffSectionProps = {
+    activeTab,
+    staffPayrollPageProps,
+    staffUsersPageProps,
+  }
+
+  const customersSectionProps = {
+    activeTab,
+    customersPageProps,
+    leadsPageProps,
+  }
+
   const qaSectionProps = {
     activeTab,
     API_URL,
@@ -6131,8 +6146,9 @@ function Admin() {
         {activeTab === 'manual-booking' && <ManualBookingPage {...manualBookingPageProps} />}
         {activeTab === 'flights' && <FlightsPage {...flightsPageProps} />}
 
-        {activeTab === 'payroll' && <PayrollPage {...staffPayrollPageProps} />}
-        {activeTab === 'users' && <UsersPage {...staffUsersPageProps} />}
+        {activeTab === 'payroll' || activeTab === 'users' ? (
+          <StaffSectionPage {...staffSectionProps} />
+        ) : null}
 
         {activeTab === 'messages' && <MessagesPage {...messagesSectionProps} />}
 
@@ -6142,12 +6158,13 @@ function Admin() {
         {activeTab === 'marketing' && marketingSubTab === 'referrals' && <ReferralsPage {...marketingSectionProps} />}
         {activeTab === 'marketing' && marketingSubTab === 'sources' && <SourcesPage {...marketingSectionProps} />}
 
-        {activeTab === 'customers' && <CustomersPage {...customersPageProps} />}
-        {activeTab === 'leads' && <LeadsPage {...leadsPageProps} />}
+        {(activeTab === 'customers' || activeTab === 'leads') ? (
+          <CustomersSectionPage {...customersSectionProps} />
+        ) : null}
 
-        {activeTab === 'pricing' && <PricingPage {...pricingSectionProps} />}
-        {activeTab === 'testimonials' && <TestimonialsPage {...testimonialsSectionProps} />}
-        {activeTab === 'promo-modals' && <PromoModalsPage {...promoModalsSectionProps} />}
+        {(activeTab === 'pricing' || activeTab === 'testimonials' || activeTab === 'promo-modals') ? (
+          <SettingsSectionPage {...settingsSectionProps} />
+        ) : null}
 
         {activeTab === 'reports' && reportsSubTab === 'growth' && <BookingGrowthPage {...reportsSectionProps} />}
         {activeTab === 'reports' && reportsSubTab === 'financial' && <FinancialsPage {...reportsSectionProps} />}
