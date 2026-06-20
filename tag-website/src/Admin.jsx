@@ -429,26 +429,6 @@ function Admin() {
   const [leadDateTo, setLeadDateTo] = useState(null)
   const [expandedLeadMonths, setExpandedLeadMonths] = useState({})
 
-  // Customers state
-  const [customers, setCustomers] = useState([])
-  const [loadingCustomers, setLoadingCustomers] = useState(false)
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
-  const [customerDateFrom, setCustomerDateFrom] = useState(null)
-  const [customerDateTo, setCustomerDateTo] = useState(null)
-  const [expandedCustomerMonths, setExpandedCustomerMonths] = useState({})
-  const [editingCustomerId, setEditingCustomerId] = useState(null)
-  const [editCustomerForm, setEditCustomerForm] = useState({ email: '', phone: '' })
-  const [savingCustomer, setSavingCustomer] = useState(false)
-  const [deletingCustomerId, setDeletingCustomerId] = useState(null)
-  const [customerMessage, setCustomerMessage] = useState('')
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [showCustomerModal, setShowCustomerModal] = useState(false)
-  const [loadingCustomerDetail, setLoadingCustomerDetail] = useState(false)
-  const [addingVehicle, setAddingVehicle] = useState(false)
-  const [showAddVehicleForm, setShowAddVehicleForm] = useState(false)
-  const [newVehicleForm, setNewVehicleForm] = useState({ registration: '', make: '', model: '', colour: '' })
-  const [vehicleLookupLoading, setVehicleLookupLoading] = useState(false)
-
   // Swap vehicle state
   const [showSwapVehicleModal, setShowSwapVehicleModal] = useState(false)
   const [swappingVehicle, setSwappingVehicle] = useState(false)
@@ -1022,13 +1002,6 @@ function Admin() {
   useEffect(() => {
     if (activeTab === 'leads' && token) {
       fetchLeads()
-    }
-  }, [activeTab, token])
-
-  // Fetch customers when customers tab is active
-  useEffect(() => {
-    if (activeTab === 'customers' && token) {
-      fetchCustomers()
     }
   }, [activeTab, token])
 
@@ -3318,144 +3291,6 @@ function Admin() {
     }
   }
 
-  const fetchCustomers = async () => {
-    setLoadingCustomers(true)
-    setError('')
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setCustomers(data.customers || [])
-      } else {
-        setError('Failed to load customers')
-      }
-    } catch (err) {
-      setError('Network error loading customers')
-    } finally {
-      setLoadingCustomers(false)
-    }
-  }
-
-  const startEditCustomer = (customer) => {
-    setEditingCustomerId(customer.id)
-    setEditCustomerForm({ email: customer.email || '', phone: customer.phone || '' })
-    setCustomerMessage('')
-  }
-
-  const cancelEditCustomer = () => {
-    setEditingCustomerId(null)
-    setEditCustomerForm({ email: '', phone: '' })
-  }
-
-  const saveCustomerEdit = async () => {
-    if (!editingCustomerId) return
-
-    setSavingCustomer(true)
-    setCustomerMessage('')
-
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${editingCustomerId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editCustomerForm),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        // Update customer in local state
-        setCustomers(prev => prev.map(c =>
-          c.id === editingCustomerId ? data.customer : c
-        ))
-        setEditingCustomerId(null)
-        setEditCustomerForm({ email: '', phone: '' })
-        setCustomerMessage('Customer updated successfully')
-        setTimeout(() => setCustomerMessage(''), 3000)
-        // Refresh bookings to reflect customer changes
-        fetchBookings()
-      } else {
-        const error = await response.json()
-        setCustomerMessage(`Error: ${error.detail || 'Failed to update customer'}`)
-      }
-    } catch (err) {
-      setCustomerMessage('Network error updating customer')
-    } finally {
-      setSavingCustomer(false)
-    }
-  }
-
-  const deleteCustomer = async (customerId) => {
-    if (!window.confirm('Are you sure you want to delete this customer?')) return
-
-    setDeletingCustomerId(customerId)
-    setCustomerMessage('')
-
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${customerId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        // Remove from local state
-        setCustomers(prev => prev.filter(c => c.id !== customerId))
-        setCustomerMessage('Customer deleted successfully')
-        setTimeout(() => setCustomerMessage(''), 3000)
-      } else {
-        const error = await response.json()
-        setCustomerMessage(`Error: ${error.detail || 'Failed to delete customer'}`)
-      }
-    } catch (err) {
-      setCustomerMessage('Network error deleting customer')
-    } finally {
-      setDeletingCustomerId(null)
-    }
-  }
-
-  // Open customer detail modal
-  const openCustomerModal = async (customer) => {
-    setShowCustomerModal(true)
-    setLoadingCustomerDetail(true)
-    setSelectedCustomer(null)
-    setShowAddVehicleForm(false)
-    setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
-
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${customer.id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedCustomer(data)
-      } else {
-        setCustomerMessage('Failed to load customer details')
-        setShowCustomerModal(false)
-      }
-    } catch (err) {
-      setCustomerMessage('Network error loading customer details')
-      setShowCustomerModal(false)
-    } finally {
-      setLoadingCustomerDetail(false)
-    }
-  }
-
-  const closeCustomerModal = () => {
-    setShowCustomerModal(false)
-    setSelectedCustomer(null)
-    setShowAddVehicleForm(false)
-    setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
-  }
-
   const getReferralActionCopy = (action) => (
     {
       'cancel-code': {
@@ -3497,12 +3332,6 @@ function Admin() {
       const data = await response.json()
       if (response.ok) {
         await fetchReferralsDashboard()
-        if (selectedCustomer?.id === customer.customer_id && data.referral_program) {
-          setSelectedCustomer(prev => ({
-            ...prev,
-            referral_program: data.referral_program,
-          }))
-        }
       } else {
         setError(data.detail || 'Referral action failed')
       }
@@ -3512,6 +3341,16 @@ function Admin() {
       referralDashboardActionInFlightRef.current = false
       setReferralDashboardAction(null)
     }
+  }
+
+  const openCustomerModalFromMarketing = (customer) => {
+    if (!customer?.id) return
+    handleTabSelect('customers')
+    navigate(getAdminRouteForItem('customers'), {
+      state: {
+        openCustomerId: customer.id,
+      },
+    })
   }
 
   const handleManualReferralInvite = async (e) => {
@@ -3549,165 +3388,6 @@ function Admin() {
       setError('Network error sending referral invite')
     } finally {
       setSendingManualReferralInvite(false)
-    }
-  }
-
-  // DVLA vehicle lookup for customer modal
-  const handleVehicleLookup = async () => {
-    const reg = newVehicleForm.registration.toUpperCase().replace(/\s/g, '')
-    if (!reg) return
-
-    setVehicleLookupLoading(true)
-    try {
-      const response = await fetch(`${API_URL}/api/vehicles/dvla-lookup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ registration: reg }),
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setNewVehicleForm(prev => ({
-          ...prev,
-          registration: reg,
-          make: data.make || '',
-          colour: data.colour || '',
-          tax_status: data.tax_status || null,
-          mot_status: data.mot_status || null,
-          tax_due_date: data.tax_due_date || null,
-          mot_expiry_date: data.mot_expiry_date || null,
-        }))
-      } else {
-        setCustomerMessage('Vehicle not found - please enter details manually')
-        setTimeout(() => setCustomerMessage(''), 3000)
-      }
-    } catch (err) {
-      setCustomerMessage('Error looking up vehicle')
-      setTimeout(() => setCustomerMessage(''), 3000)
-    } finally {
-      setVehicleLookupLoading(false)
-    }
-  }
-
-  // Add vehicle to customer
-  const handleAddVehicle = async () => {
-    if (!selectedCustomer || !newVehicleForm.registration || !newVehicleForm.make || !newVehicleForm.colour) {
-      setCustomerMessage('Please fill in registration, make, and colour')
-      setTimeout(() => setCustomerMessage(''), 3000)
-      return
-    }
-
-    setAddingVehicle(true)
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}/vehicles`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newVehicleForm),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        // Add vehicle to selected customer
-        setSelectedCustomer(prev => ({
-          ...prev,
-          vehicles: [...prev.vehicles, data.vehicle],
-        }))
-        setShowAddVehicleForm(false)
-        setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
-        setCustomerMessage('Vehicle added successfully')
-        setTimeout(() => setCustomerMessage(''), 3000)
-      } else {
-        const error = await response.json()
-        setCustomerMessage(`Error: ${error.detail || 'Failed to add vehicle'}`)
-        setTimeout(() => setCustomerMessage(''), 5000)
-      }
-    } catch (err) {
-      setCustomerMessage('Network error adding vehicle')
-      setTimeout(() => setCustomerMessage(''), 3000)
-    } finally {
-      setAddingVehicle(false)
-    }
-  }
-
-  // Delete customer from modal
-  const deleteCustomerFromModal = async () => {
-    if (!selectedCustomer) return
-    if (!window.confirm('Are you sure you want to delete this customer?')) return
-
-    setDeletingCustomerId(selectedCustomer.id)
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        setCustomers(prev => prev.filter(c => c.id !== selectedCustomer.id))
-        closeCustomerModal()
-        setCustomerMessage('Customer deleted successfully')
-        setTimeout(() => setCustomerMessage(''), 3000)
-      } else {
-        const error = await response.json()
-        setCustomerMessage(`Error: ${error.detail || 'Failed to delete customer'}`)
-      }
-    } catch (err) {
-      setCustomerMessage('Network error deleting customer')
-    } finally {
-      setDeletingCustomerId(null)
-    }
-  }
-
-  // Start editing from modal
-  const startEditFromModal = () => {
-    if (!selectedCustomer) return
-    setEditingCustomerId(selectedCustomer.id)
-    setEditCustomerForm({ email: selectedCustomer.email || '', phone: selectedCustomer.phone || '' })
-  }
-
-  // Save edit from modal
-  const saveEditFromModal = async () => {
-    if (!selectedCustomer) return
-
-    setSavingCustomer(true)
-    try {
-      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editCustomerForm),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        // Update customer in list
-        setCustomers(prev => prev.map(c =>
-          c.id === selectedCustomer.id ? data.customer : c
-        ))
-        // Update selected customer
-        setSelectedCustomer(prev => ({
-          ...prev,
-          email: data.customer.email,
-          phone: data.customer.phone,
-        }))
-        setEditingCustomerId(null)
-        setEditCustomerForm({ email: '', phone: '' })
-        setCustomerMessage('Customer updated successfully')
-        setTimeout(() => setCustomerMessage(''), 3000)
-        fetchBookings()
-      } else {
-        const error = await response.json()
-        setCustomerMessage(`Error: ${error.detail || 'Failed to update customer'}`)
-      }
-    } catch (err) {
-      setCustomerMessage('Network error updating customer')
-    } finally {
-      setSavingCustomer(false)
     }
   }
 
@@ -4810,44 +4490,6 @@ function Admin() {
     return filtered
   }, [subscribers, subscriberSearchTerm, subscriberStatusFilter, hideTestEmails, subscriberDateFrom, subscriberDateTo])
 
-  const filteredCustomers = useMemo(() => {
-    let filtered = [...customers]
-
-    // Apply search filter
-    if (customerSearchTerm.trim()) {
-      const search = customerSearchTerm.toLowerCase().trim()
-      filtered = filtered.filter(c =>
-        c.first_name?.toLowerCase().includes(search) ||
-        c.last_name?.toLowerCase().includes(search) ||
-        c.email?.toLowerCase().includes(search) ||
-        c.phone?.includes(search) ||
-        c.billing_postcode?.toLowerCase().includes(search) ||
-        `${c.first_name} ${c.last_name}`.toLowerCase().includes(search)
-      )
-    }
-
-    // Apply date filter
-    if (customerDateFrom || customerDateTo) {
-      filtered = filtered.filter(c => {
-        const custDate = c.created_at ? new Date(c.created_at) : null
-        if (!custDate) return false
-        if (customerDateFrom) {
-          const fromDate = new Date(customerDateFrom)
-          fromDate.setHours(0, 0, 0, 0)
-          if (custDate < fromDate) return false
-        }
-        if (customerDateTo) {
-          const toDate = new Date(customerDateTo)
-          toDate.setHours(23, 59, 59, 999)
-          if (custDate > toDate) return false
-        }
-        return true
-      })
-    }
-
-    return filtered
-  }, [customers, customerSearchTerm, customerDateFrom, customerDateTo])
-
   if (loading) {
     return (
       <div className="admin-loading">
@@ -5143,7 +4785,7 @@ function Admin() {
   newCampaign,
   newPromotion,
   openCampaignForEdit,
-  openCustomerModal,
+  openCustomerModal: openCustomerModalFromMarketing,
   openExpiryModal,
   openFounderEmailModal,
   openGenerateCodesModal,
@@ -5359,46 +5001,13 @@ function Admin() {
   }
 
   const customersPageProps = {
-    customers,
-    filteredCustomers,
-    loadingCustomers,
-    customerSearchTerm,
-    setCustomerSearchTerm,
-    customerDateFrom,
-    setCustomerDateFrom,
-    customerDateTo,
-    setCustomerDateTo,
-    fetchCustomers,
-    customerMessage,
-    expandedCustomerMonths,
-    setExpandedCustomerMonths,
+    API_URL,
+    token,
     formatMarketingSource,
-    openCustomerModal,
-    showCustomerModal,
-    selectedCustomer,
-    loadingCustomerDetail,
-    closeCustomerModal,
-    editingCustomerId,
-    setEditingCustomerId,
-    editCustomerForm,
-    setEditCustomerForm,
-    saveEditFromModal,
-    savingCustomer,
-    startEditFromModal,
-    deleteCustomerFromModal,
-    deletingCustomerId,
-    showAddVehicleForm,
-    setShowAddVehicleForm,
-    newVehicleForm,
-    setNewVehicleForm,
-    vehicleLookupLoading,
-    handleVehicleLookup,
-    handleAddVehicle,
-    addingVehicle,
     onViewReferralDetails: () => {
-      closeCustomerModal()
       handleTabSelect('referrals')
     },
+    onRefreshBookings: fetchBookings,
   }
 
   const leadsPageProps = {
