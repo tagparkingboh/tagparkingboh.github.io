@@ -471,19 +471,6 @@ function Admin() {
   const [savingPricing, setSavingPricing] = useState(false)
   const [pricingMessage, setPricingMessage] = useState('')
 
-  // Users management state
-  const [users, setUsers] = useState([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
-  const [userSearchTerm, setUserSearchTerm] = useState('')
-  const [showUserModal, setShowUserModal] = useState(false)
-  const [editingUser, setEditingUser] = useState(null)
-  const [userForm, setUserForm] = useState({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true, driver_type: 'fleet' })
-  const [savingUser, setSavingUser] = useState(false)
-  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false)
-  const [userToDelete, setUserToDelete] = useState(null)
-  const [deletingUser, setDeletingUser] = useState(false)
-  const [userSuccessMessage, setUserSuccessMessage] = useState('')
-
   // Flights management state
   const [flightsSubTab, setFlightsSubTab] = useState('departures')
   const [departures, setDepartures] = useState([])
@@ -1049,13 +1036,6 @@ function Admin() {
   useEffect(() => {
     if (activeTab === 'pricing' && token) {
       fetchPricing()
-    }
-  }, [activeTab, token])
-
-  // Fetch users when users tab is active
-  useEffect(() => {
-    if (activeTab === 'users' && token) {
-      fetchUsers()
     }
   }, [activeTab, token])
 
@@ -3181,26 +3161,6 @@ function Admin() {
     }
   }
 
-  const fetchUsers = async () => {
-    setLoadingUsers(true)
-    setError('')
-    try {
-      const response = await fetch(`${API_URL}/api/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setUsers(data.users || [])
-      } else {
-        setError('Failed to load users')
-      }
-    } catch (err) {
-      setError('Network error loading users')
-    } finally {
-      setLoadingUsers(false)
-    }
-  }
-
   // Flights management functions
   const fetchFlightFilters = async () => {
     try {
@@ -3335,123 +3295,6 @@ function Admin() {
       setExportingFlights(false)
     }
   }
-
-  const openAddUserModal = () => {
-    setEditingUser(null)
-    // New users default to fleet driver_type; admin checkbox flips the default
-    // to NULL — see effect in the form's Admin onChange below.
-    setUserForm({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true, driver_type: 'fleet' })
-    setShowUserModal(true)
-  }
-
-  const openEditUserModal = (u) => {
-    setEditingUser(u)
-    setUserForm({
-      first_name: u.first_name || '',
-      last_name: u.last_name || '',
-      email: u.email || '',
-      phone: u.phone || '',
-      is_admin: u.is_admin,
-      is_active: u.is_active,
-      driver_type: u.driver_type ?? '',
-    })
-    setShowUserModal(true)
-  }
-
-  const handleSaveUser = async () => {
-    setSavingUser(true)
-    setError('')
-    try {
-      const url = editingUser
-        ? `${API_URL}/api/admin/users/${editingUser.id}`
-        : `${API_URL}/api/admin/users`
-      const method = editingUser ? 'PUT' : 'POST'
-      // Empty string in the select means "no driver type" — send NULL so the
-      // backend's model_fields_set check fires and the column is cleared.
-      const payload = {
-        ...userForm,
-        driver_type: userForm.driver_type === '' ? null : userForm.driver_type,
-      }
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
-      if (response.ok) {
-        setShowUserModal(false)
-        setUserSuccessMessage(editingUser ? 'User updated successfully' : 'User created successfully')
-        setTimeout(() => setUserSuccessMessage(''), 3000)
-        fetchUsers()
-      } else {
-        const data = await response.json()
-        setError(data.detail || 'Failed to save user')
-      }
-    } catch (err) {
-      setError('Network error saving user')
-    } finally {
-      setSavingUser(false)
-    }
-  }
-
-  const handleToggleUserField = async (u, field) => {
-    try {
-      const response = await fetch(`${API_URL}/api/admin/users/${u.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ [field]: !u[field] }),
-      })
-      if (response.ok) {
-        fetchUsers()
-      } else {
-        const data = await response.json()
-        setError(data.detail || `Failed to update ${field}`)
-        setTimeout(() => setError(''), 3000)
-      }
-    } catch (err) {
-      setError(`Network error updating ${field}`)
-    }
-  }
-
-  const handleDeleteUser = async () => {
-    if (!userToDelete) return
-    setDeletingUser(true)
-    try {
-      const response = await fetch(`${API_URL}/api/admin/users/${userToDelete.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      if (response.ok) {
-        setShowDeleteUserModal(false)
-        setUserToDelete(null)
-        setUserSuccessMessage('User deleted successfully')
-        setTimeout(() => setUserSuccessMessage(''), 3000)
-        fetchUsers()
-      } else {
-        const data = await response.json()
-        setError(data.detail || 'Failed to delete user')
-      }
-    } catch (err) {
-      setError('Network error deleting user')
-    } finally {
-      setDeletingUser(false)
-    }
-  }
-
-  const filteredUsers = useMemo(() => {
-    if (!userSearchTerm) return users
-    const term = userSearchTerm.toLowerCase()
-    return users.filter(u =>
-      (u.first_name || '').toLowerCase().includes(term) ||
-      (u.last_name || '').toLowerCase().includes(term) ||
-      (u.email || '').toLowerCase().includes(term)
-    )
-  }, [users, userSearchTerm])
 
   const fetchLeads = async () => {
     setLoadingLeads(true)
@@ -5511,28 +5354,8 @@ function Admin() {
   }
 
   const staffUsersPageProps = {
-    userSuccessMessage,
-    error,
-    userSearchTerm,
-    setUserSearchTerm,
-    filteredUsers,
-    loadingUsers,
-    openAddUserModal,
-    openEditUserModal,
-    handleToggleUserField,
-    setUserToDelete,
-    setShowDeleteUserModal,
-    showUserModal,
-    setShowUserModal,
-    editingUser,
-    userForm,
-    setUserForm,
-    handleSaveUser,
-    savingUser,
-    showDeleteUserModal,
-    userToDelete,
-    handleDeleteUser,
-    deletingUser,
+    API_URL,
+    token,
   }
 
   const customersPageProps = {
