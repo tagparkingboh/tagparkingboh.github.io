@@ -116,7 +116,7 @@ const MarketingSectionPage = ({
   sendingCampaign,
   sendingManualReferralInvite,
   sendingPromoEmails,
-  setActiveTab,
+  onSelectAdminItem,
   setCampaignConfirm,
   setCampaignToast,
   setEditingPromotion,
@@ -2017,7 +2017,7 @@ const MarketingSectionPage = ({
                               type="button"
                               className="link-button"
                               onClick={() => {
-                                setActiveTab('bookings')
+                                onSelectAdminItem('bookings')
                                 setSearchTerm(row.booking_reference)
                               }}
                             >

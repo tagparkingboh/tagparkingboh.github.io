@@ -605,7 +605,6 @@ const BookingsSection = ({
   setExpandedBookingMonths,
   expandedBookingId,
   setExpandedBookingId,
-  setActiveTab,
   formatDate,
   formatTime,
   bookingActionHandlers,
@@ -640,8 +639,6 @@ const BookingsSection = ({
 
   const onTodayBookingClick = (booking) => {
     const statusKey = (booking.status || 'pending').toLowerCase()
-
-    setActiveTab('bookings')
 
     setCollapsedStatusSections(prev => ({
       ...prev,

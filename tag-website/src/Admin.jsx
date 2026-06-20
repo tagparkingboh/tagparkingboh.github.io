@@ -243,11 +243,8 @@ function Admin() {
   const location = useLocation()
   const {
     activeTab,
-    setActiveTab,
     marketingSubTab,
-    setMarketingSubTab,
     reportsSubTab,
-    setReportsSubTab,
     sidebarCollapsed,
     setSidebarCollapsed,
     expandedCategories,
@@ -5043,7 +5040,6 @@ function Admin() {
     setExpandedBookingMonths,
     expandedBookingId,
     setExpandedBookingId,
-    setActiveTab,
     formatDate,
     formatTime,
     bookingActionHandlers: {
@@ -5352,7 +5348,7 @@ function Admin() {
   sendingCampaign,
   sendingManualReferralInvite,
   sendingPromoEmails,
-  setActiveTab,
+  onSelectAdminItem: handleTabSelect,
   setCampaignConfirm,
   setCampaignToast,
   setEditingPromotion,
@@ -5578,8 +5574,7 @@ function Admin() {
     addingVehicle,
     onViewReferralDetails: () => {
       closeCustomerModal()
-      setActiveTab('marketing')
-      setMarketingSubTab('referrals')
+      handleTabSelect('referrals')
     },
   }
 
