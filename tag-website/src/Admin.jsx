@@ -2,15 +2,9 @@ import { useState, useEffect, useMemo, Fragment, useRef } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import 'react-datepicker/dist/react-datepicker.css'
-import OperationsSectionPage from './components/admin/operations/OperationsSectionPage'
-import QASectionPage from './components/admin/QASectionPage'
-import { AdminBreadcrumbs, AdminSidebar } from './components/admin/AdminShell'
+import { AdminSidebar } from './components/admin/AdminShell'
+import AdminContentRouter from './components/admin/AdminContentRouter'
 import AdminModals from './components/admin/AdminModals'
-import MarketingSectionPage from './components/admin/marketing/MarketingSectionPage'
-import ReportsSectionPage from './components/admin/reports/ReportsSectionPage'
-import SettingsSectionPage from './components/admin/settings/SettingsSectionPage'
-import StaffSectionPage from './components/admin/staff/StaffSectionPage'
-import CustomersSectionPage from './components/admin/customers/CustomersSectionPage'
 import PromoModalsModals from './components/admin/settings/PromoModalsModals'
 import TestimonialsModals from './components/admin/settings/TestimonialsModals'
 import { resolveArrivalDate } from './utils/arrivalDate'
@@ -6189,54 +6183,27 @@ function Admin() {
 
         {/* Main Content */}
         <main className="admin-main">
-          <AdminBreadcrumbs
+          <AdminContentRouter
             adminDefaultRoute={ADMIN_DEFAULT_ROUTE}
             activeAdminItemMeta={activeAdminItemMeta}
             getDefaultRouteForCategory={getDefaultRouteForCategory}
-          />
-          {error && <div className="admin-error">{error}</div>}
-          {successMessage && <div className="admin-success">{successMessage}</div>}
-
-          <OperationsSectionPage
+            error={error}
+            successMessage={successMessage}
             activeTab={activeTab}
             bookingsPageProps={bookingsPageProps}
             calendarPageProps={calendarPageProps}
             manualBookingPageProps={manualBookingPageProps}
             flightsPageProps={flightsPageProps}
             messagesPageProps={messagesPageProps}
+            staffSectionProps={staffSectionProps}
+            marketingSectionProps={marketingSectionProps}
+            customersSectionProps={customersSectionProps}
+            settingsSectionProps={settingsSectionProps}
+            reportsSectionProps={reportsSectionProps}
+            qaSectionProps={qaSectionProps}
+            bookingsScrollTopVisible={bookingsScrollTopVisible}
+            handleScrollToTop={() => window.scrollTo({ top: 0, behavior: 'auto' })}
           />
-
-        {activeTab === 'payroll' || activeTab === 'users' ? (
-          <StaffSectionPage {...staffSectionProps} />
-        ) : null}
-
-        <MarketingSectionPage {...marketingSectionProps} />
-
-        {(activeTab === 'customers' || activeTab === 'leads') ? (
-          <CustomersSectionPage {...customersSectionProps} />
-        ) : null}
-
-        {(activeTab === 'pricing' || activeTab === 'testimonials' || activeTab === 'promo-modals') ? (
-          <SettingsSectionPage {...settingsSectionProps} />
-        ) : null}
-
-        <ReportsSectionPage {...reportsSectionProps} />
-
-        <QASectionPage {...qaSectionProps} />
-
-        {activeTab === 'bookings' && bookingsScrollTopVisible && (
-          <button
-            type="button"
-            className="bookings-scroll-top"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'auto' })}
-            aria-label="Scroll to top"
-            title="Back to top"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M17 14l-5-5-5 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-            </svg>
-          </button>
-        )}
 
         </main>
       </div>
