@@ -2123,11 +2123,12 @@ async def get_booking_stats(
     this_month_count = sum(1 for b in successful_bookings if (d := _eff_date(b)) and d >= this_month_start)
     last_month_count = sum(1 for b in successful_bookings if (d := _eff_date(b)) and last_month_start <= d < this_month_start)
 
-    # Confirmed-only counts for booking targets (future bookings)
-    confirmed_bookings = [b for b in all_bookings if b.status == BookingStatus.CONFIRMED]
-    confirmed_today = sum(1 for b in confirmed_bookings if _eff_date(b) == today)
-    confirmed_this_week = sum(1 for b in confirmed_bookings if (d := _eff_date(b)) and d >= this_week_start)
-    confirmed_this_month = sum(1 for b in confirmed_bookings if (d := _eff_date(b)) and d >= this_month_start)
+    # Booking targets count successful bookings, not only still-confirmed
+    # bookings. A booking can be created, paid, and completed in the same
+    # day/week/month and should still count against the target.
+    confirmed_today = sum(1 for b in successful_bookings if _eff_date(b) == today)
+    confirmed_this_week = sum(1 for b in successful_bookings if (d := _eff_date(b)) and d >= this_week_start)
+    confirmed_this_month = sum(1 for b in successful_bookings if (d := _eff_date(b)) and d >= this_month_start)
 
     # Revenue calculations - only count bookings with non-zero payments
     from db_models import Payment

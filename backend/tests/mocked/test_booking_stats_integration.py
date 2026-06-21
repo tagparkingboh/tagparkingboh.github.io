@@ -17,21 +17,26 @@ import pytest
 from datetime import datetime, timedelta, date
 from unittest.mock import MagicMock, patch, AsyncMock
 from collections import defaultdict
+from fastapi.testclient import TestClient
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from database import get_db
+from main import app, require_admin
 
 
 # =============================================================================
 # Mock Database Models
 # =============================================================================
 
-def create_mock_payment(amount_pence=5000, status="succeeded"):
+def create_mock_payment(amount_pence=5000, status="succeeded", paid_at=None):
     """Create a mock payment object."""
     payment = MagicMock()
     payment.amount_pence = amount_pence
     payment.status = status
+    payment.paid_at = paid_at
     return payment
 
 
@@ -54,6 +59,7 @@ def create_mock_db_booking(
     status_value="confirmed",
     created_at=None,
     payment_amount_pence=None,
+    paid_at=None,
     dropoff_date=None,
     dropoff_time=None,
     pickup_date=None,
@@ -87,11 +93,27 @@ def create_mock_db_booking(
 
     # Create mock payment if amount specified
     if payment_amount_pence is not None:
-        booking.payment = create_mock_payment(amount_pence=payment_amount_pence)
+        booking.payment = create_mock_payment(amount_pence=payment_amount_pence, paid_at=paid_at)
     else:
         booking.payment = None
 
     return booking
+
+
+class _MockQuery:
+    """Small chainable query helper for endpoint-level mocked DB tests."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        return self.rows
 
 
 def create_mock_user(id=1, email="admin@test.com", is_admin=True, is_active=True):
@@ -142,6 +164,86 @@ class TestBookingStatsEndpoint:
 
         assert allowed_method == "GET"
         assert post_status == 405
+
+
+class TestBookingTargetsHUEB:
+    """HUEB coverage for Booking Targets counters on the real endpoint."""
+
+    def test_completed_booking_paid_this_week_counts_toward_targets(self):
+        """Booking Targets should count successful bookings, not confirmed-only.
+
+        This covers the real admin report path where a booking can be made and
+        completed inside the same week; it must still move the weekly target.
+        """
+        from db_models import AuditLog, Booking, BookingStatus
+
+        fixed_now = datetime(2026, 6, 20, 12, 0)
+        bookings = [
+            create_mock_db_booking(
+                id=1,
+                reference="TAG-CONFIRMED",
+                status_value="confirmed",
+                created_at=datetime(2026, 6, 16, 10, 0),
+                paid_at=datetime(2026, 6, 16, 10, 5),
+                payment_amount_pence=7000,
+            ),
+            create_mock_db_booking(
+                id=2,
+                reference="TAG-COMPLETED-SAME-WEEK",
+                status_value="completed",
+                created_at=datetime(2026, 6, 15, 15, 0),
+                paid_at=datetime(2026, 6, 15, 15, 55),
+                payment_amount_pence=7000,
+            ),
+            create_mock_db_booking(
+                id=3,
+                reference="TAG-COMPLETED-TODAY",
+                status_value="completed",
+                created_at=datetime(2026, 6, 20, 9, 0),
+                paid_at=datetime(2026, 6, 20, 9, 5),
+                payment_amount_pence=9000,
+            ),
+            create_mock_db_booking(
+                id=4,
+                reference="TAG-PENDING",
+                status_value="pending",
+                created_at=datetime(2026, 6, 17, 12, 0),
+                paid_at=datetime(2026, 6, 17, 12, 5),
+                payment_amount_pence=9000,
+            ),
+        ]
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            if model is Booking:
+                return _MockQuery(bookings)
+            if model is AuditLog:
+                return _MockQuery([])
+            return _MockQuery([])
+
+        mock_db.query.side_effect = query_side_effect
+
+        def mock_get_db():
+            yield mock_db
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user()
+
+        try:
+            with patch("main.get_uk_now", return_value=fixed_now):
+                response = TestClient(app).get("/api/admin/bookings/stats")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["confirmed_today"] == 1
+            assert data["confirmed_this_week"] == 3
+            assert data["confirmed_this_month"] == 3
+            assert data["this_week"] == 3
+            assert data["total_successful"] == 3
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+            app.dependency_overrides.pop(require_admin, None)
 
 
 # =============================================================================
