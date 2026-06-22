@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { normaliseAirportTime } from '../../tools/airport-quotes/bournemouthAirportQuote';
 import {
   parseBournemouthAirportProducts,
   parseMoneyToPence,
@@ -46,5 +47,12 @@ describe('Bournemouth airport quote parser', () => {
 
   it('handles comma-formatted values', () => {
     expect(parseMoneyToPence('£1,234.50')).toBe(123450);
+  });
+
+  it('normalises exact booking times to airport-supported slots', () => {
+    expect(normaliseAirportTime('04:20', 'ceil')).toBe('04:30');
+    expect(normaliseAirportTime('14:45', 'ceil')).toBe('15:00');
+    expect(normaliseAirportTime('00:00', 'ceil')).toBe('00:01');
+    expect(normaliseAirportTime('23:57', 'ceil')).toBe('23:59');
   });
 });
