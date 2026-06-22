@@ -1257,134 +1257,6 @@ function Bookings({ isModal = false, onClose }) {
     return formData.pickupDate
   }, [formData.pickupDate, selectedArrivalFlight])
 
-  // Fetch BOH comparison quote when dates and customer handover times change.
-  // Lives here (rather than alongside other date useEffects) because it needs
-  // selectedArrivalFlight, declared just above.
-  useEffect(() => {
-    const fetchPricing = async () => {
-      const arrivalHHMM = arrivalTimeOverride || manualArrivalData.flightTime || selectedArrivalFlight?.time || null
-      let pickupTimeStr = null
-      let pickupRollsPastMidnight = false
-      if (arrivalHHMM) {
-        const [h, m] = arrivalHHMM.split(':').map(Number)
-        if (Number.isInteger(h) && Number.isInteger(m)) {
-          const totalMins = h * 60 + m + 30
-          pickupRollsPastMidnight = totalMins >= 24 * 60
-          const displayMins = totalMins % (24 * 60)
-          pickupTimeStr = `${String(Math.floor(displayMins / 60)).padStart(2, '0')}:${String(displayMins % 60).padStart(2, '0')}`
-        }
-      }
-
-      const destination = manualDepartureData.destinationName || manualDepartureData.customDestination || ''
-
-      if (!formData.dropoffDate || !formData.pickupDate || !dropoffTime || !pickupTimeStr) {
-        setPricingInfo(null)
-        setAirportQuote(null)
-        setPricingError('')
-        return
-      }
-
-      setPricingLoading(true)
-      setPricingError('')
-      try {
-        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
-        const quotePickupDate = new Date(actualPickupDate || formData.pickupDate)
-        if (pickupRollsPastMidnight) {
-          quotePickupDate.setDate(quotePickupDate.getDate() + 1)
-        }
-        const pickupStr = format(quotePickupDate, 'yyyy-MM-dd')
-
-        const response = await fetch(`${API_BASE_URL}/api/airport-parking/quote`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            entryDate: dropoffStr,
-            entryTime: dropoffTime,
-            exitDate: pickupStr,
-            exitTime: pickupTimeStr,
-            destination,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setAirportQuote(data)
-          setPricingInfo(data.pricingInfo)
-          setFormData(prev => ({
-            ...prev,
-            package: 'airport_quote',
-          }))
-        } else {
-          setPricingInfo(null)
-          setAirportQuote(null)
-          setPricingError('Unable to load live comparison pricing. Please check your times and try again.')
-        }
-      } catch (error) {
-        console.error('Error fetching pricing:', error)
-        setPricingInfo(null)
-        setAirportQuote(null)
-        setPricingError('Unable to load live comparison pricing. Please check your connection and try again.')
-      } finally {
-        setPricingLoading(false)
-      }
-    }
-    fetchPricing()
-  }, [
-    formData.dropoffDate,
-    formData.pickupDate,
-    actualPickupDate,
-    arrivalTimeOverride,
-    manualArrivalData.flightTime,
-    manualDepartureData.flightTime,
-    manualDepartureData.destinationName,
-    manualDepartureData.customDestination,
-    dropoffTime,
-    selectedArrivalFlight?.time,
-    API_BASE_URL,
-  ])
-
-  // Helper function to format minutes to HH:MM
-  function formatMinutesToTime(totalMinutes) {
-    if (totalMinutes < 0) totalMinutes += 24 * 60 // Handle overnight
-    const hours = Math.floor(totalMinutes / 60) % 24
-    const mins = totalMinutes % 60
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-  }
-
-  // Format time input - auto-insert colon, validate 24-hour format
-  const formatTimeInput = (value) => {
-    // Remove any non-digits
-    const digits = value.replace(/\D/g, '')
-
-    // Limit to 4 digits
-    const limited = digits.slice(0, 4)
-
-    if (limited.length <= 2) {
-      // Just hours or partial hours
-      return limited
-    } else {
-      // Insert colon after first 2 digits
-      const hours = limited.slice(0, 2)
-      const minutes = limited.slice(2)
-
-      // Validate hours (00-23)
-      const hoursNum = parseInt(hours, 10)
-      if (hoursNum > 23) {
-        return '23:' + minutes
-      }
-
-      // Validate minutes (00-59)
-      if (minutes.length === 2) {
-        const minsNum = parseInt(minutes, 10)
-        if (minsNum > 59) {
-          return hours + ':59'
-        }
-      }
-
-      return hours + ':' + minutes
-    }
-  }
-
   // Calculate drop-off slots for manual departure entries
   // Filters out slots that fall within blocked time slots
   const manualDropoffSlots = useMemo(() => {
@@ -1467,6 +1339,138 @@ function Bookings({ isModal = false, onClose }) {
 
     return slots
   }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, blockedDates])
+
+  // Fetch BOH comparison quote when dates and customer handover times change.
+  // Lives here (rather than alongside other date useEffects) because it needs
+  // selectedArrivalFlight, declared just above.
+  useEffect(() => {
+    const fetchPricing = async () => {
+      const manualDropoffTime = manualDropoffSlots.find(s => s.id === manualDepartureData.dropoffSlot)?.time || null
+      const effectiveDropoffTime = dropoffTime || manualDropoffTime
+      const arrivalHHMM = arrivalTimeOverride || manualArrivalData.flightTime || selectedArrivalFlight?.time || null
+      let pickupTimeStr = null
+      let pickupRollsPastMidnight = false
+      if (arrivalHHMM) {
+        const [h, m] = arrivalHHMM.split(':').map(Number)
+        if (Number.isInteger(h) && Number.isInteger(m)) {
+          const totalMins = h * 60 + m + 30
+          pickupRollsPastMidnight = totalMins >= 24 * 60
+          const displayMins = totalMins % (24 * 60)
+          pickupTimeStr = `${String(Math.floor(displayMins / 60)).padStart(2, '0')}:${String(displayMins % 60).padStart(2, '0')}`
+        }
+      }
+
+      const destination = manualDepartureData.destinationName || manualDepartureData.customDestination || ''
+
+      if (!formData.dropoffDate || !formData.pickupDate || !effectiveDropoffTime || !pickupTimeStr) {
+        setPricingInfo(null)
+        setAirportQuote(null)
+        setPricingError('')
+        return
+      }
+
+      setPricingLoading(true)
+      setPricingError('')
+      try {
+        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+        const quotePickupDate = new Date(actualPickupDate || formData.pickupDate)
+        if (pickupRollsPastMidnight) {
+          quotePickupDate.setDate(quotePickupDate.getDate() + 1)
+        }
+        const pickupStr = format(quotePickupDate, 'yyyy-MM-dd')
+
+        const response = await fetch(`${API_BASE_URL}/api/airport-parking/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entryDate: dropoffStr,
+            entryTime: effectiveDropoffTime,
+            exitDate: pickupStr,
+            exitTime: pickupTimeStr,
+            destination,
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setAirportQuote(data)
+          setPricingInfo(data.pricingInfo)
+          setFormData(prev => ({
+            ...prev,
+            package: 'airport_quote',
+          }))
+        } else {
+          setPricingInfo(null)
+          setAirportQuote(null)
+          setPricingError('Unable to load live comparison pricing. Please check your times and try again.')
+        }
+      } catch (error) {
+        console.error('Error fetching pricing:', error)
+        setPricingInfo(null)
+        setAirportQuote(null)
+        setPricingError('Unable to load live comparison pricing. Please check your connection and try again.')
+      } finally {
+        setPricingLoading(false)
+      }
+    }
+    fetchPricing()
+  }, [
+    formData.dropoffDate,
+    formData.pickupDate,
+    actualPickupDate,
+    arrivalTimeOverride,
+    manualArrivalData.flightTime,
+    manualDepartureData.flightTime,
+    manualDepartureData.dropoffSlot,
+    manualDepartureData.destinationName,
+    manualDepartureData.customDestination,
+    dropoffTime,
+    manualDropoffSlots,
+    selectedArrivalFlight?.time,
+    API_BASE_URL,
+  ])
+
+  // Helper function to format minutes to HH:MM
+  function formatMinutesToTime(totalMinutes) {
+    if (totalMinutes < 0) totalMinutes += 24 * 60 // Handle overnight
+    const hours = Math.floor(totalMinutes / 60) % 24
+    const mins = totalMinutes % 60
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }
+
+  // Format time input - auto-insert colon, validate 24-hour format
+  const formatTimeInput = (value) => {
+    // Remove any non-digits
+    const digits = value.replace(/\D/g, '')
+
+    // Limit to 4 digits
+    const limited = digits.slice(0, 4)
+
+    if (limited.length <= 2) {
+      // Just hours or partial hours
+      return limited
+    } else {
+      // Insert colon after first 2 digits
+      const hours = limited.slice(0, 2)
+      const minutes = limited.slice(2)
+
+      // Validate hours (00-23)
+      const hoursNum = parseInt(hours, 10)
+      if (hoursNum > 23) {
+        return '23:' + minutes
+      }
+
+      // Validate minutes (00-59)
+      if (minutes.length === 2) {
+        const minsNum = parseInt(minutes, 10)
+        if (minsNum > 59) {
+          return hours + ':59'
+        }
+      }
+
+      return hours + ':' + minutes
+    }
+  }
 
   // Normalize time to HH:MM format
   const normalizeTime = (timeStr) => {
