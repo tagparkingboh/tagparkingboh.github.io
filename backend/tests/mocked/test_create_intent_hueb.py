@@ -316,6 +316,7 @@ def _free_booking_payload(*, promo_code="TAG-FREE100"):
         "customer_id": 42,
         "vehicle_id": 7,
         "promo_code": promo_code,
+        "pickup_flight_time": "10:00",  # quote exit_time = 10:30
         # session_id None → bypass the dedup-of-existing-intent branch.
     })
     return p
@@ -483,12 +484,23 @@ class TestFreeBookingPath:
 # ============================================================================
 
 
-def _mk_airport_snapshot(*, snapshot_id=555, tag_price_pence=11103, entry_date=None):
+def _mk_airport_snapshot(
+    *,
+    snapshot_id=555,
+    tag_price_pence=11103,
+    entry_date=None,
+    entry_time=None,
+    exit_date=None,
+    exit_time=None,
+):
     s = MagicMock()
     s.id = snapshot_id
     s.status = "ok"
     s.tag_price_pence = tag_price_pence
     s.entry_date = entry_date or date_type(2026, 8, 15)  # matches _valid_payload drop_off_date
+    s.entry_time = entry_time or time(10, 0)
+    s.exit_date = exit_date or date_type(2026, 8, 22)
+    s.exit_time = exit_time or time(10, 30)
     return s
 
 
@@ -634,6 +646,28 @@ class TestAirportQuotePromo:
         assert body["amount"] == 9993                    # 11103 - 1110
         assert body["client_secret"] == "cs_test_aq"
 
+    def test_U_rejects_stale_airport_quote_id_when_times_change(self, monkeypatch):
+        """F1: same quote id cannot be reused after the customer changes times."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQSTALE", booking_id=805)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        _override_db(_promo_quote_db(
+            promo_code_record=None,
+            promotion=None,
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(
+                tag_price_pence=11103,
+                entry_time=time(9, 30),  # payload still says 10:00
+            ),
+        ))
+        payload = _free_booking_payload(promo_code=None)
+        payload["airport_quote_snapshot_id"] = 555
+
+        resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 400
+        assert "Airport quote no longer matches" in resp.json()["detail"]
+
     # --- free_week boundary on the 7-day seam (t-eps / t / t+eps) --------------
 
     def _free_week_promo(self):
@@ -681,7 +715,7 @@ class TestAirportQuotePromo:
             promo_code_record=self._free_week_promo(),
             promotion=_mk_free_week_promotion(),
             booking_row=booking,
-            airport_snapshot=_mk_airport_snapshot(tag_price_pence=20000),
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=20000, exit_date=date_type(2026, 8, 23)),
         ))
         payload = _free_booking_payload(promo_code="FREEWK")
         payload["pickup_date"] = "2026-08-23"  # 8 days -> >7
@@ -699,6 +733,44 @@ class TestAirportQuotePromo:
         assert body["discount_amount"] == week1            # env week1 (10800), NOT a package base
         assert body["amount"] == 20000 - week1             # 9200
 
+    def test_H_free_week_airport_pre_2am_uses_raw_days_not_package_courtesy(self, monkeypatch):
+        """F2: airport quote duration ignores the package 02:00 courtesy.
+        2026-08-15 -> 2026-08-23 is raw 8 days even with a 01:30 arrival,
+        so free_week is partial, matching the dedup raw-days path."""
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10800")
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQFW2AM", booking_id=815)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_fw2am"
+        fake_intent.client_secret = "cs_fw2am"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        _override_db(_promo_quote_db(
+            promo_code_record=self._free_week_promo(),
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(
+                tag_price_pence=20000,
+                exit_date=date_type(2026, 8, 23),
+                exit_time=time(2, 0),
+            ),
+        ))
+        payload = _free_booking_payload(promo_code="FREEWK")
+        payload["pickup_date"] = "2026-08-23"
+        payload["pickup_flight_time"] = "01:30"  # package courtesy would bill as 7 days
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        body = resp.json()
+        assert resp.status_code == 200, body
+        assert body["is_free_booking"] is False
+        assert body["original_amount"] == 20000
+        assert body["discount_amount"] == 10800
+        assert body["amount"] == 9200
+
     def test_H_free_week_8day_airport_price_at_or_below_week1_waives_all(self, monkeypatch):
         """min() the other way: when price <= env week1, deduct the whole price.
         Note: the >7 branch keeps is_free_booking False, so this is a £0 paid
@@ -715,7 +787,10 @@ class TestAirportQuotePromo:
             promo_code_record=self._free_week_promo(),
             promotion=_mk_free_week_promotion(),
             booking_row=booking,
-            airport_snapshot=_mk_airport_snapshot(tag_price_pence=8000),  # < week1
+            airport_snapshot=_mk_airport_snapshot(
+                tag_price_pence=8000,  # < week1
+                exit_date=date_type(2026, 8, 23),
+            ),
         ))
         payload = _free_booking_payload(promo_code="FREEWK")
         payload["pickup_date"] = "2026-08-23"  # 8 days
@@ -783,7 +858,7 @@ class TestAirportQuotePromo:
             promo_code_record=promo,
             promotion=_mk_free_week_promotion(),
             booking_row=booking,
-            airport_snapshot=_mk_airport_snapshot(tag_price_pence=15000),
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=15000, exit_date=date_type(2026, 8, 23)),
         ))
         payload = _free_booking_payload(promo_code="FREEWEEK")
         payload["airport_quote_snapshot_id"] = 555

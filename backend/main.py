@@ -12371,6 +12371,9 @@ def resolve_airport_quote_amount_pence(
     quote_snapshot_id: Optional[int],
     *,
     dropoff_date: date,
+    entry_time: Optional[time] = None,
+    exit_date: Optional[date] = None,
+    exit_time: Optional[time] = None,
 ) -> Optional[int]:
     if not quote_snapshot_id:
         return None
@@ -12384,10 +12387,68 @@ def resolve_airport_quote_amount_pence(
         raise HTTPException(status_code=400, detail="Airport quote has expired. Please refresh your quote.")
     if snapshot.status != "ok" or snapshot.tag_price_pence is None:
         raise HTTPException(status_code=400, detail="Airport quote is not usable. Please refresh your quote.")
-    if snapshot.entry_date != dropoff_date:
+    if (
+        snapshot.entry_date != dropoff_date
+        or _normalise_quote_time(snapshot.entry_time) != _normalise_quote_time(entry_time)
+        or snapshot.exit_date != exit_date
+        or _normalise_quote_time(snapshot.exit_time) != _normalise_quote_time(exit_time)
+    ):
         raise HTTPException(status_code=400, detail="Airport quote no longer matches your booking. Please refresh your quote.")
 
     return int(snapshot.tag_price_pence)
+
+
+def _normalise_quote_time(value: Optional[time]) -> Optional[time]:
+    if value is None:
+        return None
+    if isinstance(value, time):
+        return value.replace(second=0, microsecond=0)
+    try:
+        hour, minute = str(value).split(":")[:2]
+        return time(int(hour), int(minute))
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_payment_hhmm(value: Optional[str]) -> Optional[time]:
+    if not value:
+        return None
+    try:
+        hour, minute = str(value).split(":")[:2]
+        return time(int(hour), int(minute))
+    except (ValueError, TypeError):
+        return None
+
+
+def _dropoff_time_for_quote_request(request: "CreatePaymentRequest", db: Session) -> Optional[time]:
+    if request.drop_off_time:
+        return _parse_payment_hhmm(request.drop_off_time)
+    if request.dropoff_manual_entry and request.dropoff_flight_time and request.drop_off_slot:
+        departure_time = _parse_payment_hhmm(request.dropoff_flight_time)
+        if departure_time:
+            total_minutes = departure_time.hour * 60 + departure_time.minute - int(request.drop_off_slot)
+            if total_minutes < 0:
+                total_minutes += 24 * 60
+            return time(total_minutes // 60, total_minutes % 60)
+    if request.departure_id and request.drop_off_slot:
+        departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
+        if departure:
+            total_minutes = departure.departure_time.hour * 60 + departure.departure_time.minute - int(request.drop_off_slot)
+            if total_minutes < 0:
+                total_minutes += 24 * 60
+            return time(total_minutes // 60, total_minutes % 60)
+    return None
+
+
+def _exit_window_for_quote_request(request: "CreatePaymentRequest", pickup_date: date) -> tuple[Optional[date], Optional[time]]:
+    arrival_time = _parse_payment_hhmm(request.flight_arrival_time or request.pickup_flight_time)
+    if not arrival_time:
+        return None, None
+    total_minutes = arrival_time.hour * 60 + arrival_time.minute + 30
+    exit_date = pickup_date
+    if total_minutes >= 24 * 60:
+        exit_date = exit_date + timedelta(days=1)
+    return exit_date, time((total_minutes // 60) % 24, total_minutes % 60)
 
 
 def get_free_week_base_pence_for_request(request: "CreatePaymentRequest") -> int:
@@ -12665,10 +12726,14 @@ async def create_payment(
                                 dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
                                 pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
                                 duration_days = (pickup_date - dropoff_date).days
+                                quote_exit_date, quote_exit_time = _exit_window_for_quote_request(request, pickup_date)
                                 quote_original_amount = resolve_airport_quote_amount_pence(
                                     db,
                                     request.airport_quote_snapshot_id,
                                     dropoff_date=dropoff_date,
+                                    entry_time=_dropoff_time_for_quote_request(request, db),
+                                    exit_date=quote_exit_date,
+                                    exit_time=quote_exit_time,
                                 )
 
                                 if quote_original_amount is not None:
@@ -12857,16 +12922,25 @@ async def create_payment(
         )
 
         # Calculate duration for flexible pricing using the billing pickup date.
-        duration_days = (billing_pickup_date - dropoff_date).days
+        # Airport quotes are already a standalone dynamic price; promo boundary
+        # checks use raw date days so fresh and dedup create-intent paths agree.
+        if request.airport_quote_snapshot_id:
+            duration_days = (pickup_date - dropoff_date).days
+        else:
+            duration_days = (billing_pickup_date - dropoff_date).days
         print(f"[DEBUG] Trip duration: {duration_days} days (billing_pickup={billing_pickup_date}, actual_pickup={pickup_date})")
 
         # Calculate base amount in pence (using flexible duration pricing).
         # Pass actual pickup_date (pre-cutoff) for peak-day check — peak applies
         # to the day the customer is physically present, not the billing day.
+        quote_exit_date, quote_exit_time = _exit_window_for_quote_request(request, pickup_date)
         quote_original_amount = resolve_airport_quote_amount_pence(
             db,
             request.airport_quote_snapshot_id,
             dropoff_date=dropoff_date,
+            entry_time=_dropoff_time_for_quote_request(request, db),
+            exit_date=quote_exit_date,
+            exit_time=quote_exit_time,
         )
         if quote_original_amount is not None:
             original_amount = quote_original_amount

@@ -380,6 +380,9 @@ def test_payment_amount_resolver_uses_persisted_quote_and_rejects_mismatch():
         status="ok",
         tag_price_pence=11103,
         entry_date=date(2026, 7, 6),
+        entry_time=time(6, 0),
+        exit_date=date(2026, 7, 13),
+        exit_time=time(6, 30),
     )
     db = _mock_db(snapshot)
 
@@ -387,13 +390,19 @@ def test_payment_amount_resolver_uses_persisted_quote_and_rejects_mismatch():
         db,
         12,
         dropoff_date=date(2026, 7, 6),
+        entry_time=time(6, 0),
+        exit_date=date(2026, 7, 13),
+        exit_time=time(6, 30),
     ) == 11103
 
     with pytest.raises(Exception):
         resolve_airport_quote_amount_pence(
             db,
             12,
-            dropoff_date=date(2026, 7, 7),
+            dropoff_date=date(2026, 7, 6),
+            entry_time=time(6, 15),
+            exit_date=date(2026, 7, 13),
+            exit_time=time(6, 30),
         )
 
 
