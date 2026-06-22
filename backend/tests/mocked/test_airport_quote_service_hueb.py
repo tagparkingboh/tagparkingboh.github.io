@@ -15,7 +15,7 @@ from airport_quote_service import (
     normalise_boh_time_slot,
     parse_boh_products,
 )
-from database import get_db
+from airport_quote_worker_client import build_worker_scraper
 from main import app
 from main import resolve_airport_quote_amount_pence
 
@@ -46,11 +46,8 @@ def _mock_db(fallback_snapshot=None):
     return db
 
 
-def _override_db(db):
-    def _get_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _get_db
+def _override_quote_db(monkeypatch, db):
+    monkeypatch.setattr("main.get_airport_quote_session_factory", lambda: lambda: db)
 
 
 def test_billing_days_ceil_whole_day_boundaries():
@@ -133,9 +130,11 @@ def test_parse_boh_product_groups_excludes_flex_prices():
 
 def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
     db = _mock_db()
-    _override_db(db)
+    events = []
+    _override_quote_db(monkeypatch, db)
 
     def scraper(quote_input: AirportQuoteInput, destination_id: str):
+        events.append(("scrape", db.query.called))
         assert quote_input.entry_date == date(2026, 7, 6)
         assert destination_id != "2182"
         return AirportQuoteScrapeResult(
@@ -164,6 +163,7 @@ def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
+    assert events == [("scrape", False)]
     assert response.status_code == 200
     body = response.json()
     assert body["source"] == "live"
@@ -194,7 +194,7 @@ def test_quote_endpoint_scraper_failure_uses_snapshot_model(monkeypatch):
         cheapest_pence=12000,
     )
     db = _mock_db(fallback)
-    _override_db(db)
+    _override_quote_db(monkeypatch, db)
 
     def scraper(_quote_input: AirportQuoteInput, _destination_id: str):
         raise RuntimeError("blocked")
@@ -224,11 +224,12 @@ def test_quote_endpoint_scraper_failure_uses_snapshot_model(monkeypatch):
     statuses = [call.args[0].status for call in db.add.call_args_list]
     assert "error" in statuses
     assert statuses[-1] == "ok"
+    assert db.add.call_args_list[-1].args[0].source == "batch"
 
 
 def test_quote_endpoint_rejects_bad_live_structure_and_falls_back(monkeypatch):
     db = _mock_db()
-    _override_db(db)
+    _override_quote_db(monkeypatch, db)
 
     def scraper(_quote_input: AirportQuoteInput, _destination_id: str):
         return AirportQuoteScrapeResult(
@@ -259,6 +260,80 @@ def test_quote_endpoint_rejects_bad_live_structure_and_falls_back(monkeypatch):
     snapshot = db.add.call_args_list[0].args[0]
     assert snapshot.status == "rejected"
     assert snapshot.reject_reason == "products_missing"
+    assert db.add.call_args_list[-1].args[0].source == "batch"
+
+
+def test_quote_endpoint_without_worker_returns_model_price(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    monkeypatch.setattr("main.get_airport_quote_scraper", lambda: None)
+
+    response = TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-07-06",
+            "entryTime": "06:00",
+            "exitDate": "2026-07-13",
+            "exitTime": "06:00",
+            "destination": "Other",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "model"
+    assert body["tagPricePence"] > 0
+    assert db.add.call_args.args[0].source == "batch"
+
+
+def test_worker_client_maps_worker_payload(monkeypatch):
+    calls = []
+
+    class _Response:
+        def raise_for_status(self):
+            calls.append("raise_for_status")
+
+        def json(self):
+            return {
+                "products": [
+                    {"name": "Car Park 3", "pricePence": 14805, "priceText": "£148.05"},
+                    {"name": "Car Park 2", "pricePence": 14994, "priceText": "£149.94"},
+                ],
+                "sourceUrl": "https://book.bournemouthairport.com/result",
+            }
+
+    def fake_post(url, json, timeout):
+        calls.append((url, json, timeout))
+        return _Response()
+
+    monkeypatch.setattr("airport_quote_worker_client.httpx.post", fake_post)
+    monkeypatch.setenv("AIRPORT_QUOTE_WORKER_TIMEOUT_SECONDS", "3.5")
+
+    scraper = build_worker_scraper("https://worker.example")
+    result = scraper(
+        AirportQuoteInput(
+            entry_date=date(2026, 7, 6),
+            entry_time=time(6, 0),
+            exit_date=date(2026, 7, 13),
+            exit_time=time(6, 0),
+        ),
+        "2182",
+    )
+
+    assert calls[0] == (
+        "https://worker.example/internal/airport-parking/scrape",
+        {
+            "entryDate": "2026-07-06",
+            "entryTime": "06:00",
+            "exitDate": "2026-07-13",
+            "exitTime": "06:00",
+            "destinationId": "2182",
+        },
+        3.5,
+    )
+    assert calls[1] == "raise_for_status"
+    assert [product.name for product in result.products] == ["Car Park 3", "Car Park 2"]
+    assert result.source_url == "https://book.bournemouthairport.com/result"
 
 
 def test_payment_amount_resolver_uses_persisted_quote_and_rejects_mismatch():

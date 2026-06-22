@@ -162,6 +162,12 @@ class AirportQuoteScrapeResult:
     source_url: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class AirportQuoteLiveResult:
+    products: list[AirportProduct]
+    destination_id: str
+
+
 def _parse_decimal_env(name: str, default: Decimal, min_value: Decimal, max_value: Decimal) -> Decimal:
     raw = os.environ.get(name)
     if raw is None or raw == "":
@@ -437,6 +443,18 @@ def record_quote_snapshot(
 Scraper = Callable[[AirportQuoteInput, str], AirportQuoteScrapeResult]
 
 
+def fetch_live_airport_quote_without_db(
+    quote_input: AirportQuoteInput,
+    scraper: Scraper,
+) -> AirportQuoteLiveResult:
+    destination_id = map_destination_to_boh_id(quote_input.destination)
+    scrape = scraper(quote_input, destination_id)
+    return AirportQuoteLiveResult(
+        products=scrape.products,
+        destination_id=destination_id,
+    )
+
+
 def build_airport_quote_response(
     *,
     products: list[AirportProduct],
@@ -466,20 +484,21 @@ def build_airport_quote_response(
     }
 
 
-def get_airport_parking_quote(
+def build_airport_parking_quote_from_live_or_model(
     db: Session,
     quote_input: AirportQuoteInput,
     *,
-    scraper: Optional[Scraper],
+    live_quote: Optional[AirportQuoteLiveResult],
+    live_error: Optional[str] = None,
     quoted_at_factory: Callable[[], datetime],
 ) -> dict:
     entry_dt = datetime.combine(quote_input.entry_date, quote_input.entry_time)
     exit_dt = datetime.combine(quote_input.exit_date, quote_input.exit_time)
     billing_days = calculate_billing_days(entry_dt, exit_dt)
     discount_pct = get_airport_quote_discount_percent()
-    destination_id = map_destination_to_boh_id(quote_input.destination)
+    destination_id = live_quote.destination_id if live_quote else map_destination_to_boh_id(quote_input.destination)
 
-    if scraper is None:
+    if live_quote is None and not live_error:
         products, tag_price_pence, source = fallback_quote_from_snapshots(db, billing_days, discount_pct)
         snapshot = record_quote_snapshot(
             db,
@@ -490,7 +509,7 @@ def get_airport_parking_quote(
             cheapest_pence=min((product.price_pence for product in products), default=None),
             tag_price_pence=tag_price_pence,
             discount_pct=discount_pct,
-            source=source,
+            source="batch",
             status="ok",
         )
         return build_airport_quote_response(
@@ -503,9 +522,8 @@ def get_airport_parking_quote(
         )
 
     snapshot: Optional[AirportQuoteSnapshot] = None
-    try:
-        scrape = scraper(quote_input, destination_id)
-        products = scrape.products
+    if live_quote is not None:
+        products = live_quote.products
         valid, reject_reason = validate_products(products, billing_days)
         if not valid:
             cheapest = min((product.price_pence for product in products), default=None)
@@ -532,7 +550,7 @@ def get_airport_parking_quote(
                 cheapest_pence=min((product.price_pence for product in products), default=None),
                 tag_price_pence=tag_price_pence,
                 discount_pct=discount_pct,
-                source=source,
+                source="batch",
                 status="ok",
             )
         else:
@@ -551,8 +569,8 @@ def get_airport_parking_quote(
                 status="ok",
             )
             source = "live"
-    except Exception as exc:
-        logger.warning("BOH live quote failed; using model fallback: %s", exc)
+    else:
+        logger.warning("BOH live quote failed; using model fallback: %s", live_error)
         record_quote_snapshot(
             db,
             quote_input,
@@ -564,7 +582,7 @@ def get_airport_parking_quote(
             discount_pct=discount_pct,
             source="live",
             status="error",
-            reject_reason=str(exc)[:500],
+            reject_reason=(live_error or "live_quote_unavailable")[:500],
         )
         products, tag_price_pence, source = fallback_quote_from_snapshots(db, billing_days, discount_pct)
         snapshot = record_quote_snapshot(
@@ -576,7 +594,7 @@ def get_airport_parking_quote(
             cheapest_pence=min((product.price_pence for product in products), default=None),
             tag_price_pence=tag_price_pence,
             discount_pct=discount_pct,
-            source=source,
+            source="batch",
             status="ok",
         )
 
@@ -587,4 +605,28 @@ def get_airport_parking_quote(
         source=source,
         quoted_at=quoted_at_factory(),
         quote_snapshot_id=snapshot.id if snapshot else None,
+    )
+
+
+def get_airport_parking_quote(
+    db: Session,
+    quote_input: AirportQuoteInput,
+    *,
+    scraper: Optional[Scraper],
+    quoted_at_factory: Callable[[], datetime],
+) -> dict:
+    live_quote = None
+    live_error = None
+    if scraper is not None:
+        try:
+            live_quote = fetch_live_airport_quote_without_db(quote_input, scraper)
+        except Exception as exc:
+            live_error = str(exc)
+
+    return build_airport_parking_quote_from_live_or_model(
+        db,
+        quote_input,
+        live_quote=live_quote,
+        live_error=live_error,
+        quoted_at_factory=quoted_at_factory,
     )

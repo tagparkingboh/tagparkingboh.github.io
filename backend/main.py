@@ -172,7 +172,7 @@ from stripe_service import (
 )
 
 # Database imports
-from database import get_db, init_db, get_sql_console_db
+from database import get_db, init_db, get_sql_console_db, SessionLocal
 from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate, BookingDraft, AirportQuoteSnapshot
 import db_service
 import json
@@ -1286,18 +1286,25 @@ def _parse_quote_time(value: str, field_name: str) -> time:
 
 
 def get_airport_quote_scraper():
-    from airport_quote_scraper import fetch_bournemouth_airport_quote
+    from airport_quote_worker_client import get_worker_scraper_from_env
 
-    return fetch_bournemouth_airport_quote
+    return get_worker_scraper_from_env()
+
+
+def get_airport_quote_session_factory():
+    return SessionLocal
 
 
 @app.post("/api/airport-parking/quote")
-async def get_airport_parking_quote_endpoint(
+def get_airport_parking_quote_endpoint(
     request: AirportParkingQuoteRequest,
-    db: Session = Depends(get_db),
 ):
     """Return a TAG price beside live/modelled Bournemouth Airport prices."""
-    from airport_quote_service import AirportQuoteInput, get_airport_parking_quote
+    from airport_quote_service import (
+        AirportQuoteInput,
+        build_airport_parking_quote_from_live_or_model,
+        fetch_live_airport_quote_without_db,
+    )
 
     quote_input = AirportQuoteInput(
         entry_date=request.entry_date,
@@ -1308,12 +1315,26 @@ async def get_airport_parking_quote_endpoint(
     )
 
     try:
-        return get_airport_parking_quote(
-            db,
-            quote_input,
-            scraper=get_airport_quote_scraper(),
-            quoted_at_factory=get_uk_now,
-        )
+        live_quote = None
+        live_error = None
+        scraper = get_airport_quote_scraper()
+        if scraper is not None:
+            try:
+                live_quote = fetch_live_airport_quote_without_db(quote_input, scraper)
+            except Exception as exc:
+                live_error = str(exc)
+
+        db = get_airport_quote_session_factory()()
+        try:
+            return build_airport_parking_quote_from_live_or_model(
+                db,
+                quote_input,
+                live_quote=live_quote,
+                live_error=live_error,
+                quoted_at_factory=get_uk_now,
+            )
+        finally:
+            db.close()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

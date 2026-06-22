@@ -8,8 +8,6 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "quote:bournemouth:batch": "node --experimental-strip-types tools/airport-quotes/bournemouthAirportBatchQuote.ts",
-    "quote:bournemouth": "node --experimental-strip-types tools/airport-quotes/bournemouthAirportQuote.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage"
