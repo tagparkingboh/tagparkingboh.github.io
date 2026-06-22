@@ -500,6 +500,15 @@ def _mk_percentage_promotion(*, percent=10):
     return p
 
 
+def _mk_free_week_promotion():
+    p = MagicMock()
+    p.id = 3
+    p.name = "1 week free (test)"
+    p.discount_percent = 100
+    p.discount_type = "free_week"
+    return p
+
+
 def _promo_quote_db(*, promo_code_record, promotion, booking_row, airport_snapshot):
     """Per-model dispatch (extends _free_booking_db with AirportQuoteSnapshot)."""
     from db_models import (
@@ -615,3 +624,72 @@ class TestAirportQuotePromo:
         assert body["amount"] == 9993                    # 11103 - 1110
         assert body["client_secret"] == "cs_test_aq"
 
+    def test_H_free_week_uses_airport_week1_env_for_airport_quote(self, monkeypatch):
+        """free_week on an 8-day airport quote deducts AIRPORT_QUOTE_WEEK1_PRICE_PENCE,
+        not the normal TAG package week-one base."""
+        self._common_patches(monkeypatch)
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10500")
+        booking = _mk_booking_row(reference="TAG-AQFW", booking_id=803)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_test_aq_free_week"
+        fake_intent.client_secret = "cs_test_aq_free_week"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        promo = _mk_promo_code_record()
+        promo.code = "FREEWEEK"
+        _override_db(_promo_quote_db(
+            promo_code_record=promo,
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=15000),
+        ))
+        payload = _free_booking_payload(promo_code="FREEWEEK")
+        payload["airport_quote_snapshot_id"] = 555
+        payload["drop_off_date"] = "2026-08-15"
+        payload["pickup_date"] = "2026-08-23"  # >7 days, partial free_week path
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["is_free_booking"] is False
+        assert body["original_amount"] == 15000
+        assert body["discount_amount"] == 10500
+        assert body["amount"] == 4500
+        assert body["client_secret"] == "cs_test_aq_free_week"
+
+    def test_H_free_week_without_airport_quote_keeps_package_week1_base(self, monkeypatch):
+        """Normal TAG free_week behaviour is unchanged when no airport quote id is present."""
+        self._common_patches(monkeypatch)
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10500")
+        booking = _mk_booking_row(reference="TAG-FW", booking_id=804)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_test_free_week"
+        fake_intent.client_secret = "cs_test_free_week"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        promo = _mk_promo_code_record()
+        promo.code = "FREEWEEK"
+        _override_db(_promo_quote_db(
+            promo_code_record=promo,
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=None,
+        ))
+        payload = _free_booking_payload(promo_code="FREEWEEK")
+        payload["drop_off_date"] = "2026-08-15"
+        payload["pickup_date"] = "2026-08-23"  # >7 days, partial free_week path
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["is_free_booking"] is False
+        assert body["original_amount"] == 9300
+        assert body["discount_amount"] == 8500
+        assert body["amount"] == 800
+        assert body["client_secret"] == "cs_test_free_week"

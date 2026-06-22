@@ -154,6 +154,7 @@ from models import (
     AvailableSlotsResponse,
 )
 from booking_service import get_booking_service, BookingService, get_base_price_for_duration
+from airport_quote_service import get_airport_quote_week1_price_pence
 from time_slots import get_drop_off_summary, get_pickup_summary
 from config import get_settings, is_stripe_configured
 import httpx
@@ -12389,6 +12390,12 @@ def resolve_airport_quote_amount_pence(
     return int(snapshot.tag_price_pence)
 
 
+def get_free_week_base_pence_for_request(request: "CreatePaymentRequest") -> int:
+    if request.airport_quote_snapshot_id:
+        return get_airport_quote_week1_price_pence()
+    return int(get_base_price_for_duration(7) * 100)
+
+
 class CreatePaymentResponse(BaseModel):
     """Response with payment intent details for frontend."""
     client_secret: Optional[str] = None  # None for free bookings (100% off)
@@ -12713,7 +12720,7 @@ async def create_payment(
                                                             new_discount_amount = new_original_amount
                                                             is_free_booking = True
                                                         else:
-                                                            week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                                            week1_base_pence = get_free_week_base_pence_for_request(request)
                                                             new_discount_amount = min(week1_base_pence, new_original_amount)
                                                             is_free_booking = False
                                                     else:
@@ -12735,7 +12742,7 @@ async def create_payment(
                                                     new_discount_amount = new_original_amount
                                                     is_free_booking = True
                                                 else:
-                                                    week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                                    week1_base_pence = get_free_week_base_pence_for_request(request)
                                                     new_discount_amount = min(week1_base_pence, new_original_amount)
                                             else:
                                                 new_discount_amount = int(new_original_amount * discount_percent / 100)
@@ -12925,7 +12932,7 @@ async def create_payment(
                                 discount_amount = original_amount
                                 is_free_booking = True
                             else:
-                                week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                week1_base_pence = get_free_week_base_pence_for_request(request)
                                 discount_amount = min(week1_base_pence, original_amount)
                                 is_free_booking = False
                         else:
@@ -12977,7 +12984,7 @@ async def create_payment(
                             else:
                                 # Trips 8-14 days: deduct the 1-week base rate (7-day early tier)
                                 # e.g. 10-day trip £119 - 7-day base £79 = customer pays £40
-                                week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                week1_base_pence = get_free_week_base_pence_for_request(request)
                                 discount_amount = min(week1_base_pence, original_amount)
                                 is_free_booking = False
                         else:

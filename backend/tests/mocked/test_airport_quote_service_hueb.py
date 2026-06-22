@@ -13,6 +13,7 @@ from airport_quote_service import (
     calculate_billing_days,
     calculate_tag_price_pence,
     get_airport_quote_discount_percent,
+    get_airport_quote_week1_price_pence,
     normalise_boh_time_slot,
     parse_boh_products,
     fallback_quote_from_snapshots,
@@ -97,6 +98,13 @@ def test_discount_env_valid_and_invalid(monkeypatch, caplog):
 
     monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "99")
     assert get_airport_quote_discount_percent() == 25
+
+
+def test_week1_env_unset_uses_default_with_warning(monkeypatch, caplog):
+    monkeypatch.delenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", raising=False)
+
+    assert get_airport_quote_week1_price_pence() == 10500
+    assert "AIRPORT_QUOTE_WEEK1_PRICE_PENCE is unset" in caplog.text
 
 
 def test_parse_boh_product_groups_excludes_flex_prices():

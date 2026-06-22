@@ -198,6 +198,10 @@ def get_airport_quote_discount_percent() -> Decimal:
 def get_airport_quote_week1_price_pence() -> int:
     raw = os.environ.get("AIRPORT_QUOTE_WEEK1_PRICE_PENCE")
     if not raw:
+        logger.warning(
+            "AIRPORT_QUOTE_WEEK1_PRICE_PENCE is unset; using default %s",
+            DEFAULT_WEEK1_PRICE_PENCE,
+        )
         return DEFAULT_WEEK1_PRICE_PENCE
     try:
         value = int(raw)
