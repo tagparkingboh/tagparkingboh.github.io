@@ -381,6 +381,7 @@ def fallback_quote_from_snapshots(
             AirportQuoteSnapshot.airport == AIRPORT_CODE,
             AirportQuoteSnapshot.billing_days == billing_days,
             AirportQuoteSnapshot.status == "ok",
+            AirportQuoteSnapshot.source.in_(("live", "batch")),
             AirportQuoteSnapshot.cheapest_pence.isnot(None),
         )
         .order_by(AirportQuoteSnapshot.created_at.desc())
@@ -509,7 +510,7 @@ def build_airport_parking_quote_from_live_or_model(
             cheapest_pence=min((product.price_pence for product in products), default=None),
             tag_price_pence=tag_price_pence,
             discount_pct=discount_pct,
-            source="batch",
+            source="model",
             status="ok",
         )
         return build_airport_quote_response(
@@ -550,7 +551,7 @@ def build_airport_parking_quote_from_live_or_model(
                 cheapest_pence=min((product.price_pence for product in products), default=None),
                 tag_price_pence=tag_price_pence,
                 discount_pct=discount_pct,
-                source="batch",
+                source="model",
                 status="ok",
             )
         else:
@@ -594,7 +595,7 @@ def build_airport_parking_quote_from_live_or_model(
             cheapest_pence=min((product.price_pence for product in products), default=None),
             tag_price_pence=tag_price_pence,
             discount_pct=discount_pct,
-            source="batch",
+            source="model",
             status="ok",
         )
 

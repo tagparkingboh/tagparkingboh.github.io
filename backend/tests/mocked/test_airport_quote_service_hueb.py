@@ -14,6 +14,7 @@ from airport_quote_service import (
     get_airport_quote_discount_percent,
     normalise_boh_time_slot,
     parse_boh_products,
+    fallback_quote_from_snapshots,
 )
 from airport_quote_worker_client import build_worker_scraper
 from main import app
@@ -23,14 +24,20 @@ from main import resolve_airport_quote_amount_pence
 class _Query:
     def __init__(self, row=None):
         self.row = row
+        self.filter_args = []
 
     def filter(self, *args, **kwargs):
+        self.filter_args.extend(args)
         return self
 
     def order_by(self, *args, **kwargs):
         return self
 
     def first(self):
+        if getattr(self.row, "source", None) == "model":
+            filter_text = " ".join(str(arg) for arg in self.filter_args)
+            if "airport_quote_snapshots.source IN" in filter_text:
+                return None
         return self.row
 
 
@@ -224,7 +231,7 @@ def test_quote_endpoint_scraper_failure_uses_snapshot_model(monkeypatch):
     statuses = [call.args[0].status for call in db.add.call_args_list]
     assert "error" in statuses
     assert statuses[-1] == "ok"
-    assert db.add.call_args_list[-1].args[0].source == "batch"
+    assert db.add.call_args_list[-1].args[0].source == "model"
 
 
 def test_quote_endpoint_rejects_bad_live_structure_and_falls_back(monkeypatch):
@@ -260,7 +267,7 @@ def test_quote_endpoint_rejects_bad_live_structure_and_falls_back(monkeypatch):
     snapshot = db.add.call_args_list[0].args[0]
     assert snapshot.status == "rejected"
     assert snapshot.reject_reason == "products_missing"
-    assert db.add.call_args_list[-1].args[0].source == "batch"
+    assert db.add.call_args_list[-1].args[0].source == "model"
 
 
 def test_quote_endpoint_without_worker_returns_model_price(monkeypatch):
@@ -283,7 +290,29 @@ def test_quote_endpoint_without_worker_returns_model_price(monkeypatch):
     body = response.json()
     assert body["source"] == "model"
     assert body["tagPricePence"] > 0
-    assert db.add.call_args.args[0].source == "batch"
+    assert db.add.call_args.args[0].source == "model"
+
+
+def test_model_rows_do_not_feed_future_model_derivation():
+    model_echo = SimpleNamespace(
+        products_json=[
+            {"name": "Echoed model", "pricePence": 99999, "priceText": "£999.99"},
+        ],
+        cheapest_pence=99999,
+        source="model",
+    )
+    db = _mock_db(model_echo)
+
+    products, tag_price_pence, source = fallback_quote_from_snapshots(
+        db,
+        billing_days=7,
+        discount_pct=25,
+    )
+
+    assert source == "model"
+    assert products[0].name == "Bournemouth Airport model"
+    assert products[0].price_pence == 14805
+    assert tag_price_pence == 11103
 
 
 def test_worker_client_maps_worker_payload(monkeypatch):
