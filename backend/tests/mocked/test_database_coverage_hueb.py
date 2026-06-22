@@ -20,7 +20,10 @@ DATABASE_PATH = Path(__file__).resolve().parents[2] / "database.py"
 
 def _load_database_under_test(env=None, create_engine_side_effect=None, listens_for_side_effect=None):
     env = dict(env or {})
-    managed_keys = {"DATABASE_URL", "SQL_CONSOLE_DATABASE_URL"}
+    # Pool sizing is read at module import (database.py POOL_SIZE/MAX_OVERFLOW);
+    # manage these keys too so callers can pin the pool total deterministically
+    # (and restore them afterwards), instead of inheriting the env-driven default.
+    managed_keys = {"DATABASE_URL", "SQL_CONSOLE_DATABASE_URL", "DB_POOL_SIZE", "DB_MAX_OVERFLOW"}
     previous = {key: os.environ.get(key) for key in managed_keys}
     for key in managed_keys:
         if key in env:
@@ -78,7 +81,14 @@ class TestDatabaseImportCoverage:
         engine = _fake_engine(checkedout=40, overflow=5, checkedin=0)
 
         module, create_engine, _ = _load_database_under_test(
-            env={"DATABASE_URL": "postgres://user:pass@example.com/tag"},
+            # Pin the pool size so total is 45 (not the env-driven default of
+            # 75 after the pool change in 3c8c7c9); 40+5 = 45/45 = 100.0% and
+            # 10/45 = 22.22% — matches this test's hard-coded threshold args.
+            env={
+                "DATABASE_URL": "postgres://user:pass@example.com/tag",
+                "DB_POOL_SIZE": "20",
+                "DB_MAX_OVERFLOW": "25",
+            },
             create_engine_side_effect=[engine],
             listens_for_side_effect=listens_for,
         )

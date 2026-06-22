@@ -473,3 +473,145 @@ class TestFreeBookingPath:
         mock_rebuild.assert_called_once_with(999)
         mock_link.assert_called_once_with(999)
 
+
+# ============================================================================
+# Airport-quote promo matrix (§9) — promo applied to the DYNAMIC quote price.
+# free_100 + percentage are unambiguous; free_week (>7d) is HELD pending the
+# env-vs-package week1 ruling (spec §9 says env AIRPORT_QUOTE_WEEK1_PRICE_PENCE,
+# code uses get_base_price_for_duration(7)).
+# ============================================================================
+
+
+def _mk_airport_snapshot(*, snapshot_id=555, tag_price_pence=11103, entry_date=None):
+    s = MagicMock()
+    s.id = snapshot_id
+    s.status = "ok"
+    s.tag_price_pence = tag_price_pence
+    s.entry_date = entry_date or date_type(2026, 8, 15)  # matches _valid_payload drop_off_date
+    return s
+
+
+def _mk_percentage_promotion(*, percent=10):
+    p = MagicMock()
+    p.id = 2
+    p.name = f"{percent}% off (test)"
+    p.discount_percent = percent
+    p.discount_type = "percentage"
+    return p
+
+
+def _promo_quote_db(*, promo_code_record, promotion, booking_row, airport_snapshot):
+    """Per-model dispatch (extends _free_booking_db with AirportQuoteSnapshot)."""
+    from db_models import (
+        PromoCode as DbPromoCode, Promotion as DbPromotion, Booking as DbBooking,
+        AirportQuoteSnapshot as DbSnap,
+    )
+    db = MagicMock()
+
+    def _query(model):
+        chain = MagicMock()
+        chain.options.return_value = chain
+        chain.filter.return_value = chain
+        chain.order_by.return_value = chain
+        chain.count.return_value = 0
+        chain.first.return_value = None
+        chain.all.return_value = []
+        if model is DbPromoCode:
+            chain.first.return_value = promo_code_record
+        elif model is DbPromotion:
+            chain.first.return_value = promotion
+        elif model is DbBooking:
+            chain.first.return_value = booking_row
+        elif model is DbSnap:
+            chain.first.return_value = airport_snapshot
+        return chain
+
+    db.query.side_effect = _query
+    db.commit = MagicMock()
+    db.refresh = MagicMock()
+    return db
+
+
+class TestAirportQuotePromo:
+    """§9 promo behaviour against the dynamic (snapshot-derived) TAG price."""
+
+    def setup_method(self):
+        self._real_is_configured = main.is_stripe_configured
+        main.is_stripe_configured = lambda: True
+
+    def teardown_method(self):
+        main.is_stripe_configured = self._real_is_configured
+        _clear()
+
+    def _common_patches(self, monkeypatch):
+        monkeypatch.setattr("db_service.find_overcapacity_day_in_stay", lambda *a, **kw: None)
+        monkeypatch.setattr("db_service.get_pending_booking_by_session", lambda db, sid: None)
+        monkeypatch.setattr("db_service.get_customer_by_id", lambda db, cid: _mk_customer())
+        monkeypatch.setattr("main.mark_promo_code_used", lambda *a, **kw: None)
+        monkeypatch.setattr("main.check_promo_modal_code_used", lambda *a, **kw: None)
+        monkeypatch.setattr("main.log_audit_event", lambda *a, **kw: None)
+        monkeypatch.setattr("email_service.send_booking_confirmation_email", lambda *a, **kw: True)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: _mk_booking_row())
+        monkeypatch.setattr("db_service.create_payment", lambda **kw: MagicMock(status=None, paid_at=None))
+
+    def test_H_free_100_zeroes_the_dynamic_quote_price(self, monkeypatch):
+        """free_100 against a £111.03 airport quote → £0, and the discount
+        equals the SNAPSHOT price (proves promo applies to the dynamic quote,
+        not a package price)."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQ100", booking_id=801)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        _override_db(_promo_quote_db(
+            promo_code_record=_mk_promo_code_record(),
+            promotion=_mk_free_100_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=11103),
+        ))
+        payload = _free_booking_payload()
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["is_free_booking"] is True
+        assert body["client_secret"] is None
+        assert body["amount"] == 0
+        assert body["original_amount"] == 11103       # the dynamic quote price
+        assert body["discount_amount"] == 11103
+
+    def test_H_percentage_discounts_the_dynamic_quote_price(self, monkeypatch):
+        """10% off a £111.03 airport quote → £99.93 charged via Stripe
+        (discount computed on the dynamic quote, not a package price)."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQ10", booking_id=802)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_test_aq"
+        fake_intent.client_secret = "cs_test_aq"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        promo = _mk_promo_code_record()
+        promo.code = "SAVE10"
+        _override_db(_promo_quote_db(
+            promo_code_record=promo,
+            promotion=_mk_percentage_promotion(percent=10),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=11103),
+        ))
+        payload = _free_booking_payload(promo_code="SAVE10")
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["is_free_booking"] is False
+        assert body["original_amount"] == 11103         # dynamic quote price
+        assert body["discount_amount"] == 1110          # int(11103 * 10/100)
+        assert body["amount"] == 9993                    # 11103 - 1110
+        assert body["client_secret"] == "cs_test_aq"
+
