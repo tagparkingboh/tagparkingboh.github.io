@@ -433,6 +433,7 @@ function StripePayment({
         colour: formData.colour,
         // Package
         package: formData.package,
+        airport_quote_snapshot_id: pricingInfo?.airport_quote_snapshot_id || null,
         // Flight details - use manual entry data if available
         flight_number: manualDepartureData?.flightNumber || selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
         flight_date: formatDateLocal(formData.dropoffDate),

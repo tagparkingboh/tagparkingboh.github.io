@@ -141,7 +141,7 @@ def log_promo(message: str, data: dict = None):
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, or_, case, func
 
@@ -173,7 +173,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db, get_sql_console_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate, BookingDraft
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate, BookingDraft, AirportQuoteSnapshot
 import db_service
 import json
 import traceback
@@ -1263,6 +1263,59 @@ async def get_duration_prices():
 
     prices = BookingService.get_all_duration_prices()
     return prices
+
+
+class AirportParkingQuoteRequest(BaseModel):
+    entry_date: date = Field(alias="entryDate")
+    entry_time: str = Field(alias="entryTime")
+    exit_date: date = Field(alias="exitDate")
+    exit_time: str = Field(alias="exitTime")
+    destination: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
+
+
+def _parse_quote_time(value: str, field_name: str) -> time:
+    try:
+        hour, minute = [int(part) for part in value.split(":")[:2]]
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail=f"{field_name} must be HH:MM")
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise HTTPException(status_code=400, detail=f"{field_name} must be HH:MM")
+    return time(hour, minute)
+
+
+def get_airport_quote_scraper():
+    from airport_quote_scraper import fetch_bournemouth_airport_quote
+
+    return fetch_bournemouth_airport_quote
+
+
+@app.post("/api/airport-parking/quote")
+async def get_airport_parking_quote_endpoint(
+    request: AirportParkingQuoteRequest,
+    db: Session = Depends(get_db),
+):
+    """Return a TAG price beside live/modelled Bournemouth Airport prices."""
+    from airport_quote_service import AirportQuoteInput, get_airport_parking_quote
+
+    quote_input = AirportQuoteInput(
+        entry_date=request.entry_date,
+        entry_time=_parse_quote_time(request.entry_time, "entryTime"),
+        exit_date=request.exit_date,
+        exit_time=_parse_quote_time(request.exit_time, "exitTime"),
+        destination=request.destination,
+    )
+
+    try:
+        return get_airport_parking_quote(
+            db,
+            quote_input,
+            scraper=get_airport_quote_scraper(),
+            quoted_at_factory=get_uk_now,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # =============================================================================
@@ -12235,6 +12288,7 @@ class CreatePaymentRequest(BaseModel):
 
     # Package selection
     package: str  # "quick" or "longer"
+    airport_quote_snapshot_id: Optional[int] = None
 
     # Flight details for reference
     flight_number: str
@@ -12248,7 +12302,6 @@ class CreatePaymentRequest(BaseModel):
 
     # Return flight details
     arrival_id: Optional[int] = None  # ID of the flight arrival
-    pickup_flight_time: Optional[str] = None  # Landing time "HH:MM"
     pickup_flight_number: Optional[str] = None
     pickup_origin: Optional[str] = None  # Origin airport name
 
@@ -12289,6 +12342,30 @@ class CreatePaymentRequest(BaseModel):
     # Actual flight times (always sent, used for emails and display)
     flight_departure_time: Optional[str] = None  # "HH:MM" - actual flight departure time
     flight_arrival_time: Optional[str] = None  # "HH:MM" - actual flight arrival time
+
+
+def resolve_airport_quote_amount_pence(
+    db: Session,
+    quote_snapshot_id: Optional[int],
+    *,
+    dropoff_date: date,
+) -> Optional[int]:
+    if not quote_snapshot_id:
+        return None
+
+    snapshot = (
+        db.query(AirportQuoteSnapshot)
+        .filter(AirportQuoteSnapshot.id == quote_snapshot_id)
+        .first()
+    )
+    if not snapshot:
+        raise HTTPException(status_code=400, detail="Airport quote has expired. Please refresh your quote.")
+    if snapshot.status != "ok" or snapshot.tag_price_pence is None:
+        raise HTTPException(status_code=400, detail="Airport quote is not usable. Please refresh your quote.")
+    if snapshot.entry_date != dropoff_date:
+        raise HTTPException(status_code=400, detail="Airport quote no longer matches your booking. Please refresh your quote.")
+
+    return int(snapshot.tag_price_pence)
 
 
 class CreatePaymentResponse(BaseModel):
@@ -12560,12 +12637,20 @@ async def create_payment(
                                 dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
                                 pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
                                 duration_days = (pickup_date - dropoff_date).days
-
-                                new_original_amount = calculate_price_in_pence(
-                                    package=request.package,
-                                    drop_off_date=dropoff_date,
-                                    duration_days=duration_days
+                                quote_original_amount = resolve_airport_quote_amount_pence(
+                                    db,
+                                    request.airport_quote_snapshot_id,
+                                    dropoff_date=dropoff_date,
                                 )
+
+                                if quote_original_amount is not None:
+                                    new_original_amount = quote_original_amount
+                                else:
+                                    new_original_amount = calculate_price_in_pence(
+                                        package=request.package,
+                                        drop_off_date=dropoff_date,
+                                        duration_days=duration_days
+                                    )
 
                                 new_discount_amount = 0
                                 new_promo_code_applied = None
@@ -12750,12 +12835,20 @@ async def create_payment(
         # Calculate base amount in pence (using flexible duration pricing).
         # Pass actual pickup_date (pre-cutoff) for peak-day check — peak applies
         # to the day the customer is physically present, not the billing day.
-        original_amount = calculate_price_in_pence(
-            package=request.package,
-            drop_off_date=dropoff_date,
-            duration_days=duration_days,
-            pickup_date=pickup_date,
+        quote_original_amount = resolve_airport_quote_amount_pence(
+            db,
+            request.airport_quote_snapshot_id,
+            dropoff_date=dropoff_date,
         )
+        if quote_original_amount is not None:
+            original_amount = quote_original_amount
+        else:
+            original_amount = calculate_price_in_pence(
+                package=request.package,
+                drop_off_date=dropoff_date,
+                duration_days=duration_days,
+                pickup_date=pickup_date,
+            )
 
         # Check for promo code and apply discount if valid
         discount_amount = 0

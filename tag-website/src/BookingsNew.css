@@ -1874,6 +1874,51 @@
   margin-bottom: 0.5rem;
 }
 
+.airport-comparison {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid rgba(217, 255, 0, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+}
+
+.airport-comparison h3 {
+  margin: 0 0 0.25rem;
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.airport-comparison-note {
+  margin: 0 0 0.75rem;
+  color: #cccccc;
+  font-size: 0.875rem;
+}
+
+.airport-price-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.airport-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #eeeeee;
+}
+
+.airport-price-row:first-child {
+  border-top: 0;
+}
+
+.airport-price-row strong {
+  color: #ffffff;
+  white-space: nowrap;
+}
+
 /* Price Badge */
 .price-badge {
   display: inline-block;

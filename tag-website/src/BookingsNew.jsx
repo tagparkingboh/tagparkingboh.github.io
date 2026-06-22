@@ -463,6 +463,8 @@ function Bookings({ isModal = false, onClose }) {
 
   // Dynamic pricing state
   const [pricingInfo, setPricingInfo] = useState(null)
+  const [airportQuote, setAirportQuote] = useState(null)
+  const [pricingError, setPricingError] = useState('')
   const [pricingLoading, setPricingLoading] = useState(false)
 
   // Persist booking state to sessionStorage so hard refresh keeps the user on their current step
@@ -1255,62 +1257,91 @@ function Bookings({ isModal = false, onClose }) {
     return formData.pickupDate
   }, [formData.pickupDate, selectedArrivalFlight])
 
-  // Fetch dynamic pricing when dates or arrival time change.
+  // Fetch BOH comparison quote when dates and customer handover times change.
   // Lives here (rather than alongside other date useEffects) because it needs
   // selectedArrivalFlight, declared just above.
   useEffect(() => {
     const fetchPricing = async () => {
-      if (!formData.dropoffDate || !formData.pickupDate) {
+      const arrivalHHMM = arrivalTimeOverride || manualArrivalData.flightTime || selectedArrivalFlight?.time || null
+      let pickupTimeStr = null
+      let pickupRollsPastMidnight = false
+      if (arrivalHHMM) {
+        const [h, m] = arrivalHHMM.split(':').map(Number)
+        if (Number.isInteger(h) && Number.isInteger(m)) {
+          const totalMins = h * 60 + m + 30
+          pickupRollsPastMidnight = totalMins >= 24 * 60
+          const displayMins = totalMins % (24 * 60)
+          pickupTimeStr = `${String(Math.floor(displayMins / 60)).padStart(2, '0')}:${String(displayMins % 60).padStart(2, '0')}`
+        }
+      }
+
+      const destination = manualDepartureData.destinationName || manualDepartureData.customDestination || ''
+
+      if (!formData.dropoffDate || !formData.pickupDate || !dropoffTime || !pickupTimeStr) {
         setPricingInfo(null)
+        setAirportQuote(null)
+        setPricingError('')
         return
       }
 
       setPricingLoading(true)
+      setPricingError('')
       try {
         const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
-        const pickupStr = format(actualPickupDate || formData.pickupDate, 'yyyy-MM-dd')
-
-        // Customer-meet time = arrival + 30. Backend uses this to apply the
-        // 02:30 cutoff (early-morning pickups bill as the previous day).
-        const arrivalHHMM = arrivalTimeOverride || manualArrivalData.flightTime || selectedArrivalFlight?.time || null
-        let pickupTimeStr = null
-        if (arrivalHHMM) {
-          const [h, m] = arrivalHHMM.split(':').map(Number)
-          if (Number.isInteger(h) && Number.isInteger(m)) {
-            const totalMins = (h * 60 + m + 30) % (24 * 60)
-            pickupTimeStr = `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`
-          }
+        const quotePickupDate = new Date(actualPickupDate || formData.pickupDate)
+        if (pickupRollsPastMidnight) {
+          quotePickupDate.setDate(quotePickupDate.getDate() + 1)
         }
+        const pickupStr = format(quotePickupDate, 'yyyy-MM-dd')
 
-        const response = await fetch(`${API_BASE_URL}/api/pricing/calculate`, {
+        const response = await fetch(`${API_BASE_URL}/api/airport-parking/quote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            drop_off_date: dropoffStr,
-            pickup_date: pickupStr,
-            ...(pickupTimeStr ? { pickup_time: pickupTimeStr } : {}),
+            entryDate: dropoffStr,
+            entryTime: dropoffTime,
+            exitDate: pickupStr,
+            exitTime: pickupTimeStr,
+            destination,
           }),
         })
 
         if (response.ok) {
           const data = await response.json()
-          setPricingInfo(data)
+          setAirportQuote(data)
+          setPricingInfo(data.pricingInfo)
           setFormData(prev => ({
             ...prev,
-            package: data.package, // "quick" or "longer"
+            package: 'airport_quote',
           }))
         } else {
           setPricingInfo(null)
+          setAirportQuote(null)
+          setPricingError('Unable to load live comparison pricing. Please check your times and try again.')
         }
       } catch (error) {
         console.error('Error fetching pricing:', error)
         setPricingInfo(null)
+        setAirportQuote(null)
+        setPricingError('Unable to load live comparison pricing. Please check your connection and try again.')
       } finally {
         setPricingLoading(false)
       }
     }
     fetchPricing()
-  }, [formData.dropoffDate, formData.pickupDate, actualPickupDate, arrivalTimeOverride, manualArrivalData.flightTime, selectedArrivalFlight?.time, API_BASE_URL])
+  }, [
+    formData.dropoffDate,
+    formData.pickupDate,
+    actualPickupDate,
+    arrivalTimeOverride,
+    manualArrivalData.flightTime,
+    manualDepartureData.flightTime,
+    manualDepartureData.destinationName,
+    manualDepartureData.customDestination,
+    dropoffTime,
+    selectedArrivalFlight?.time,
+    API_BASE_URL,
+  ])
 
   // Helper function to format minutes to HH:MM
   function formatMinutesToTime(totalMinutes) {
@@ -3429,7 +3460,7 @@ function Bookings({ isModal = false, onClose }) {
               {pricingInfo ? (
                 <div className="package-summary">
                   <div className="package-card selected">
-                    <span className="package-price">£{pricingInfo.price.toFixed(0)}</span>
+                    <span className="package-price">£{pricingInfo.price.toFixed(2)}</span>
                     <span className="package-period">/ {pricingInfo.duration_days} days</span>
 
                     <ul className="package-features">
@@ -3439,7 +3470,27 @@ function Bookings({ isModal = false, onClose }) {
                       <li>No hidden fees</li>
                     </ul>
                   </div>
+                  {airportQuote?.airportPrices?.length > 0 && (
+                    <div className="airport-comparison">
+                      <h3>Bournemouth Airport parking</h3>
+                      <p className="airport-comparison-note">
+                        Airport prices checked just now.
+                      </p>
+                      <div className="airport-price-list">
+                        {airportQuote.airportPrices.map((product) => (
+                          <div className="airport-price-row" key={`${product.name}-${product.pricePence}`}>
+                            <span>{product.name}</span>
+                            <strong>{product.priceText || `£${(product.pricePence / 100).toFixed(2)}`}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+              ) : pricingError ? (
+                <div className="loading-message">{pricingError}</div>
+              ) : pricingLoading ? (
+                <div className="loading-message">Checking live airport prices...</div>
               ) : (
                 <div className="loading-message">Loading pricing information...</div>
               )}

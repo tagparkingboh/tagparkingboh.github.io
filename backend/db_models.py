@@ -4,9 +4,9 @@ SQLAlchemy database models for TAG booking system.
 from sqlalchemy import (
     Column, Integer, String, DateTime, Date, Time,
     ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint, Index,
-    CheckConstraint
+    CheckConstraint, JSON
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -1267,6 +1267,40 @@ class MarketingSourceMonthlyTotal(Base):
 
     def __repr__(self):
         return f"<MarketingSourceMonthlyTotal {self.year_month} - {self.source}: {self.count}>"
+
+
+class AirportQuoteSnapshot(Base):
+    """Stored BOH parking quote snapshots for live comparison and fallback."""
+    __tablename__ = "airport_quote_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    airport = Column(String(8), nullable=False, default="BOH", server_default="BOH")
+    entry_date = Column(Date, nullable=False)
+    entry_time = Column(Time, nullable=False)
+    exit_date = Column(Date, nullable=False)
+    exit_time = Column(Time, nullable=False)
+    destination_id = Column(String(32), nullable=True)
+    billing_days = Column(Integer, nullable=False)
+    products_json = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    cheapest_pence = Column(Integer, nullable=True)
+    tag_price_pence = Column(Integer, nullable=True)
+    discount_pct_used = Column(Numeric(5, 2), nullable=True)
+    source = Column(String(10), nullable=False)
+    status = Column(String(10), nullable=False)
+    reject_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index(
+            "ix_airport_quote_snapshots_fallback",
+            "airport",
+            "billing_days",
+            created_at.desc(),
+        ),
+    )
+
+    def __repr__(self):
+        return f"<AirportQuoteSnapshot {self.airport} {self.billing_days}d {self.status}>"
 
 
 class Promotion(Base):
