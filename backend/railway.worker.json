@@ -6,8 +6,6 @@
   },
   "deploy": {
     "startCommand": "uvicorn airport_quote_worker:app --host :: --port $PORT",
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
