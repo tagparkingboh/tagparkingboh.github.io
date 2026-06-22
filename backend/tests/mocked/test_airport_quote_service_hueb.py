@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -386,3 +387,203 @@ def test_payment_amount_resolver_uses_persisted_quote_and_rejects_mismatch():
             12,
             dropoff_date=date(2026, 7, 7),
         )
+
+
+# ---------------------------------------------------------------------------
+# §18 QA brief — HTTP-boundary-mocked integration (mock ONLY the worker's
+# httpx response via AIRPORT_QUOTE_WORKER_URL, never the service internals).
+# ---------------------------------------------------------------------------
+
+_STANDARD_BOH_PRODUCTS = [
+    {"name": "Car Park 3", "pricePence": 14805, "priceText": "£148.05"},
+    {"name": "Car Park 2", "pricePence": 14994, "priceText": "£149.94"},
+    {"name": "Car Park 1", "pricePence": 16920, "priceText": "£169.20"},
+    {"name": "Car Park 1 Premium", "pricePence": 25500, "priceText": "£255.00"},
+]
+
+
+def _mock_worker_http(monkeypatch, *, products=None, raise_exc=None, http_status=None):
+    """Mock the worker HTTP boundary only: set the worker URL and patch httpx.post
+    so the real worker-client -> service path runs (§18)."""
+    monkeypatch.setenv("AIRPORT_QUOTE_WORKER_URL", "https://worker.test")
+
+    class _Resp:
+        def raise_for_status(self):
+            if http_status and http_status >= 400:
+                req = httpx.Request("POST", "https://worker.test")
+                raise httpx.HTTPStatusError(
+                    str(http_status), request=req, response=httpx.Response(http_status, request=req)
+                )
+
+        def json(self):
+            return {
+                "products": _STANDARD_BOH_PRODUCTS if products is None else products,
+                "sourceUrl": "https://book.bournemouthairport.com/result",
+            }
+
+    def fake_post(url, json, timeout):
+        if raise_exc is not None:
+            raise raise_exc
+        return _Resp()
+
+    monkeypatch.setattr("airport_quote_worker_client.httpx.post", fake_post)
+
+
+def _post_quote(overrides=None):
+    body = {
+        "entryDate": "2026-07-06", "entryTime": "06:00",
+        "exitDate": "2026-07-13", "exitTime": "06:00",
+        "destination": "Other",
+    }
+    if overrides:
+        body.update(overrides)
+    return TestClient(app).post("/api/airport-parking/quote", json=body)
+
+
+def test_http_boundary_live_success_exercises_worker_client(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    _mock_worker_http(monkeypatch)
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "25")
+
+    body = _post_quote().json()
+
+    assert body["source"] == "live"
+    assert body["tagPricePence"] == 11103  # floor(14805 * 0.75)
+    assert [p["name"] for p in body["airportPrices"]] == [
+        "Car Park 3", "Car Park 2", "Car Park 1", "Car Park 1 Premium",
+    ]
+    last = db.add.call_args_list[-1].args[0]
+    assert (last.source, last.status) == ("live", "ok")
+    assert last.cheapest_pence == 14805
+
+
+def test_http_boundary_worker_timeout_serves_model(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    _mock_worker_http(monkeypatch, raise_exc=httpx.TimeoutException("slow"))
+
+    body = _post_quote().json()
+
+    assert body["source"] == "model"
+    assert body["tagPricePence"] > 0
+    statuses = [c.args[0].status for c in db.add.call_args_list]
+    error_row = next(c.args[0] for c in db.add.call_args_list if c.args[0].status == "error")
+    assert error_row.source == "live"          # the error row is tagged source='live'
+    assert "error" in statuses
+    assert db.add.call_args_list[-1].args[0].source == "model"  # final served row
+
+
+def test_http_boundary_worker_5xx_serves_model(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    _mock_worker_http(monkeypatch, http_status=503)
+
+    body = _post_quote().json()
+
+    assert body["source"] == "model"
+    assert body["tagPricePence"] > 0
+    assert db.add.call_args_list[-1].args[0].source == "model"
+
+
+def test_anomaly_zero_price_rejected_then_model(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    zero_priced = [
+        {"name": "Car Park 3", "pricePence": 0, "priceText": "£0.00"},
+        {"name": "Car Park 2", "pricePence": 14994, "priceText": "£149.94"},
+        {"name": "Car Park 1", "pricePence": 16920, "priceText": "£169.20"},
+    ]
+    _mock_worker_http(monkeypatch, products=zero_priced)
+
+    body = _post_quote().json()
+
+    assert body["source"] == "model"
+    rejected = db.add.call_args_list[0].args[0]
+    assert rejected.status == "rejected"
+    assert rejected.reject_reason in ("price_zero", "price_below_floor")
+    assert rejected.source == "live"
+    assert rejected.tag_price_pence is None
+    assert db.add.call_args_list[-1].args[0].source == "model"
+
+
+def test_discount_pct_range_edges(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "0")   # lower inclusive bound
+    assert get_airport_quote_discount_percent() == 0
+    assert calculate_tag_price_pence(14805, get_airport_quote_discount_percent()) == 14805
+
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "60")  # upper inclusive bound
+    assert get_airport_quote_discount_percent() == 60
+    assert calculate_tag_price_pence(10000, get_airport_quote_discount_percent()) == 4000
+
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "60.01")  # just over -> default
+    assert get_airport_quote_discount_percent() == 25
+
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "-1")     # negative -> default
+    assert get_airport_quote_discount_percent() == 25
+
+
+def test_endpoint_billing_days_rounds_up_on_boundary_crossing(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    monkeypatch.delenv("AIRPORT_QUOTE_WORKER_URL", raising=False)  # no worker -> model path
+
+    exactly_7 = _post_quote({"exitDate": "2026-07-13", "exitTime": "06:00"}).json()
+    assert exactly_7["billing_days"] == 7
+
+    one_min_over = _post_quote({"exitDate": "2026-07-13", "exitTime": "06:01"}).json()
+    assert one_min_over["billing_days"] == 8  # crossing the 24h block by a minute adds a day
+
+
+def test_endpoint_sub_24h_returns_one_day_price_not_no_price(monkeypatch):
+    """§4/§6 (intended): sub-24h is NOT no-price; max(1, ceil) floors to 1 day."""
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    monkeypatch.delenv("AIRPORT_QUOTE_WORKER_URL", raising=False)
+
+    body = _post_quote({"exitDate": "2026-07-06", "exitTime": "20:00"}).json()
+
+    assert body["billing_days"] == 1
+    assert body["tagPricePence"] > 0
+    assert body["source"] == "model"
+
+
+def test_sustained_outage_price_does_not_drift(monkeypatch):
+    """§6 adversarial: with the worker failing repeatedly, repeated quotes for the
+    same trip return a STABLE modeled price — modeled rows never feed the model."""
+    fallback = SimpleNamespace(
+        products_json=[{"name": "Car Park 1", "pricePence": 13500, "priceText": "£135.00"}],
+        cheapest_pence=13500,
+        source="live",
+    )
+    db = _mock_db(fallback)
+    _override_quote_db(monkeypatch, db)
+    _mock_worker_http(monkeypatch, raise_exc=httpx.ConnectError("down"))
+
+    prices = []
+    for _ in range(5):
+        body = _post_quote().json()
+        assert body["source"] == "model"
+        prices.append(body["tagPricePence"])
+
+    assert len(set(prices)) == 1  # no drift across repeated outage quotes
+
+
+def test_deferred_day_over_day_jump_is_not_yet_a_gate(monkeypatch):
+    """DEFERRED (§7/§18): the day-over-day-jump / rolling-norm checks are NOT built
+    in this slice. A structurally-valid but anomalously high live price currently
+    PASSES the gate (known, owner-flagged residual risk). This documents today's
+    behaviour so the future slice that adds the jump gate flips this to 'model'."""
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    inflated = [
+        {"name": "Car Park 3", "pricePence": 1480500, "priceText": "£14805.00"},  # 100x
+        {"name": "Car Park 2", "pricePence": 1499400, "priceText": "£14994.00"},
+        {"name": "Car Park 1", "pricePence": 1692000, "priceText": "£16920.00"},
+    ]
+    _mock_worker_http(monkeypatch, products=inflated)
+
+    body = _post_quote().json()
+
+    assert body["source"] == "live"  # accepted today; would be "model" once the jump gate lands
+    assert db.add.call_args_list[-1].args[0].status == "ok"
