@@ -668,6 +668,49 @@ class TestAirportQuotePromo:
         assert resp.status_code == 400
         assert "Airport quote no longer matches" in resp.json()["detail"]
 
+    def test_U_rejects_stale_airport_quote_when_exit_date_changes(self, monkeypatch):
+        """F1 (per-dimension): a changed return DATE on the same quote id is
+        rejected. The fix validates entry_date/entry_time/exit_date/exit_time;
+        the coder's test only covered entry_time — this fences exit_date."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQXD", booking_id=806)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        _override_db(_promo_quote_db(
+            promo_code_record=None,
+            promotion=None,
+            booking_row=booking,
+            # payload pickup is 2026-08-22; snapshot says 08-21 -> mismatch
+            airport_snapshot=_mk_airport_snapshot(exit_date=date_type(2026, 8, 21)),
+        ))
+        payload = _free_booking_payload(promo_code=None)
+        payload["airport_quote_snapshot_id"] = 555
+
+        resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 400
+        assert "Airport quote no longer matches" in resp.json()["detail"]
+
+    def test_U_rejects_stale_airport_quote_when_exit_time_changes(self, monkeypatch):
+        """F1 (per-dimension): a changed return TIME on the same quote id is
+        rejected — fences exit_time (the other new dimension)."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQXT", booking_id=807)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        _override_db(_promo_quote_db(
+            promo_code_record=None,
+            promotion=None,
+            booking_row=booking,
+            # computed quote exit_time for this payload is 10:30; snapshot says 11:30
+            airport_snapshot=_mk_airport_snapshot(exit_time=time(11, 30)),
+        ))
+        payload = _free_booking_payload(promo_code=None)
+        payload["airport_quote_snapshot_id"] = 555
+
+        resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 400
+        assert "Airport quote no longer matches" in resp.json()["detail"]
+
     # --- free_week boundary on the 7-day seam (t-eps / t / t+eps) --------------
 
     def _free_week_promo(self):
@@ -770,6 +813,59 @@ class TestAirportQuotePromo:
         assert body["original_amount"] == 20000
         assert body["discount_amount"] == 10800
         assert body["amount"] == 9200
+
+    def test_H_free_week_airport_dedup_path_matches_fresh_raw_days(self, monkeypatch):
+        """F2 parity: the SAME overnight (pre-2am) airport free_week booking driven
+        through the DEDUP (modify-existing-PaymentIntent) path yields the IDENTICAL
+        raw-days numbers as the fresh path (20000 / 10800 / 9200). The F2 bug was
+        the fresh path (02:00 courtesy) and dedup path (raw days) disagreeing."""
+        import stripe
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10800")
+        self._common_patches(monkeypatch)
+
+        existing_booking = MagicMock()
+        existing_booking.reference = "TAG-AQDEDUP"
+        existing_payment = MagicMock()
+        existing_payment.stripe_payment_intent_id = "pi_existing"
+        existing_booking.payment = existing_payment
+        monkeypatch.setattr(
+            "db_service.get_pending_booking_by_session", lambda db, sid: existing_booking
+        )
+
+        retrieved = MagicMock()
+        retrieved.status = "requires_payment_method"
+        retrieved.metadata = MagicMock()
+        retrieved.metadata.promo_code = "OLDCODE"  # differs from FREEWK -> promo_changed
+        modified = MagicMock()
+        modified.id = "pi_mod"
+        modified.client_secret = "cs_mod"
+        monkeypatch.setattr("stripe.PaymentIntent.retrieve", lambda *a, **kw: retrieved)
+        monkeypatch.setattr("stripe.PaymentIntent.modify", lambda *a, **kw: modified)
+
+        _override_db(_promo_quote_db(
+            promo_code_record=self._free_week_promo(),
+            promotion=_mk_free_week_promotion(),
+            booking_row=existing_booking,
+            airport_snapshot=_mk_airport_snapshot(
+                tag_price_pence=20000,
+                exit_date=date_type(2026, 8, 23),
+                exit_time=time(2, 0),
+            ),
+        ))
+        payload = _free_booking_payload(promo_code="FREEWK")
+        payload["session_id"] = "sess-dedup-1"   # trigger the dedup/modify branch
+        payload["pickup_date"] = "2026-08-23"
+        payload["pickup_flight_time"] = "01:30"  # courtesy would bill 7 days; airport must use raw 8
+        payload["airport_quote_snapshot_id"] = 555
+
+        resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        body = resp.json()
+        assert resp.status_code == 200, body
+        assert body["is_free_booking"] is False
+        assert body["original_amount"] == 20000
+        assert body["discount_amount"] == 10800   # env week1, raw 8-day path
+        assert body["amount"] == 9200             # identical to the fresh path -> parity
 
     def test_H_free_week_8day_airport_price_at_or_below_week1_waives_all(self, monkeypatch):
         """min() the other way: when price <= env week1, deduct the whole price.
