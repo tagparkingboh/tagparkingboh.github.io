@@ -27,6 +27,7 @@ from datetime import date as date_type, datetime, time, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import os
 import pytest
 import sys
 from pathlib import Path
@@ -509,6 +510,15 @@ def _mk_free_week_promotion():
     return p
 
 
+def _mk_free_week_promotion():
+    p = MagicMock()
+    p.id = 3
+    p.name = "1 week free (test)"
+    p.discount_percent = 100
+    p.discount_type = "free_week"
+    return p
+
+
 def _promo_quote_db(*, promo_code_record, promotion, booking_row, airport_snapshot):
     """Per-model dispatch (extends _free_booking_db with AirportQuoteSnapshot)."""
     from db_models import (
@@ -624,6 +634,138 @@ class TestAirportQuotePromo:
         assert body["amount"] == 9993                    # 11103 - 1110
         assert body["client_secret"] == "cs_test_aq"
 
+    # --- free_week boundary on the 7-day seam (t-eps / t / t+eps) --------------
+
+    def _free_week_promo(self):
+        promo = _mk_promo_code_record()
+        promo.code = "FREEWK"
+        return promo
+
+    def test_H_free_week_7day_airport_trip_is_fully_free(self, monkeypatch):
+        """t (=7 days): a 7-day airport trip is fully free regardless of week1."""
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10800")
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQFW7", booking_id=810)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        _override_db(_promo_quote_db(
+            promo_code_record=self._free_week_promo(),
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=20000),
+        ))
+        payload = _free_booking_payload(promo_code="FREEWK")  # 2026-08-15 -> 08-22 = 7 days
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        body = resp.json()
+        assert resp.status_code == 200, body
+        assert body["is_free_booking"] is True
+        assert body["amount"] == 0
+        assert body["discount_amount"] == 20000  # whole price waived
+
+    def test_H_free_week_8day_airport_trip_deducts_env_week1(self, monkeypatch):
+        """t+eps (8 days): >7 deducts min(env week1, price); price>week1 -> week1.
+        Proves the env value is used (not the package base)."""
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10800")
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQFW8", booking_id=811)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_fw8"
+        fake_intent.client_secret = "cs_fw8"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        _override_db(_promo_quote_db(
+            promo_code_record=self._free_week_promo(),
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=20000),
+        ))
+        payload = _free_booking_payload(promo_code="FREEWK")
+        payload["pickup_date"] = "2026-08-23"  # 8 days -> >7
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        body = resp.json()
+        assert resp.status_code == 200, body
+        week1 = int(os.environ["AIRPORT_QUOTE_WEEK1_PRICE_PENCE"])  # derive from the env, don't hardcode
+        assert body["is_free_booking"] is False           # discontinuity: 7d free, 8d charged
+        assert body["original_amount"] == 20000
+        assert body["discount_amount"] == week1            # env week1 (10800), NOT a package base
+        assert body["amount"] == 20000 - week1             # 9200
+
+    def test_H_free_week_8day_airport_price_at_or_below_week1_waives_all(self, monkeypatch):
+        """min() the other way: when price <= env week1, deduct the whole price.
+        Note: the >7 branch keeps is_free_booking False, so this is a £0 paid
+        amount rather than a free booking (edge — flagged in the report)."""
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10800")
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQFWLOW", booking_id=813)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_fwlow"
+        fake_intent.client_secret = "cs_fwlow"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        _override_db(_promo_quote_db(
+            promo_code_record=self._free_week_promo(),
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=8000),  # < week1
+        ))
+        payload = _free_booking_payload(promo_code="FREEWK")
+        payload["pickup_date"] = "2026-08-23"  # 8 days
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        body = resp.json()
+        assert resp.status_code == 200, body
+        assert body["original_amount"] == 8000
+        assert body["discount_amount"] == 8000   # min(week1=10800, price=8000) = price
+        assert body["amount"] == 0
+
+    def test_H_free_week_non_airport_still_uses_package_week1(self, monkeypatch):
+        """Regression guardrail: a normal TAG booking (no airport_quote_snapshot_id)
+        free_week still deducts get_base_price_for_duration(7) — the env value is
+        ignored for non-airport bookings."""
+        monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "99900")  # deliberately distinct
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-PKGFW", booking_id=812)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        monkeypatch.setattr("main.calculate_price_in_pence", lambda **kw: 20000)
+        monkeypatch.setattr("main.get_base_price_for_duration", lambda days: 90.0)  # -> 9000 pence
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_pkg"
+        fake_intent.client_secret = "cs_pkg"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        _override_db(_promo_quote_db(
+            promo_code_record=self._free_week_promo(),
+            promotion=_mk_free_week_promotion(),
+            booking_row=booking,
+            airport_snapshot=None,
+        ))
+        payload = _free_booking_payload(promo_code="FREEWK")
+        payload["pickup_date"] = "2026-08-23"  # 8 days -> >7
+        # NO airport_quote_snapshot_id -> package-priced path
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        body = resp.json()
+        assert resp.status_code == 200, body
+        assert body["original_amount"] == 20000
+        assert body["discount_amount"] == 9000   # package week1 (get_base_price_for_duration*100)
+        assert body["discount_amount"] != 99900  # env value explicitly NOT used for non-airport
+        assert body["amount"] == 11000
+
     def test_H_free_week_uses_airport_week1_env_for_airport_quote(self, monkeypatch):
         """free_week on an 8-day airport quote deducts AIRPORT_QUOTE_WEEK1_PRICE_PENCE,
         not the normal TAG package week-one base."""
@@ -666,6 +808,12 @@ class TestAirportQuotePromo:
         monkeypatch.setenv("AIRPORT_QUOTE_WEEK1_PRICE_PENCE", "10500")
         booking = _mk_booking_row(reference="TAG-FW", booking_id=804)
         monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        # Pin the package pricing engine so this test is deterministic — it is
+        # asserting the free_week DEDUCTION (package week1 base), not the
+        # season/date-sensitive package price itself (which otherwise returns
+        # 9900 here, not the hard-coded 9300, and made this test brittle).
+        monkeypatch.setattr("main.calculate_price_in_pence", lambda **kw: 9300)
+        monkeypatch.setattr("main.get_base_price_for_duration", lambda days: 85.0)  # -> 8500 pence
         fake_intent = MagicMock()
         fake_intent.payment_intent_id = "pi_test_free_week"
         fake_intent.client_secret = "cs_test_free_week"
