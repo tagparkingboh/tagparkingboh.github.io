@@ -765,8 +765,7 @@
   color: #5C7300;
 }
 
-.live-row-badge,
-.live-save-badge {
+.live-row-badge {
   border-radius: 999px;
   background: #D9FF00;
   color: #1f1f1f;
@@ -781,7 +780,7 @@
 
 .live-price-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 0.8rem;
 }
@@ -817,15 +816,6 @@
   font-size: 0.75rem;
   font-weight: 900;
   text-transform: uppercase;
-}
-
-.live-save-badge {
-  display: inline-flex;
-  justify-content: center;
-  min-width: 78px;
-  padding: 0.45rem 0.65rem;
-  font-size: 0.78rem;
-  animation: saveCountPop 650ms ease both;
 }
 
 .live-price-bars {
@@ -1291,12 +1281,6 @@
     font-size: 1.65rem;
   }
 
-  .live-save-badge {
-    grid-column: 1 / -1;
-    justify-self: start;
-    margin-top: 0.15rem;
-  }
-
   .live-trust-list {
     flex-direction: column;
     align-items: center;
@@ -1377,10 +1361,6 @@
 
   .live-price-side strong {
     font-size: 1.45rem;
-  }
-
-  .live-save-badge {
-    justify-self: stretch;
   }
 
   .live-trust-list {

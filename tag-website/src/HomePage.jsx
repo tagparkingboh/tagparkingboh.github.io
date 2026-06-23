@@ -143,7 +143,7 @@ function HomePage() {
     if (!value) return 'awaiting live check'
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return 'recently'
-    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Europe/London' })
   }
 
   const comparisonByDay = new Map((airportComparison?.items || []).map(item => [item.billingDays, item]))
@@ -166,8 +166,6 @@ function HomePage() {
       live: Boolean(comparisonByDay.get(7)),
     },
   ]
-  const maxCheapestSavingPct = airportComparison?.maxCheapestSavingPct || Math.max(...comparisonRows.map(row => row.savingPct), 0)
-  const maxPremiumSavingPct = airportComparison?.maxPremiumSavingPct || 0
   const hasLiveComparison = Boolean(airportComparison?.items?.length)
 
   // Check if there's an active promo section
@@ -336,7 +334,7 @@ function HomePage() {
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 && (
                 hasLiveComparison
-                  ? <>Save up to {maxPremiumSavingPct}% off<br />official airport parking</>
+                  ? <>Save up to 70% off<br />official airport parking</>
                   : <>Live Bournemouth Airport<br />price comparison</>
               )}
               {heroBannerIndex === 1 && (
@@ -417,7 +415,6 @@ function HomePage() {
                       <span className="live-price-label">TAG</span>
                       <strong>{formatPounds(row.tagPence)}</strong>
                     </div>
-                    <span className="live-save-badge">SAVE {row.savingPct}%</span>
                   </div>
                   <div className="live-price-bars" aria-hidden="true">
                     <span className="airport-bar"></span>
@@ -436,7 +433,7 @@ function HomePage() {
           </ul>
           <p className="live-savings-line">
             {airportComparison?.items?.length
-              ? `Up to ${maxCheapestSavingPct}% off their cheapest · up to ${maxPremiumSavingPct}% off Premium Parking`
+              ? 'Up to 30% off their cheapest · up to 70% off Premium Parking'
               : 'Live airport savings update automatically from recent checked prices.'}
           </p>
         </div>
@@ -449,8 +446,8 @@ function HomePage() {
       <section className="features-banner">
         <div className="features-content">
           <div className="feature">
-            <h2>{hasLiveComparison ? `${maxPremiumSavingPct}%` : 'Live'}</h2>
-            <p>{hasLiveComparison ? <>Save up to {maxPremiumSavingPct}% off<br />Premium Parking</> : <>Airport price checks<br />refreshed daily</>}</p>
+            <h2>{hasLiveComparison ? '70%' : 'Live'}</h2>
+            <p>{hasLiveComparison ? <>Save up to 70% off<br />Premium Parking</> : <>Airport price checks<br />refreshed daily</>}</p>
           </div>
           <div className="feature">
             <h2>£0</h2>
