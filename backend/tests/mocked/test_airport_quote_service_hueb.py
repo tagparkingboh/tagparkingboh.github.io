@@ -214,7 +214,39 @@ def test_parse_boh_flat_products_drops_generic_duplicate_price_nodes():
     ]
 
 
-def test_validate_products_requires_all_four_named_products():
+def test_parse_boh_flat_products_accepts_three_standard_products_without_premium():
+    html = """
+      <section class="parking-products">
+        <span class="item__price__val 7">£168.13</span>
+        <span class="item__price__val 5">£171.36</span>
+        <span class="item__price__val 1">£195.60</span>
+      </section>
+    """
+    products = parse_boh_products(html)
+
+    assert [(p.name, p.price_pence) for p in products] == [
+        ("Car Park 3", 16813),
+        ("Car Park 2", 17136),
+        ("Car Park 1", 19560),
+    ]
+
+
+def test_validate_products_accepts_four_named_products():
+    ok, reason = validate_products(
+        [
+            AirportProduct("Car Park 3", 14805, "£148.05"),
+            AirportProduct("Car Park 2", 14994, "£149.94"),
+            AirportProduct("Car Park 1", 16920, "£169.20"),
+            AirportProduct("Car Park 1 Premium", 25500, "£255.00"),
+        ],
+        billing_days=8,
+    )
+
+    assert ok is True
+    assert reason is None
+
+
+def test_validate_products_accepts_three_standard_products_without_premium():
     ok, reason = validate_products(
         [
             AirportProduct("Car Park 3", 14805, "£148.05"),
@@ -224,8 +256,49 @@ def test_validate_products_requires_all_four_named_products():
         billing_days=8,
     )
 
+    assert ok is True
+    assert reason is None
+
+
+def test_validate_products_rejects_two_products_as_missing():
+    ok, reason = validate_products(
+        [
+            AirportProduct("Car Park 3", 14805, "£148.05"),
+            AirportProduct("Car Park 2", 14994, "£149.94"),
+        ],
+        billing_days=8,
+    )
+
     assert ok is False
     assert reason == "products_missing"
+
+
+def test_validate_products_rejects_missing_standard_even_with_premium():
+    ok, reason = validate_products(
+        [
+            AirportProduct("Car Park 2", 14994, "£149.94"),
+            AirportProduct("Car Park 1", 16920, "£169.20"),
+            AirportProduct("Car Park 1 Premium", 25500, "£255.00"),
+        ],
+        billing_days=8,
+    )
+
+    assert ok is False
+    assert reason == "products_misnamed"
+
+
+def test_validate_products_rejects_generic_product_names():
+    ok, reason = validate_products(
+        [
+            AirportProduct("Bournemouth Airport product 1", 14805, "£148.05"),
+            AirportProduct("Bournemouth Airport product 2", 14994, "£149.94"),
+            AirportProduct("Bournemouth Airport product 3", 16920, "£169.20"),
+        ],
+        billing_days=8,
+    )
+
+    assert ok is False
+    assert reason == "products_misnamed"
 
 
 def test_quote_endpoint_live_success_records_snapshot(monkeypatch):

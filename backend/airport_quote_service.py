@@ -29,8 +29,8 @@ BOH_TIME_OPTIONS = (
     + ["23:59"]
 )
 
-BOH_REQUIRED_PRODUCT_NAMES = {"Car Park 1", "Car Park 2", "Car Park 3", "Car Park 1 Premium"}
-BOH_KNOWN_PRODUCT_NAMES = set(BOH_REQUIRED_PRODUCT_NAMES)
+BOH_REQUIRED_PRODUCT_NAMES = {"Car Park 1", "Car Park 2", "Car Park 3"}
+BOH_KNOWN_PRODUCT_NAMES = {"Car Park 1", "Car Park 2", "Car Park 3", "Car Park 1 Premium"}
 BOH_PRICE_CLASS_PRODUCTS = {
     "7": "Car Park 3",
     "5": "Car Park 2",
@@ -292,10 +292,10 @@ def _parse_product_groups(page_html: str) -> list[AirportProduct]:
     products: list[AirportProduct] = []
     for index, chunk in enumerate(chunks[1:]):
         chunk = chunk.split('class="product-group__item-container"', 1)[0]
-        price_match = re.search(r'<[^>]*class="[^"]*item__options-price[^"]*"[^>]*>(.*?)</[^>]+>', chunk, re.S)
+        price_match = re.search(r'<[^>]*class="([^"]*item__options-price[^"]*)"[^>]*>(.*?)</[^>]+>', chunk, re.S)
         if not price_match:
             continue
-        price_text = _strip_tags(price_match.group(1))
+        price_text = _strip_tags(price_match.group(2))
         price_pence = parse_money_to_pence(price_text)
         if price_pence is None:
             continue
@@ -303,10 +303,27 @@ def _parse_product_groups(page_html: str) -> list[AirportProduct]:
         options_text_match = re.search(r'<[^>]*class="[^"]*item__options[^"]*"[^>]*>(.*?)</div>', chunk, re.S)
         options_text = _strip_tags(options_text_match.group(1)) if options_text_match else _strip_tags(chunk)
         name_match = re.search(r"Options\s+(.+?)\s+£", options_text)
-        name = name_match.group(1).strip() if name_match else f"Bournemouth Airport product {index + 1}"
+        name = _name_from_price_classes(match_class_tokens(price_match.group(1)))
+        if name is None:
+            name = name_match.group(1).strip() if name_match else f"Bournemouth Airport product {index + 1}"
         name = re.sub(r"\s+Flex$", "", name).strip()
         products.append(AirportProduct(name=name, price_pence=price_pence, price_text=format_price_text(price_pence)))
     return products
+
+
+def match_class_tokens(class_attr: str) -> set[str]:
+    return set((class_attr or "").split())
+
+
+def _name_from_price_classes(class_tokens: set[str]) -> Optional[str]:
+    return next(
+        (
+            name
+            for class_token, name in BOH_PRICE_CLASS_PRODUCTS.items()
+            if class_token in class_tokens
+        ),
+        None,
+    )
 
 
 def _parse_flat_price_products(page_html: str) -> list[AirportProduct]:
@@ -319,17 +336,10 @@ def _parse_flat_price_products(page_html: str) -> list[AirportProduct]:
         if price_pence is None:
             continue
 
-        class_tokens = set(match.group(1).split())
+        class_tokens = match_class_tokens(match.group(1))
         if class_tokens.intersection(BOH_FLEX_PRICE_CLASSES):
             continue
-        product_name = next(
-            (
-                name
-                for class_token, name in BOH_PRICE_CLASS_PRODUCTS.items()
-                if class_token in class_tokens
-            ),
-            None,
-        )
+        product_name = _name_from_price_classes(class_tokens)
         if product_name is None:
             product_name = f"Bournemouth Airport product {index + 1}"
 
