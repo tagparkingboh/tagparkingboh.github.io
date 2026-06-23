@@ -306,10 +306,9 @@ def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
     events = []
     _override_quote_db(monkeypatch, db)
 
-    def scraper(quote_input: AirportQuoteInput, destination_id: str):
+    def scraper(quote_input: AirportQuoteInput):
         events.append(("scrape", db.query.called))
         assert quote_input.entry_date == date(2026, 7, 6)
-        assert destination_id != "2182"
         return AirportQuoteScrapeResult(
             products=[
                 AirportProduct("Car Park 3", 14805, "£148.05"),
@@ -354,6 +353,7 @@ def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
     assert db.add.called
     snapshot = db.add.call_args.args[0]
     assert snapshot.status == "ok"
+    assert snapshot.destination_id == "2182"
     assert snapshot.cheapest_pence == 14805
     assert snapshot.tag_price_pence == 11103
 
@@ -369,7 +369,7 @@ def test_quote_endpoint_scraper_failure_uses_snapshot_model(monkeypatch):
     db = _mock_db(fallback)
     _override_quote_db(monkeypatch, db)
 
-    def scraper(_quote_input: AirportQuoteInput, _destination_id: str):
+    def scraper(_quote_input: AirportQuoteInput):
         raise RuntimeError("blocked")
 
     monkeypatch.setattr("main.get_airport_quote_scraper", lambda: scraper)
@@ -404,7 +404,7 @@ def test_quote_endpoint_rejects_bad_live_structure_and_falls_back(monkeypatch):
     db = _mock_db()
     _override_quote_db(monkeypatch, db)
 
-    def scraper(_quote_input: AirportQuoteInput, _destination_id: str):
+    def scraper(_quote_input: AirportQuoteInput):
         return AirportQuoteScrapeResult(
             products=[AirportProduct("Unknown", 100, "£1.00")]
         )
@@ -512,7 +512,6 @@ def test_worker_client_maps_worker_payload(monkeypatch):
             exit_date=date(2026, 7, 13),
             exit_time=time(6, 0),
         ),
-        "2182",
     )
 
     assert calls[0] == (
@@ -522,7 +521,6 @@ def test_worker_client_maps_worker_payload(monkeypatch):
             "entryTime": "06:00",
             "exitDate": "2026-07-13",
             "exitTime": "06:00",
-            "destinationId": "2182",
         },
         3.5,
     )

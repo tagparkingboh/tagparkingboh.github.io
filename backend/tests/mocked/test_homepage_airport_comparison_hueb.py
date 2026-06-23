@@ -158,8 +158,7 @@ def test_homepage_airport_comparison_empty_when_no_live_cache(monkeypatch):
 def test_refresh_homepage_airport_quote_snapshots_writes_batch_rows(monkeypatch):
     db = _RefreshDb()
 
-    def scraper(quote_input, destination_id):
-        assert destination_id == "2182"
+    def scraper(quote_input):
         assert quote_input.entry_time == time(6, 0)
         return AirportQuoteScrapeResult(
             products=[

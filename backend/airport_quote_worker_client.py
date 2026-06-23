@@ -33,7 +33,7 @@ def get_airport_quote_worker_url() -> Optional[str]:
 def build_worker_scraper(worker_url: str) -> Scraper:
     endpoint = f"{worker_url.rstrip('/')}/internal/airport-parking/scrape"
 
-    def _scrape(quote_input: AirportQuoteInput, destination_id: str) -> AirportQuoteScrapeResult:
+    def _scrape(quote_input: AirportQuoteInput) -> AirportQuoteScrapeResult:
         response = httpx.post(
             endpoint,
             json={
@@ -41,7 +41,6 @@ def build_worker_scraper(worker_url: str) -> Scraper:
                 "entryTime": quote_input.entry_time.strftime("%H:%M"),
                 "exitDate": quote_input.exit_date.isoformat(),
                 "exitTime": quote_input.exit_time.strftime("%H:%M"),
-                "destinationId": destination_id,
             },
             timeout=_timeout_seconds(),
         )

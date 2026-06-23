@@ -53,7 +53,6 @@ def _log_debug_html_if_needed(page_html: str, products) -> None:
 
 def fetch_bournemouth_airport_quote(
     quote_input: AirportQuoteInput,
-    destination_id: str,
     *,
     timeout_ms: int = 30_000,
 ) -> AirportQuoteScrapeResult:
@@ -107,7 +106,6 @@ def fetch_bournemouth_airport_quote(
                 _airport_date(quote_input.exit_date),
             )
             page.locator("#changeExitTime").select_option(normalise_boh_time_slot(quote_input.exit_time))
-            page.locator("#selectDestination").select_option(destination_id)
 
             page.locator("form").first.evaluate(
                 """(form) => {

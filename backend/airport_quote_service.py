@@ -40,88 +40,6 @@ BOH_PRICE_CLASS_PRODUCTS = {
 BOH_FLEX_PRICE_CLASSES = {"8", "6", "2", "4"}
 
 BOH_DESTINATION_OTHER_ID = "2182"
-BOH_DESTINATION_IDS = {
-    ("agadir", "ryanair"): "2116",
-    ("agadir", "jet2"): "2117",
-    ("alicante", "jet2"): "2118",
-    ("alicante", "ryanair"): "2119",
-    ("antalya", "jet2"): "2120",
-    ("antalya", "tui"): "2121",
-    ("bergerac", None): "2122",
-    ("carcassonne", None): "2123",
-    ("corfu", "jet2"): "2125",
-    ("corfu", "tui"): "2126",
-    ("crete", "jet2"): "2127",
-    ("heraklion", "jet2"): "2127",
-    ("crete", "ryanair"): "2128",
-    ("heraklion", "ryanair"): "2128",
-    ("crete", "tui"): "2129",
-    ("heraklion", "tui"): "2129",
-    ("dalaman", "jet2"): "2130",
-    ("dalaman", "tui"): "2131",
-    ("dubrovnik", None): "2132",
-    ("edinburgh", None): "2133",
-    ("faro", "jet2"): "2134",
-    ("faro", "ryanair"): "2135",
-    ("fuerteventura", "jet2"): "2136",
-    ("fuerteventura", "ryanair"): "2137",
-    ("geneva", None): "2138",
-    ("girona", None): "2139",
-    ("gran canaria", "jet2"): "2140",
-    ("gran canaria", "ryanair"): "2141",
-    ("gran canaria", "tui"): "2142",
-    ("ibiza", "jet2"): "2143",
-    ("ibiza", "tui"): "2144",
-    ("iceland", None): "2145",
-    ("kefalonia", None): "2146",
-    ("kefolonia", None): "2146",
-    ("kos", None): "2147",
-    ("krakow", None): "2148",
-    ("lanzarote", "jet2"): "2149",
-    ("lanzarote", "tui"): "2150",
-    ("lanzarote", "ryanair"): "2151",
-    ("lyon", None): "2153",
-    ("madeira", None): "2154",
-    ("majorca", "jet2"): "2155",
-    ("mallorca", "jet2"): "2155",
-    ("palma", "jet2"): "2155",
-    ("majorca", "tui"): "2156",
-    ("mallorca", "tui"): "2156",
-    ("palma", "tui"): "2156",
-    ("majorca", "ryanair"): "2157",
-    ("mallorca", "ryanair"): "2157",
-    ("palma", "ryanair"): "2157",
-    ("malaga", "jet2"): "2158",
-    ("málaga", "jet2"): "2158",
-    ("malaga", "ryanair"): "2159",
-    ("málaga", "ryanair"): "2159",
-    ("malta", None): "2160",
-    ("menorca", "jet2"): "2161",
-    ("menorca", "tui"): "2162",
-    ("murcia", None): "2163",
-    ("nantes", None): "2164",
-    ("paphos", None): "2166",
-    ("prague", None): "2167",
-    ("reus", None): "2168",
-    ("rhodes", "jet2"): "2169",
-    ("rhodes", "ryanair"): "2170",
-    ("rhodes", "tui"): "2171",
-    ("tenerife", "jet2"): "2172",
-    ("tenerife", "ryanair"): "2173",
-    ("tenerife", "tui"): "2174",
-    ("venice", None): "2175",
-    ("verona", None): "2176",
-    ("vienna", None): "2177",
-    ("wroclaw", None): "2178",
-    ("zadar", None): "2179",
-    ("zante", "jet2"): "2180",
-    ("zakynthos", "jet2"): "2180",
-    ("zante", "tui"): "2181",
-    ("zakynthos", "tui"): "2181",
-    ("larnaca", None): "2183",
-    ("trapani", None): "2184",
-    ("sicily", None): "2184",
-}
 
 # Conservative bootstrapping model used only when no snapshot exists yet.
 # Live snapshots replace this through the fallback lookup path.
@@ -381,31 +299,6 @@ def parse_boh_products(page_html: str) -> list[AirportProduct]:
     return grouped
 
 
-def detect_airline(value: Optional[str]) -> Optional[str]:
-    raw = (value or "").lower()
-    if "tui" in raw or "tom" in raw or re.search(r"\bby\b", raw):
-        return "tui"
-    if "jet2" in raw or re.search(r"\bls\b", raw):
-        return "jet2"
-    if "ryanair" in raw or re.search(r"\bfr\b", raw):
-        return "ryanair"
-    if "easyjet" in raw or re.search(r"\bu2\b", raw):
-        return "easyjet"
-    return None
-
-
-def map_destination_to_boh_id(destination: Optional[str], airline_hint: Optional[str] = None) -> str:
-    raw_destination = (destination or "").lower()
-    airline = detect_airline(f"{destination or ''} {airline_hint or ''}")
-    for (needle, required_airline), destination_id in BOH_DESTINATION_IDS.items():
-        if needle in raw_destination and (required_airline is None or required_airline == airline):
-            return destination_id
-    for (needle, required_airline), destination_id in BOH_DESTINATION_IDS.items():
-        if needle in raw_destination and required_airline is None:
-            return destination_id
-    return BOH_DESTINATION_OTHER_ID
-
-
 def validate_products(products: Iterable[AirportProduct], billing_days: int) -> tuple[bool, Optional[str]]:
     products = list(products)
     if len(products) < len(BOH_REQUIRED_PRODUCT_NAMES):
@@ -503,18 +396,17 @@ def record_quote_snapshot(
     return snapshot
 
 
-Scraper = Callable[[AirportQuoteInput, str], AirportQuoteScrapeResult]
+Scraper = Callable[[AirportQuoteInput], AirportQuoteScrapeResult]
 
 
 def fetch_live_airport_quote_without_db(
     quote_input: AirportQuoteInput,
     scraper: Scraper,
 ) -> AirportQuoteLiveResult:
-    destination_id = map_destination_to_boh_id(quote_input.destination)
-    scrape = scraper(quote_input, destination_id)
+    scrape = scraper(quote_input)
     return AirportQuoteLiveResult(
         products=scrape.products,
-        destination_id=destination_id,
+        destination_id=BOH_DESTINATION_OTHER_ID,
     )
 
 
@@ -559,7 +451,7 @@ def build_airport_parking_quote_from_live_or_model(
     exit_dt = datetime.combine(quote_input.exit_date, quote_input.exit_time)
     billing_days = calculate_billing_days(entry_dt, exit_dt)
     discount_pct = get_airport_quote_discount_percent()
-    destination_id = live_quote.destination_id if live_quote else map_destination_to_boh_id(quote_input.destination)
+    destination_id = live_quote.destination_id if live_quote else BOH_DESTINATION_OTHER_ID
 
     if live_quote is None and not live_error:
         products, tag_price_pence, source = fallback_quote_from_snapshots(db, billing_days, discount_pct)

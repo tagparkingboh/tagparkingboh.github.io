@@ -36,7 +36,6 @@ class AirportQuoteWorkerRequest(BaseModel):
     entry_time: str = Field(alias="entryTime")
     exit_date: date = Field(alias="exitDate")
     exit_time: str = Field(alias="exitTime")
-    destination_id: str = Field(alias="destinationId")
 
     model_config = {"populate_by_name": True}
 
@@ -68,7 +67,7 @@ def scrape_airport_quote(request: AirportQuoteWorkerRequest):
     if not acquired:
         raise HTTPException(status_code=429, detail="Airport quote worker is busy")
     try:
-        scrape = fetch_bournemouth_airport_quote(quote_input, request.destination_id)
+        scrape = fetch_bournemouth_airport_quote(quote_input)
     finally:
         SCRAPE_SEMAPHORE.release()
     return {
