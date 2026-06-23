@@ -1340,6 +1340,105 @@ def get_airport_parking_quote_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+HOMEPAGE_AIRPORT_COMPARISON_DAYS = (4, 7)
+
+
+def _homepage_price_mode() -> str:
+    raw = os.environ.get("HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE", "live").strip().lower()
+    if raw in {"live", "base_rate"}:
+        return raw
+    logger.warning("Invalid HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE=%r; using live", raw)
+    return "live"
+
+
+def _pence_from_pounds(value: float) -> int:
+    return int(round(float(value) * 100))
+
+
+def _homepage_base_price_pence(billing_days: int) -> int:
+    return _pence_from_pounds(get_base_price_for_duration(billing_days))
+
+
+def _snapshot_products(snapshot: AirportQuoteSnapshot) -> list[dict]:
+    products = []
+    for item in snapshot.products_json or []:
+        price_pence = int(item.get("pricePence") or item.get("price_pence") or 0)
+        if price_pence <= 0:
+            continue
+        products.append({
+            "name": item.get("name") or "Bournemouth Airport",
+            "pricePence": price_pence,
+            "priceText": item.get("priceText") or f"£{price_pence / 100:.2f}",
+        })
+    return products
+
+
+def _homepage_saving_pct(reference_pence: Optional[int], tag_price_pence: Optional[int]) -> Optional[int]:
+    if not reference_pence or not tag_price_pence or reference_pence <= 0:
+        return None
+    return max(0, round(((reference_pence - tag_price_pence) / reference_pence) * 100))
+
+
+def _homepage_comparison_item(snapshot: AirportQuoteSnapshot) -> dict:
+    products = _snapshot_products(snapshot)
+    premium_product = next((item for item in products if "premium" in item["name"].lower()), None)
+    most_expensive = premium_product or max(products, key=lambda item: item["pricePence"], default=None)
+    base_price_pence = _homepage_base_price_pence(snapshot.billing_days)
+    snapshot_tag_pence = int(snapshot.tag_price_pence or 0)
+    if _homepage_price_mode() == "base_rate":
+        tag_price_pence = base_price_pence
+    else:
+        tag_price_pence = snapshot_tag_pence or base_price_pence
+
+    cheapest_pence = int(snapshot.cheapest_pence or min((item["pricePence"] for item in products), default=0))
+    premium_pence = most_expensive["pricePence"] if most_expensive else None
+    return {
+        "billingDays": snapshot.billing_days,
+        "cheapestPence": cheapest_pence,
+        "premiumPence": premium_pence,
+        "premiumName": most_expensive["name"] if most_expensive else None,
+        "tagPricePence": tag_price_pence,
+        "savingPct": _homepage_saving_pct(cheapest_pence, tag_price_pence),
+        "premiumSavingPct": _homepage_saving_pct(premium_pence, tag_price_pence),
+        "checkedAt": snapshot.created_at.isoformat() if snapshot.created_at else None,
+        "source": snapshot.source,
+    }
+
+
+@app.get("/api/airport-parking/homepage-comparison")
+def get_homepage_airport_comparison(db: Session = Depends(get_db)):
+    """Cached homepage airport comparison.
+
+    DB-only by design: never scrape BOH from homepage traffic.
+    """
+    items = []
+    for billing_days in HOMEPAGE_AIRPORT_COMPARISON_DAYS:
+        snapshot = (
+            db.query(AirportQuoteSnapshot)
+            .filter(
+                AirportQuoteSnapshot.airport == "BOH",
+                AirportQuoteSnapshot.billing_days == billing_days,
+                AirportQuoteSnapshot.status == "ok",
+                AirportQuoteSnapshot.source.in_(("live", "batch")),
+                AirportQuoteSnapshot.cheapest_pence.isnot(None),
+                AirportQuoteSnapshot.tag_price_pence.isnot(None),
+            )
+            .order_by(AirportQuoteSnapshot.created_at.desc())
+            .first()
+        )
+        if snapshot:
+            items.append(_homepage_comparison_item(snapshot))
+
+    checked_values = [item["checkedAt"] for item in items if item.get("checkedAt")]
+    return {
+        "items": items,
+        "checkedAt": max(checked_values) if checked_values else None,
+        "maxCheapestSavingPct": max((item.get("savingPct") or 0 for item in items), default=0),
+        "maxPremiumSavingPct": max((item.get("premiumSavingPct") or 0 for item in items), default=0),
+        "priceMode": _homepage_price_mode(),
+    }
+
+
 # =============================================================================
 # Promo Code Endpoints
 # =============================================================================

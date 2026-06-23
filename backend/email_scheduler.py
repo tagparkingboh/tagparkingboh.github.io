@@ -57,6 +57,9 @@ AUTO_ROSTER_SWEEP_DEFAULT_HOUR = 3
 AUTO_ROSTER_SWEEP_DEFAULT_MINUTE = 10
 TEMPLATE_ROSTER_TRIM_HOUR = 20
 TEMPLATE_ROSTER_TRIM_MINUTE = 0
+HOMEPAGE_AIRPORT_QUOTE_REFRESH_HOURS = (6, 18)
+HOMEPAGE_AIRPORT_QUOTE_REFRESH_MINUTE = 15
+HOMEPAGE_AIRPORT_QUOTE_DAYS = (4, 7)
 
 
 def get_db() -> Session:
@@ -138,6 +141,98 @@ def process_auto_roster_sweep():
             "failures": 1,
             "error": str(e),
         }
+    finally:
+        db.close()
+
+
+def _homepage_airport_quote_input(billing_days: int, now=None):
+    from airport_quote_service import AirportQuoteInput
+
+    uk_now = now or datetime.now(pytz.timezone("Europe/London"))
+    entry_date = (uk_now + timedelta(days=21)).date()
+    return AirportQuoteInput(
+        entry_date=entry_date,
+        entry_time=time(6, 0),
+        exit_date=entry_date + timedelta(days=billing_days),
+        exit_time=time(6, 0),
+        destination="Other",
+    )
+
+
+def refresh_homepage_airport_quote_snapshots():
+    """Refresh cached live BOH comparison rows for the homepage.
+
+    Uses the existing worker scrape path and writes batch snapshots. Homepage
+    requests read these rows only; they never trigger a scrape.
+    """
+    from airport_quote_service import (
+        AIRPORT_CODE,
+        calculate_billing_days,
+        calculate_tag_price_pence,
+        fetch_live_airport_quote_without_db,
+        get_airport_quote_discount_percent,
+        record_quote_snapshot,
+        validate_products,
+    )
+    from airport_quote_worker_client import get_worker_scraper_from_env
+
+    scraper = get_worker_scraper_from_env()
+    if scraper is None:
+        logger.info("homepage airport quote refresh skipped: AIRPORT_QUOTE_WORKER_URL is unset")
+        return {"skipped": True, "reason": "worker_unconfigured"}
+
+    db = get_db()
+    refreshed = []
+    rejected = []
+    errors = []
+    try:
+        discount_pct = get_airport_quote_discount_percent()
+        for billing_days in HOMEPAGE_AIRPORT_QUOTE_DAYS:
+            quote_input = _homepage_airport_quote_input(billing_days)
+            try:
+                live_quote = fetch_live_airport_quote_without_db(quote_input, scraper)
+                products = live_quote.products
+                calculated_days = calculate_billing_days(
+                    datetime.combine(quote_input.entry_date, quote_input.entry_time),
+                    datetime.combine(quote_input.exit_date, quote_input.exit_time),
+                )
+                valid, reject_reason = validate_products(products, calculated_days)
+                cheapest = min((product.price_pence for product in products), default=None)
+                if not valid:
+                    record_quote_snapshot(
+                        db,
+                        quote_input,
+                        destination_id=live_quote.destination_id,
+                        billing_days=calculated_days,
+                        products=products,
+                        cheapest_pence=cheapest,
+                        tag_price_pence=None,
+                        discount_pct=discount_pct,
+                        source="batch",
+                        status="rejected",
+                        reject_reason=reject_reason,
+                    )
+                    rejected.append({"billing_days": calculated_days, "reason": reject_reason})
+                    continue
+
+                tag_price_pence = calculate_tag_price_pence(cheapest, discount_pct) if cheapest else None
+                record_quote_snapshot(
+                    db,
+                    quote_input,
+                    destination_id=live_quote.destination_id,
+                    billing_days=calculated_days,
+                    products=products,
+                    cheapest_pence=cheapest,
+                    tag_price_pence=tag_price_pence,
+                    discount_pct=discount_pct,
+                    source="batch",
+                    status="ok",
+                )
+                refreshed.append({"airport": AIRPORT_CODE, "billing_days": calculated_days})
+            except Exception as exc:
+                logger.exception("homepage airport quote refresh failed for %sd", billing_days)
+                errors.append({"billing_days": billing_days, "error": str(exc)})
+        return {"skipped": False, "refreshed": refreshed, "rejected": rejected, "errors": errors}
     finally:
         db.close()
 
@@ -1027,6 +1122,24 @@ def start_scheduler():
         "Template roster window trim scheduled at %02d:%02d Europe/London",
         TEMPLATE_ROSTER_TRIM_HOUR,
         TEMPLATE_ROSTER_TRIM_MINUTE,
+    )
+
+    scheduler.add_job(
+        refresh_homepage_airport_quote_snapshots,
+        trigger=CronTrigger(
+            hour=",".join(str(hour) for hour in HOMEPAGE_AIRPORT_QUOTE_REFRESH_HOURS),
+            minute=HOMEPAGE_AIRPORT_QUOTE_REFRESH_MINUTE,
+            timezone=pytz.timezone("Europe/London"),
+        ),
+        id="homepage_airport_quote_refresh",
+        name="Refresh homepage BOH comparison snapshots",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    logger.info(
+        "Homepage airport quote refresh scheduled at %s:%02d Europe/London",
+        ",".join(f"{hour:02d}" for hour in HOMEPAGE_AIRPORT_QUOTE_REFRESH_HOURS),
+        HOMEPAGE_AIRPORT_QUOTE_REFRESH_MINUTE,
     )
 
     scheduler.start()

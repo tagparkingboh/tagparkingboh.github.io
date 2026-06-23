@@ -35,6 +35,7 @@ function HomePage() {
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
   const [prices, setPrices] = useState({ days4: 65, days4Max: 75, week1: 89, week1Max: 99, week2: 140, week2Max: 150, showRange: false })
+  const [airportComparison, setAirportComparison] = useState(null)
   const [hasActivePromo, setHasActivePromo] = useState(false)
   // Drives the desktop floating-nav effect — true once the user has scrolled
   // past the top of the hero. The header CSS uses this to flip from absolute
@@ -109,8 +110,23 @@ function HomePage() {
       })
   }
 
+  const fetchAirportComparison = () => {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    fetch(`${API_URL}/api/airport-parking/homepage-comparison`, {
+      cache: 'no-store',
+    })
+      .then(res => res.json())
+      .then(data => {
+        setAirportComparison(data)
+      })
+      .catch(() => {
+        setAirportComparison(null)
+      })
+  }
+
   useEffect(() => {
     fetchPricing()
+    fetchAirportComparison()
 
     // Listen for pricing updates from Admin page via BroadcastChannel
     const channel = new BroadcastChannel('pricing-updates')
@@ -121,6 +137,38 @@ function HomePage() {
     }
     return () => channel.close()
   }, [])
+
+  const formatPounds = (pence) => `£${((pence || 0) / 100).toFixed(2)}`
+  const formatCheckedDate = (value) => {
+    if (!value) return 'awaiting live check'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return 'recently'
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  }
+
+  const comparisonByDay = new Map((airportComparison?.items || []).map(item => [item.billingDays, item]))
+  const comparisonRows = [
+    {
+      billingDays: 4,
+      label: '4 DAYS',
+      airportPence: comparisonByDay.get(4)?.cheapestPence || Math.round(prices.days4Max * 100),
+      tagPence: comparisonByDay.get(4)?.tagPricePence || Math.round(prices.days4 * 100),
+      savingPct: comparisonByDay.get(4)?.savingPct || 0,
+      live: Boolean(comparisonByDay.get(4)),
+    },
+    {
+      billingDays: 7,
+      label: '7 DAYS',
+      badge: 'Most popular',
+      airportPence: comparisonByDay.get(7)?.cheapestPence || Math.round(prices.week1Max * 100),
+      tagPence: comparisonByDay.get(7)?.tagPricePence || Math.round(prices.week1 * 100),
+      savingPct: comparisonByDay.get(7)?.savingPct || 0,
+      live: Boolean(comparisonByDay.get(7)),
+    },
+  ]
+  const maxCheapestSavingPct = airportComparison?.maxCheapestSavingPct || Math.max(...comparisonRows.map(row => row.savingPct), 0)
+  const maxPremiumSavingPct = airportComparison?.maxPremiumSavingPct || 0
+  const hasLiveComparison = Boolean(airportComparison?.items?.length)
 
   // Check if there's an active promo section
   useEffect(() => {
@@ -287,7 +335,9 @@ function HomePage() {
             <p className="hero-subtitle">TAG: HIGHLY-RATED, FRIENDLY, AND EFFICIENT MEET-AND-GREET<br />SERVICE AT BOURNEMOUTH AIRPORT</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 && (
-                <>Save up to 70% off<br />official airport parking</>
+                hasLiveComparison
+                  ? <>Save up to {maxPremiumSavingPct}% off<br />official airport parking</>
+                  : <>Live Bournemouth Airport<br />price comparison</>
               )}
               {heroBannerIndex === 1 && (
                 <>Friendly and cost-effective alternative<br />to official airport parking</>
@@ -333,63 +383,62 @@ function HomePage() {
 
       {/* Pricing Section */}
       <section className="pricing-section" id="pricing">
-        <h2>Pricing & plans</h2>
-        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
+        <p className="pricing-live-kicker">
+          {airportComparison?.checkedAt
+            ? `🟢 LIVE Bournemouth Airport prices · checked ${formatCheckedDate(airportComparison.checkedAt)}`
+            : 'Bournemouth Airport comparison · awaiting live check'}
+        </p>
+        <h2>Live airport comparison</h2>
+        <p className="pricing-subtitle">See how TAG compares with Bournemouth Airport's latest checked prices for the two most popular stay lengths.</p>
 
-        <div className="pricing-unified-card pricing-design-3">
-          <div className="pricing-hero-layout">
-            <div className="pricing-side-option left">
-              <span className="pricing-side-label">4 DAY TRIP</span>
-              <div className="pricing-side-price">
-                {prices.showRange ? (
-                  <span className="pricing-side-amount">£{prices.days4}–£{prices.days4Max}</span>
-                ) : (
-                  <>
-                    <span className="pricing-side-from">From</span>
-                    <span className="pricing-side-amount">£{prices.days4}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="pricing-center-hero">
-              <span className="pricing-hero-badge">MOST POPULAR</span>
-              <span className="pricing-hero-label">7 DAY TRIP</span>
-              <div className="pricing-hero-price">
-                {prices.showRange ? (
-                  <div className="pricing-hero-amount">
-                    <span className="price">£{prices.week1}–£{prices.week1Max}</span>
+        <div className="live-pricing-card">
+          <div className="live-comparison-rows">
+            {comparisonRows.map(row => {
+              const tagWidth = row.airportPence > 0
+                ? Math.max(18, Math.min(100, Math.round((row.tagPence / row.airportPence) * 100)))
+                : 55
+              return (
+                <div
+                  className={`live-comparison-row ${row.badge ? 'popular' : ''}`}
+                  key={row.billingDays}
+                  style={{ '--tag-width': `${tagWidth}%` }}
+                >
+                  <div className="live-row-heading">
+                    <span className="live-row-duration">{row.label}</span>
+                    {row.badge && <span className="live-row-badge">{row.badge}</span>}
                   </div>
-                ) : (
-                  <>
-                    <span className="pricing-hero-from">From</span>
-                    <div className="pricing-hero-amount">
-                      <span className="price">£{prices.week1}</span>
+                  <div className="live-price-grid">
+                    <div className="live-price-side airport-side">
+                      <span className="live-price-label">Airport</span>
+                      <strong>{formatPounds(row.airportPence)}</strong>
                     </div>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="pricing-side-option right">
-              <span className="pricing-side-label">14 DAY TRIP</span>
-              <div className="pricing-side-price">
-                {prices.showRange ? (
-                  <span className="pricing-side-amount">£{prices.week2}–£{prices.week2Max}</span>
-                ) : (
-                  <>
-                    <span className="pricing-side-from">From</span>
-                    <span className="pricing-side-amount">£{prices.week2}</span>
-                  </>
-                )}
-              </div>
-            </div>
+                    <div className="live-vs">vs</div>
+                    <div className="live-price-side tag-side">
+                      <span className="live-price-label">TAG</span>
+                      <strong>{formatPounds(row.tagPence)}</strong>
+                    </div>
+                    <span className="live-save-badge">SAVE {row.savingPct}%</span>
+                  </div>
+                  <div className="live-price-bars" aria-hidden="true">
+                    <span className="airport-bar"></span>
+                    <span className="tag-bar"></span>
+                  </div>
+                  {!row.live && <p className="live-row-note">Using TAG base rate while the latest live airport check refreshes.</p>}
+                </div>
+              )
+            })}
           </div>
-          <ul className="pricing-features-row">
-            <li className="feature-1"><span className="check">✓</span> Meet & Greet</li>
-            <li className="feature-2"><span className="check">✓</span> 24/7 secure car park</li>
-            <li className="feature-3"><span className="check">✓</span> No hidden fees</li>
-            <li className="feature-4"><span className="check">✓</span> Free cancellation up to 24hrs before</li>
+          <ul className="live-trust-list">
+            <li>✓ Meet & Greet</li>
+            <li>✓ 24/7 secure car park</li>
+            <li>✓ No hidden fees</li>
+            <li>✓ Free cancellation up to 24hrs before</li>
           </ul>
-          <p className="pricing-save-unified">Save up to 70% off official airport parking</p>
+          <p className="live-savings-line">
+            {airportComparison?.items?.length
+              ? `Up to ${maxCheapestSavingPct}% off their cheapest · up to ${maxPremiumSavingPct}% off Premium Parking`
+              : 'Live airport savings update automatically from recent checked prices.'}
+          </p>
         </div>
 
         <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
@@ -400,8 +449,8 @@ function HomePage() {
       <section className="features-banner">
         <div className="features-content">
           <div className="feature">
-            <h2>70%</h2>
-            <p>Save up to 70% off<br />official airport parking</p>
+            <h2>{hasLiveComparison ? `${maxPremiumSavingPct}%` : 'Live'}</h2>
+            <p>{hasLiveComparison ? <>Save up to {maxPremiumSavingPct}% off<br />Premium Parking</> : <>Airport price checks<br />refreshed daily</>}</p>
           </div>
           <div className="feature">
             <h2>£0</h2>
