@@ -2055,6 +2055,16 @@ function Bookings({ isModal = false, onClose }) {
   const isStep2Complete = formData.package
   // Step 4: Payment
   const isStep4Complete = formData.terms
+  const airportPriceValues = (airportQuote?.airportPrices || [])
+    .map((product) => Number(product.pricePence))
+    .filter((pricePence) => Number.isFinite(pricePence))
+  const airportMinPricePence = airportPriceValues.length ? Math.min(...airportPriceValues) : null
+  const airportMaxPricePence = airportPriceValues.length ? Math.max(...airportPriceValues) : null
+  const airportPriceSummary = airportMinPricePence === null
+    ? null
+    : airportMinPricePence === airportMaxPricePence
+      ? `£${(airportMinPricePence / 100).toFixed(2)}`
+      : `£${(airportMinPricePence / 100).toFixed(2)} – £${(airportMaxPricePence / 100).toFixed(2)}`
 
   // Scroll to first incomplete/invalid field for the current step
   const scrollToFirstError = (step) => {
@@ -2455,7 +2465,7 @@ function Bookings({ isModal = false, onClose }) {
                 <span className="step-number">{step}</span>
                 <span className="step-label">
                   {step === 1 && 'Trip'}
-                  {step === 2 && 'Package'}
+                  {step === 2 && 'Tag Price'}
                   {step === 3 && 'Details'}
                   {step === 4 && 'Payment'}
                 </span>
@@ -3450,7 +3460,7 @@ function Bookings({ isModal = false, onClose }) {
                   onClick={handleContinueStep1}
                   disabled={!isStep1Complete}
                 >
-                  Continue to Package Selection
+                  Continue to Tag Price
                 </button>
               </div>
             </div>
@@ -3459,13 +3469,14 @@ function Bookings({ isModal = false, onClose }) {
           {/* Step 2: Package Selection */}
           {currentStep === 2 && (
             <div className="form-section">
-              <h2>Your Package</h2>
+              <h2>Tag Price</h2>
 
               {pricingInfo ? (
                 <div className="package-summary">
-                  <div className="package-card selected">
+                  <div className="package-card selected tag-price-card">
+                    <span className="price-owner-label">Our price</span>
                     <span className="package-price">£{pricingInfo.price.toFixed(2)}</span>
-                    <span className="package-period">/ {pricingInfo.duration_days} days</span>
+                    <span className="price-owner-note">TAG Meet & Greet</span>
 
                     <ul className="package-features">
                       <li>Meet & Greet at terminal</li>
@@ -3476,9 +3487,9 @@ function Bookings({ isModal = false, onClose }) {
                   </div>
                   {airportQuote?.airportPrices?.length > 0 && (
                     <div className="airport-comparison">
-                      <h3>Bournemouth Airport parking</h3>
+                      <h3>Their price</h3>
                       <p className="airport-comparison-note">
-                        Airport prices checked just now.
+                        Bournemouth Airport: {airportPriceSummary || 'checked just now'}
                       </p>
                       <div className="airport-price-list">
                         {airportQuote.airportPrices.map((product) => (

@@ -1860,6 +1860,32 @@
   background: rgba(217, 255, 0, 0.1);
 }
 
+.package-summary .tag-price-card {
+  border-width: 2px;
+}
+
+.price-owner-label {
+  display: block;
+  width: fit-content;
+  margin: 0 auto 0.75rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: #D9FF00;
+  color: #0B0B0B;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.price-owner-note {
+  display: block;
+  margin: 0.45rem 0 1rem;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .package-summary .package-label {
   display: block;
   margin-bottom: 0.5rem;
