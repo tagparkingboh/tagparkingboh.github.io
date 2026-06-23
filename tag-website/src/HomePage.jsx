@@ -402,14 +402,17 @@ function HomePage() {
                 </div>
                 <div className="live-price-grid">
                   <div className="live-price-side airport-side">
-                    <span className="live-price-label">Airport</span>
+                    <span className="live-price-label">Airport parking</span>
                     <strong>{formatPounds(row.airportPence)}</strong>
                   </div>
                   <div className="live-price-side tag-side">
-                    <span className="live-price-label">TAG</span>
+                    <span className="live-price-label">Tag Meet &amp; Greet</span>
                     <strong>{formatPounds(row.tagPence)}</strong>
                   </div>
                 </div>
+                <p className="live-save-amount">
+                  You save {formatPounds(Math.max(row.airportPence - row.tagPence, 0))}
+                </p>
                 {!row.live && <p className="live-row-note">Using TAG base rate while the latest live airport check refreshes.</p>}
               </div>
             ))}
@@ -422,7 +425,12 @@ function HomePage() {
           </ul>
           <p className="live-savings-line">
             {airportComparison?.items?.length
-              ? 'Up to 35% cheaper than BOH\'s lowest-priced option · up to 70% cheaper than Premium Parking'
+              ? (
+                <>
+                  <span>Up to 35% cheaper than BOH&apos;s lowest-priced option ·</span>
+                  <span>up to 70% cheaper than Premium Parking</span>
+                </>
+              )
               : 'Live airport savings update automatically from recent checked prices.'}
           </p>
         </div>

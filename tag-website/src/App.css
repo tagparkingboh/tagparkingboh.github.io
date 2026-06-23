@@ -845,6 +845,13 @@
   font-size: 0.82rem;
 }
 
+.live-save-amount {
+  margin: 1rem 0 0;
+  color: #5C7300;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
 .live-trust-list {
   list-style: none;
   display: flex;
@@ -864,6 +871,8 @@
   flex-grow: 0;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 0.35rem;
   width: auto;
   height: auto;
   margin: 1.2rem -2rem 0;
@@ -1245,6 +1254,11 @@
 
   .tag-side strong {
     font-size: 2.45rem;
+  }
+
+  .live-savings-line {
+    flex-direction: column;
+    gap: 0.1rem;
   }
 }
 
