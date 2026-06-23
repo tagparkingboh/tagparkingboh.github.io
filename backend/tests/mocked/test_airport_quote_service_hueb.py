@@ -343,6 +343,7 @@ def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
     assert body["pricingInfo"]["airport_quote_snapshot_id"] == 1
     assert body["tagPricePence"] == 11103
     assert body["pricingInfo"]["price"] == 111.03
+    assert body["pricingInfo"]["discount_pct_used"] == 25.0
     assert body["billing_days"] == 8
     assert [p["name"] for p in body["airportPrices"]] == [
         "Car Park 3",

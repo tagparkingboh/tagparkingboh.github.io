@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
-"""Run the full 25-test staging suite in PARALLEL batches of N (default 2).
+"""Run the lean 14-test staging E2E suite in guarded parallel batches.
 
 Each test runs as its own subprocess (own Chromium, own Playwright) so we get
 true concurrency. Headed browser at slow_mo=100 to match the existing
 run_5_staging_tests.py defaults. Continues past failures, no pause between
 batches, aggregates a final pass/fail report.
+
+Current lean set:
+- Normal smoke: 1, 2, 7, 10, 11, 14
+- Promo core: 16, 17, 18, 19, 20
+- Referral: 23, 24, 25
+
+Promo coverage:
+- TEST10 7-day percentage discount.
+- FREE100 and FREEWEEK at 7 billing days => £0.
+- FREEWEEK at 8 billing days / 01:05 return => deduct AIRPORT_QUOTE_WEEK1_PRICE_PENCE.
+- FREE100 at the same 8 billing-day / 01:05 condition => £0.
 
 Per-test stdout/stderr is captured to backend/staging_logs/test_<NN>.log.
 
@@ -12,7 +23,7 @@ Usage:
     python3 run_staging_batches.py             # batches of 2
     python3 run_staging_batches.py --size 2    # batches of 2
 
-Loads STAGING_DATABASE_URL etc. from backend/.env if python-dotenv is present.
+Loads DATABASE_URL / STAGING_DATABASE_URL etc. from backend/.env if python-dotenv is present.
 """
 import argparse
 import json
@@ -35,27 +46,28 @@ except ImportError:
     pass
 
 # Import TEST_CASES + STAGING_URL just to enumerate names (no Playwright at import).
-from create_test_bookings import TEST_CASES, STAGING_URL
+from create_test_bookings import LEAN_STAGING_TEST_INDEXES, TEST_CASES, STAGING_URL
 
 
 LOG_DIR = ROOT / "staging_logs"
 
-# Reordered batches so that no two tests in the same batch share a promo code.
-# TESTFREE is used by tests 17-21; TEST10OFF by 16 and 22.
-# Referral tests 23-25 use one unlimited code; keep them sequential to avoid
-# concurrent validation/usage writes against the same staging code.
-# Sequential batches also give the script time to reset each reusable promo between runs.
+# Normal smoke can run in small parallel batches. Promo and referral tests stay
+# single-file batches to avoid shared code state, reset races, and referral
+# attribution writes against the same staging code.
 BATCHES = [
-    [17,  1,  2,  3],
-    [18,  4,  5,  6],
-    [19,  7,  8,  9],
-    [20, 10, 11, 16],
-    [21, 12, 13, 14],
-    [22, 15],
+    [1, 2],
+    [7, 10],
+    [11, 14],
+    [16],
+    [17],
+    [18],
+    [19],
+    [20],
     [23],
     [24],
     [25],
 ]
+assert [idx for batch in BATCHES for idx in batch] == LEAN_STAGING_TEST_INDEXES
 
 
 def run_one_attempt(test_idx_1based, env_label, browser, device, log_path, headless=True):

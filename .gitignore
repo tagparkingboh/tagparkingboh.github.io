@@ -53,6 +53,8 @@ backend/network_capture_*.json
 docs/SPEC.md
 backend/docs/TEST_STRATEGY.md
 backend/docs/SPEC.md
+backend/docs/AIRPORT_QUOTE_COMPARISON_SPEC.md
+backend/docs/AIRPORT_QUOTE_E2E_SPEC.md
 AUTO_ROSTER_SWEEP_HANDOFF.md
 PROMO_CODES_HANDOFF.md
 REFERRAL_FEATURE_BRIEF.md
@@ -75,11 +77,18 @@ PDX_SCHEMA_RECOMMENDATIONS.md
 TagPDX/
 
 # Playwright E2E debug artefacts (screenshots + per-test logs)
+booking_state_*.png
+error_test_*.png
+no_payment_btn_*.png
+no_stripe_frame_*.png
+payment_disabled_*.png
+promo_apply_failed_*.png
 backend/booking_state_*.png
 backend/error_test_*.png
 backend/no_payment_btn_*.png
 backend/no_stripe_frame_*.png
 backend/payment_disabled_*.png
+backend/promo_apply_failed_*.png
 backend/staging_batches.log
 backend/staging_logs/
 

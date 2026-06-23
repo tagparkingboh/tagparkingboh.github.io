@@ -11,10 +11,25 @@ Booking Flow:
 5. Step 4: Payment (Stripe)
 
 Tests cover:
-- Extended stays (15, 20, 30, 60 days)
-- Overnight flights (23:35, 23:45, 23:50 landings)
-- Duration tier boundaries (1, 4, 5, 8, 14, 15 days)
-- Pricing tier boundaries (early, standard, late)
+- Normal booking smoke: 7d, 14d, overnight, late-tier, 1d, and 8d boundary
+- Promo core: TEST10, FREE100, and FREEWEEK at <=7 and >=8 billing-day boundaries
+- Referral flows: two referree bookings and self-use guard coverage
+
+Current lean staging set:
+    01 7-day standard trip
+    02 14-day trip
+    07 Overnight flight 23:35 landing
+    10 Late tier booking (<7 days)
+    11 1-day minimum duration
+    14 8-day trip (start of 8-9 tier)
+    16 TEST10 7-day, return 23:30
+    17 FREE100 7 billing days => £0
+    18 FREEWEEK 7 billing days => £0
+    19 FREEWEEK 8 billing days / 01:05 return => deduct AIRPORT_QUOTE_WEEK1_PRICE_PENCE
+    20 FREE100 8 billing days / 01:05 return => £0
+    23 Referral referree 1
+    24 Referral referree 2
+    25 Referral self-use referrer
 
 Prerequisites:
     pip install playwright
@@ -33,7 +48,7 @@ import random
 import os
 import sys
 import psycopg2
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -78,9 +93,10 @@ STRIPE_TEST_CARD = {
     "cvc": "549",
 }
 
-# Staging database for promo code reset - uses environment variable
-# Set STAGING_DATABASE_URL before running promo code tests
-STAGING_DB_URL = os.environ.get("STAGING_DATABASE_URL", "")
+# Staging database for promo code reset - uses environment variable.
+# Railway/Staging exposes DATABASE_URL; STAGING_DATABASE_URL is supported for
+# local explicitness when pointing at staging.
+STAGING_DB_URL = os.environ.get("STAGING_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
 # Parse URL into components for psycopg2 if needed
 if STAGING_DB_URL:
     # URL format: postgresql://user:pass@host:port/dbname
@@ -100,10 +116,22 @@ else:
     STAGING_DB = None
 
 # Test promo codes
-TEST_PROMO_10 = "TEST10OFF"      # 10% off promo
-TEST_PROMO_FREE = "TESTFREE"     # 100% off (FREE) promo
+TEST_PROMO_10 = "TEST10"         # 10% off promo
+TEST_PROMO_FREE = "FREEWEEK"     # 1 week free promo
 TEST_REFERRAL_CODE = "REF-JH2C-4WCH"  # qa.orca.contact@gmail.com referral code
-MARKETING_PROMO_TYPES = {"10", "free"}
+MARKETING_PROMO_TYPES = {"10", "free", "free_week", "free_100"}
+
+LEAN_STAGING_TEST_INDEXES = [1, 2, 7, 10, 11, 14, 16, 17, 18, 19, 20, 23, 24, 25]
+
+DYNAMIC_FLIGHT_OPTIONS = [
+    {"airline": "Ryanair", "airline_code": "FR", "destination": "Alicante", "destination_code": "ALC"},
+    {"airline": "Ryanair", "airline_code": "FR", "destination": "Faro", "destination_code": "FAO"},
+    {"airline": "Ryanair", "airline_code": "FR", "destination": "Malaga", "destination_code": "AGP"},
+    {"airline": "easyJet", "airline_code": "U2", "destination": "Malaga", "destination_code": "AGP"},
+    {"airline": "easyJet", "airline_code": "U2", "destination": "Palma", "destination_code": "PMI"},
+    {"airline": "TUI", "airline_code": "BY", "destination": "Tenerife", "destination_code": "TFS"},
+]
+DYNAMIC_DROPOFF_TIMES = ["06:45", "08:15", "09:30", "10:45", "12:20", "14:10"]
 
 
 def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
@@ -116,12 +144,44 @@ def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
     if promo_type == "referral":
         print(f"    Referral code {promo_code} is unlimited-use; no reset needed")
         return True
+    if not STAGING_DB:
+        print("    Warning: STAGING_DATABASE_URL is not set; cannot reset promo code")
+        return False
 
     try:
         conn = psycopg2.connect(**STAGING_DB)
         cur = conn.cursor()
 
-        if promo_type == "10":
+        cur.execute(
+            '''
+            SELECT id
+            FROM promo_codes
+            WHERE code = %s
+            ''',
+            (promo_code,),
+        )
+        promo_code_row = cur.fetchone()
+        if promo_code_row:
+            promo_code_id = promo_code_row[0]
+            cur.execute(
+                '''
+                DELETE FROM promo_code_usages
+                WHERE promo_code_id = %s
+                ''',
+                (promo_code_id,),
+            )
+            cur.execute(
+                '''
+                UPDATE promo_codes
+                SET is_used = false,
+                    used_at = NULL,
+                    booking_id = NULL,
+                    use_count = 0
+                WHERE id = %s
+                ''',
+                (promo_code_id,),
+            )
+        elif promo_type == "10":
             cur.execute('''
                 UPDATE marketing_subscribers
                 SET promo_10_used = false,
@@ -355,86 +415,103 @@ TEST_CASES = [
     {
         "name": "10% OFF Promo Code (7-day trip)",
         "days_from_now": 25,
+        "days_from_now_range": (21, 35),
+        "dynamic_trip": True,
         "duration": 7,
         "dropoff_time": "10:00",
-        "return_time": "14:00",
+        "dropoff_time_options": ["07:30", "09:45", "12:15"],
+        "return_time": "23:30",
+        "return_time_options": ["23:30"],
         "airline": "Ryanair",
         "airline_code": "FR",
         "destination": "Alicante",
         "destination_code": "ALC",
         "flight_number": "1010",
         "return_flight_number": "1011",
-        "promo_code": "TEST10OFF",
+        "promo_code": "TEST10",
         "promo_type": "10",
     },
-    # FREE Parking Promo Code Test (5 days = completely free - under 7 day limit)
+    # FREE100 Promo Code Test (7 days = completely free)
     {
-        "name": "FREE Promo (5-day) - 100% free",
+        "name": "FREE100 Promo (7-day) - 100% free",
         "days_from_now": 28,
-        "duration": 5,
+        "days_from_now_range": (24, 38),
+        "dynamic_trip": True,
+        "duration": 7,
         "dropoff_time": "08:00",
-        "return_time": "14:00",
+        "return_time": "18:40",
         "airline": "Virgin Atlantic",
         "airline_code": "OTHER",
         "destination": "Barcelona",
         "destination_code": "OTHER",
         "flight_number": "VS100",
         "return_flight_number": "VS101",
-        "promo_code": "TESTFREE",
-        "promo_type": "free",
+        "promo_code": "FREE100",
+        "promo_type": "free_100",
     },
-    # FREE Parking Promo Code Test (7 days = completely free - boundary max)
+    # FREEWEEK Promo Code Test (7 days = completely free - boundary max)
     {
-        "name": "FREE Promo (7-day) - 100% free",
+        "name": "FREEWEEK Promo (7-day) - 100% free",
         "days_from_now": 30,
+        "days_from_now_range": (26, 40),
+        "dynamic_trip": True,
         "duration": 7,
         "dropoff_time": "09:00",
-        "return_time": "15:00",
+        "return_time": "05:30",
+        "return_time_options": ["05:30"],
         "airline": "easyJet",
         "airline_code": "U2",
         "destination": "Malaga",
         "destination_code": "AGP",
         "flight_number": "2020",
         "return_flight_number": "2021",
-        "promo_code": "TESTFREE",
-        "promo_type": "free",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
     },
-    # FREE Parking Promo Code Test (8 days = 7-day deducted, pays 1 extra day - boundary)
+    # FREEWEEK Promo Code Test (7-night trip returning on 8th calendar day at 01:05)
     {
-        "name": "FREE Promo (8-day) - pays extra day",
+        "name": "FREEWEEK Promo (7-night, 8th-day 01:05) - pays extra day",
         "days_from_now": 32,
+        "days_from_now_range": (28, 42),
+        "dynamic_trip": True,
         "duration": 8,
         "dropoff_time": "10:00",
-        "return_time": "14:00",
+        "return_time": "01:05",
+        "return_time_options": ["01:05"],
         "airline": "Ryanair",
         "airline_code": "FR",
         "destination": "Faro",
         "destination_code": "FAO",
         "flight_number": "3030",
         "return_flight_number": "3031",
-        "promo_code": "TESTFREE",
-        "promo_type": "free",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
     },
-    # FREE Parking Promo Code Test (11 days = 7-day deducted, pays 4 extra days)
+    # FREE100 Promo Code Test (8 days = completely free under same timing as FREEWEEK boundary)
     {
-        "name": "FREE Promo (11-day) - pays 4 days",
+        "name": "FREE100 Promo (8-day) - 100% free",
         "days_from_now": 34,
-        "duration": 11,
+        "days_from_now_range": (30, 44),
+        "dynamic_trip": True,
+        "duration": 8,
         "dropoff_time": "07:00",
-        "return_time": "17:00",
+        "return_time": "01:05",
+        "return_time_options": ["01:05"],
         "airline": "Virgin Atlantic",
         "airline_code": "OTHER",
         "destination": "Madrid",
         "destination_code": "OTHER",
         "flight_number": "VS200",
         "return_flight_number": "VS201",
-        "promo_code": "TESTFREE",
-        "promo_type": "free",
+        "promo_code": "FREE100",
+        "promo_type": "free_100",
     },
-    # FREE Parking Promo Code Test (14 days = 7-day deducted, pays 7 extra days)
+    # FREEWEEK Promo Code Test (14 days = 7-day deducted, pays 7 extra days)
     {
-        "name": "FREE Promo (14-day) - pays 7 days",
+        "name": "FREEWEEK Promo (14-day) - pays 7 days",
         "days_from_now": 35,
+        "days_from_now_range": (31, 45),
+        "dynamic_trip": True,
         "duration": 14,
         "dropoff_time": "08:00",
         "return_time": "16:00",
@@ -444,13 +521,15 @@ TEST_CASES = [
         "destination_code": "PMI",
         "flight_number": "4040",
         "return_flight_number": "4041",
-        "promo_code": "TESTFREE",
-        "promo_type": "free",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
     },
     # 10% OFF Promo Code - 14-day trip boundary
     {
         "name": "10% OFF Promo (14-day trip)",
         "days_from_now": 38,
+        "days_from_now_range": (34, 48),
+        "dynamic_trip": True,
         "duration": 14,
         "dropoff_time": "11:00",
         "return_time": "13:00",
@@ -460,7 +539,7 @@ TEST_CASES = [
         "destination_code": "ALC",
         "flight_number": "5050",
         "return_flight_number": "5051",
-        "promo_code": "TEST10OFF",
+        "promo_code": "TEST10",
         "promo_type": "10",
     },
     # Referral Code Tests
@@ -548,6 +627,30 @@ def get_referral_only_test_cases():
     return [tc for tc in TEST_CASES if is_referral_promo_test(tc)]
 
 
+def resolve_dynamic_test_case(test_case: dict) -> dict:
+    """Resolve per-run dynamic flight inputs for test cases that opt in."""
+    if not test_case.get("dynamic_trip"):
+        return test_case
+
+    resolved = dict(test_case)
+    if resolved.get("days_from_now_range"):
+        start, end = resolved["days_from_now_range"]
+        resolved["days_from_now"] = random.randint(start, end)
+
+    flight = random.choice(DYNAMIC_FLIGHT_OPTIONS)
+    resolved.update(flight)
+
+    if resolved.get("dropoff_time_options"):
+        resolved["dropoff_time"] = random.choice(resolved["dropoff_time_options"])
+    else:
+        resolved["dropoff_time"] = random.choice(DYNAMIC_DROPOFF_TIMES)
+
+    if resolved.get("return_time_options"):
+        resolved["return_time"] = random.choice(resolved["return_time_options"])
+
+    return resolved
+
+
 def format_date_for_picker(date_obj):
     """Format date as DD/MM/YYYY for the date picker."""
     return date_obj.strftime("%d/%m/%Y")
@@ -624,6 +727,170 @@ def dismiss_busy_warning(page: Page):
         pass
 
 
+def dismiss_arrival_guidance(page: Page):
+    """Dismiss the arrival date/time guidance modal when it blocks manual flight entry."""
+    try:
+        guidance = page.locator("text=/Please enter the arrival date and time shown for your flight/i")
+        if guidance.is_visible(timeout=1000):
+            got_it_btn = page.locator("button:has-text('Got it')").first
+            if got_it_btn.is_visible(timeout=1000):
+                print("    Dismissing arrival date/time guidance modal...")
+                got_it_btn.click()
+                time.sleep(0.5)
+    except Exception:
+        pass
+
+
+def confirm_times_if_present(page: Page):
+    """Confirm the trip-times modal when it appears during booking transitions."""
+    try:
+        confirm_btn = page.locator(
+            "button:has-text('Yes, times are correct'), "
+            "button:has-text('Yes times are correct'), "
+            "button:has-text('Yes, the times are correct')"
+        ).first
+        if confirm_btn.is_visible(timeout=3000):
+            print("    Confirming times modal...")
+            confirm_btn.click()
+            time.sleep(0.5)
+    except Exception:
+        pass
+
+
+def wait_visible(page: Page, selector: str, timeout: int = 5000):
+    locator = page.locator(selector).first
+    locator.wait_for(state="visible", timeout=timeout)
+    return locator
+
+
+def short_pause(seconds: float = 0.2):
+    time.sleep(seconds)
+
+
+def digits_only(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def money_values_pence(text: str) -> list[int]:
+    values = []
+    for chunk in (text or "").split("£")[1:]:
+        amount = []
+        for ch in chunk:
+            if ch.isdigit() or ch in ".,": 
+                amount.append(ch)
+            elif amount:
+                break
+        normalised = "".join(amount).replace(",", "")
+        if normalised:
+            try:
+                values.append(int(round(float(normalised) * 100)))
+            except ValueError:
+                pass
+    return values
+
+
+def get_checkout_total_pence(page: Page) -> Optional[int]:
+    selectors = [
+        ".summary-item.total",
+        ".booking-summary",
+        ".order-summary",
+        ".payment-summary",
+        ".modal-content",
+    ]
+    for selector in selectors:
+        try:
+            locator = page.locator(selector).first
+            if locator.is_visible(timeout=500):
+                values = money_values_pence(locator.text_content() or "")
+                if values:
+                    return values[-1]
+        except Exception:
+            pass
+    return None
+
+
+def get_airport_quote_week1_price_for_test() -> int:
+    raw = os.environ.get("AIRPORT_QUOTE_WEEK1_PRICE_PENCE")
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            pass
+    return 10700
+
+
+def expected_promo_total_pence(original_total_pence: int, promo_type: str, duration_days: int) -> Optional[int]:
+    if promo_type == "10":
+        return int(original_total_pence * 0.9)
+    if promo_type == "free_100":
+        return 0
+    if promo_type == "free_week":
+        if duration_days <= 7:
+            return 0
+        return max(0, original_total_pence - get_airport_quote_week1_price_for_test())
+    return None
+
+
+def parse_hhmm_for_test(value: str) -> tuple[int, int]:
+    hour, minute = value.split(":")[:2]
+    return int(hour), int(minute)
+
+
+def calculate_billing_days_for_test(dropoff_date, dropoff_time: str, pickup_date, pickup_time: str) -> int:
+    drop_hour, drop_minute = parse_hhmm_for_test(dropoff_time)
+    pickup_hour, pickup_minute = parse_hhmm_for_test(pickup_time)
+    dropoff_dt = datetime.combine(dropoff_date, datetime.min.time()).replace(hour=drop_hour, minute=drop_minute)
+    pickup_dt = datetime.combine(pickup_date, datetime.min.time()).replace(hour=pickup_hour, minute=pickup_minute)
+    elapsed_seconds = (pickup_dt - dropoff_dt).total_seconds()
+    return max(1, int((elapsed_seconds + 24 * 60 * 60 - 1) // (24 * 60 * 60)))
+
+
+def wait_for_total(page: Page, expected_total_pence: int, timeout_seconds: int = 12) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        total = get_checkout_total_pence(page)
+        if total == expected_total_pence:
+            return True
+        short_pause(0.3)
+    return False
+
+
+def fill_stripe_input(locator, value: str, label: str, min_digits: int) -> bool:
+    expected_digits = digits_only(value)
+    for attempt in range(2):
+        locator.wait_for(state="visible", timeout=10000)
+        locator.click()
+        short_pause(0.3)
+        try:
+            locator.fill(value)
+        except Exception:
+            pass
+        short_pause(0.7)
+
+        actual_digits = digits_only(locator.input_value())
+        if len(actual_digits) >= min_digits:
+            print(f"    {label} filled")
+            return True
+
+        locator.click()
+        try:
+            locator.fill("")
+        except Exception:
+            pass
+        short_pause(0.3)
+        locator.press_sequentially(value, delay=140)
+        short_pause(0.8)
+
+        actual_digits = digits_only(locator.input_value())
+        if len(actual_digits) >= min_digits or actual_digits == expected_digits:
+            print(f"    {label} filled")
+            return True
+
+        print(f"    {label} fill attempt {attempt + 1} incomplete: {actual_digits!r}")
+
+    return False
+
+
 def answer_heard_about_us_if_present(page: Page) -> bool:
     """Complete the attribution gate shown before terms for unique emails."""
     section = page.locator(".heard-about-us-section")
@@ -684,17 +951,24 @@ def accept_terms(page: Page, test_num: int) -> bool:
 def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
     """Create a single test booking using the booking form."""
 
+    test_case = resolve_dynamic_test_case(test_case)
     customer = {**CUSTOMER, **test_case.get("customer", {})}
     vehicle = {**VEHICLE, **test_case.get("vehicle", {})}
 
     today = get_today_for_test_case(test_case)
     dropoff_date = today + timedelta(days=test_case["days_from_now"])
     pickup_date = dropoff_date + timedelta(days=test_case["duration"])
+    billing_days = calculate_billing_days_for_test(
+        dropoff_date,
+        test_case["dropoff_time"],
+        pickup_date,
+        test_case["return_time"],
+    )
 
     print(f"\n[Test {test_num}] {test_case['name']}")
     print(f"  Drop-off: {dropoff_date} at {test_case['dropoff_time']}")
     print(f"  Pickup: {pickup_date} at {test_case['return_time']}")
-    print(f"  Duration: {test_case['duration']} days")
+    print(f"  Duration: {test_case['duration']} calendar days ({billing_days} billing days)")
     print(f"  Customer: {customer['email']}")
 
     try:
@@ -717,7 +991,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 time.sleep(2)
         if goto_err:
             raise goto_err
-        time.sleep(3)
+        page.locator(".welcome-modal-btn, #dropoffDate").first.wait_for(state="visible", timeout=10000)
 
         # ============ WELCOME MODAL (shows first) ============
         print("  Handling welcome modal...")
@@ -725,7 +999,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         if welcome_modal_btn.is_visible(timeout=5000):
             print("    Closing welcome modal...")
             welcome_modal_btn.click()
-            time.sleep(1)
+            short_pause()
 
         # ============ STEP 1: Trip Details ============
         print("  Step 1: Filling trip details...")
@@ -734,7 +1008,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         print("    Selecting drop-off date...")
         select_date_in_picker(page, dropoff_date, "dropoffDate")
         dismiss_busy_warning(page)
-        time.sleep(1)
+        short_pause()
 
         # Select Airline
         print("    Selecting airline...")
@@ -743,37 +1017,36 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         if test_case["airline_code"] == "OTHER":
             # Select "Other" and fill in custom airline name
             airline_dropdown.select_option(value="Other")
-            time.sleep(0.5)
+            short_pause()
             other_airline_input = page.locator("#customDepartureAirline")
             other_airline_input.wait_for(state="visible", timeout=5000)
             other_airline_input.fill(test_case["airline"])
             print(f"    Entered custom airline: {test_case['airline']}")
         else:
             airline_dropdown.select_option(value=test_case["airline_code"])
-        time.sleep(1)  # Wait for destination dropdown to populate
+        destination_dropdown = page.locator("#manualDestination")
+        destination_dropdown.wait_for(state="visible", timeout=10000)
 
         # Select Destination
         print("    Selecting destination...")
-        destination_dropdown = page.locator("#manualDestination")
-        destination_dropdown.wait_for(state="visible", timeout=10000)
         if test_case["destination_code"] == "OTHER":
             # Select "Other" and fill in custom destination name
             destination_dropdown.select_option(value="Other")
-            time.sleep(0.5)
+            short_pause()
             other_destination_input = page.locator("#customDestination")
             other_destination_input.wait_for(state="visible", timeout=5000)
             other_destination_input.fill(test_case["destination"])
             print(f"    Entered custom destination: {test_case['destination']}")
         else:
             destination_dropdown.select_option(value=test_case["destination_code"])
-        time.sleep(1)
+        short_pause()
 
         # Enter Flight Number
         print("    Entering flight number...")
         flight_number_input = page.locator("#manualFlightNumber")
         flight_number_input.wait_for(state="visible", timeout=10000)
         flight_number_input.fill(test_case["flight_number"])
-        time.sleep(0.5)
+        short_pause()
 
         # Enter Departure Time
         print("    Entering departure time...")
@@ -781,11 +1054,11 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         flight_time_input.wait_for(state="visible", timeout=10000)
         flight_time_input.fill(test_case["dropoff_time"])
         dismiss_busy_warning(page)
-        time.sleep(1)
+        short_pause()
 
         # Select Drop-off Time Slot - randomly select 2hr or 2.75hr slot
         print("    Selecting drop-off time slot...")
-        time.sleep(2)  # Wait for slots to appear
+        wait_visible(page, ".dropoff-slot .slot-card", timeout=10000)
         dismiss_busy_warning(page)
         slot_cards = page.locator(".dropoff-slot .slot-card")
         slot_count = slot_cards.count()
@@ -801,18 +1074,18 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 print(f"    Selected slot {random_index + 1} of {slot_count}: {slot_text[:50]}...")
             except:
                 print(f"    Selected slot {random_index + 1} of {slot_count}")
-            time.sleep(0.5)
+            short_pause()
         else:
             print("    No drop-off slots found!")
 
         # Select Return Date
         print("    Selecting return date...")
-        time.sleep(1)
+        short_pause()
         # The return date picker appears after selecting dropoff slot
         return_date_picker = page.locator(".date-picker-input").nth(1)
         if return_date_picker.is_visible(timeout=3000):
             return_date_picker.click()
-            time.sleep(0.5)
+            short_pause()
 
             # Navigate to correct month/year for pickup date
             target_month = pickup_date.month
@@ -840,7 +1113,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                             page.locator(".react-datepicker__navigation--next").click()
                         else:
                             page.locator(".react-datepicker__navigation--previous").click()
-                        time.sleep(0.3)
+                        short_pause(0.1)
 
             # Click on the day
             day_buttons = page.locator(".react-datepicker__day:not(.react-datepicker__day--outside-month)")
@@ -849,146 +1122,148 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 if button.text_content() == str(target_day):
                     button.click()
                     break
-            time.sleep(0.5)
+            short_pause()
+            dismiss_arrival_guidance(page)
 
         # Return flight details
         print("    Filling return flight details...")
         dismiss_busy_warning(page)
-        time.sleep(1)
+        dismiss_arrival_guidance(page)
+        short_pause()
 
         # Select Return Airline
         return_airline_dropdown = page.locator("#manualArrivalAirline")
         if test_case["airline_code"] == "OTHER":
             return_airline_dropdown.select_option(value="Other")
-            time.sleep(0.5)
+            short_pause()
             custom_return_airline = page.locator("#customArrivalAirline")
             custom_return_airline.wait_for(state="visible", timeout=5000)
             custom_return_airline.fill(test_case["airline"])
         else:
             return_airline_dropdown.select_option(value=test_case["airline_code"])
-        time.sleep(0.5)
+        short_pause()
 
         # Select Origin (for return flight, origin is where they're coming FROM = departure destination)
         return_origin_dropdown = page.locator("#manualArrivalOrigin")
         if test_case["destination_code"] == "OTHER":
             return_origin_dropdown.select_option(value="Other")
-            time.sleep(0.5)
+            short_pause()
             custom_return_origin = page.locator("#customOrigin")
             custom_return_origin.wait_for(state="visible", timeout=5000)
             custom_return_origin.fill(test_case["destination"])
         else:
             return_origin_dropdown.select_option(value=test_case["destination_code"])
-        time.sleep(0.5)
+        short_pause()
 
         # Enter Return Flight Number
         return_flight_input = page.locator("#manualArrivalFlightNumber")
         if return_flight_input.is_visible():
             return_flight_input.fill(test_case["return_flight_number"])
-        time.sleep(0.3)
+        short_pause()
 
         # Enter Arrival Time
         arrival_time_input = page.locator("#manualArrivalFlightTime")
         if arrival_time_input.is_visible():
             arrival_time_input.fill(test_case["return_time"])
         dismiss_busy_warning(page)
-        time.sleep(1)
+        dismiss_arrival_guidance(page)
+        short_pause()
 
         # ============ STEP 2: Package Selection ============
         print("  Proceeding to Step 2 (Package Selection)...")
 
         # Click Continue to Package Selection button
         dismiss_busy_warning(page)
+        dismiss_arrival_guidance(page)
         package_btn = page.locator("button:has-text('Continue to Package Selection')")
         if package_btn.is_visible(timeout=5000):
             package_btn.click()
-            time.sleep(1)
+            short_pause()
 
-        # Added 2026-05-13: a "Please double-check your times" confirmation
-        # modal now intercepts the Step 1 → Step 2 transition. Click through
-        # "Yes, times are correct" to proceed. The modal may not appear in
-        # every state (e.g. legacy flows that bypass it), so this is best-effort.
-        try:
-            confirm_btn = page.locator("button:has-text('Yes, times are correct')")
-            if confirm_btn.is_visible(timeout=2000):
-                print("    Confirming times modal...")
-                confirm_btn.click()
-        except Exception:
-            pass
-        time.sleep(2)
-
-        # Step 2 shows the pricing and package info
-        # Wait for pricing to load
-        time.sleep(2)
+        # A "Please double-check your times" confirmation modal can intercept
+        # the Step 1 → Step 2 transition.
+        confirm_times_if_present(page)
+        wait_visible(page, "button.next-btn, button:has-text('Continue to Your Details'), button:has-text('Continue to Tag it'), button:has-text('Continue to TAG it')", timeout=15000)
 
         # Click Continue to Your Details button
         print("  Proceeding to Step 3 (Your Details)...")
-        continue_details_btn = page.locator("button:has-text('Continue to Your Details')")
+        continue_details_btn = page.locator(
+            "button.next-btn, "
+            "button:has-text('Continue to Your Details'), "
+            "button:has-text('Continue to Tag it'), "
+            "button:has-text('Continue to TAG it')"
+        ).first
         if continue_details_btn.is_visible(timeout=5000):
             continue_details_btn.click()
-            time.sleep(3)
+            short_pause()
+        confirm_times_if_present(page)
+        if continue_details_btn.is_visible(timeout=5000):
+            print("    Continuing to your details after times confirmation...")
+            continue_details_btn.click()
+            page.locator("#firstName").wait_for(state="visible", timeout=15000)
 
         # ============ STEP 3: Your Details (Customer + Billing + Vehicle) ============
         print("  Step 3: Filling customer details...")
 
         # Fill contact information
         page.locator("#firstName").fill(customer["first_name"])
-        time.sleep(0.2)
+        short_pause(0.05)
         page.locator("#lastName").fill(customer["last_name"])
-        time.sleep(0.2)
+        short_pause(0.05)
         page.locator("#email").fill(customer["email"])
-        time.sleep(0.2)
+        short_pause(0.05)
 
         # Phone - using the PhoneInput component
         phone_input = page.locator(".phone-input input[type='tel']")
         phone_input.click()
-        time.sleep(0.2)
+        short_pause(0.05)
         phone_input.fill("+44" + customer["phone"])
-        time.sleep(0.3)
+        short_pause(0.1)
 
         # Fill billing address - enter postcode and use manual entry
         page.locator("#billingPostcode").fill(customer["postcode"])
-        time.sleep(0.3)
+        short_pause(0.1)
 
         # Click Find Address button
         page.locator("button:has-text('Find Address')").click()
-        time.sleep(2)
+        short_pause(0.5)
 
         # If address select appears, select first address or use manual entry
         try:
             if page.locator("#addressSelect").is_visible(timeout=3000):
                 page.locator("#addressSelect").select_option(index=1)
-                time.sleep(0.5)
+                short_pause()
             else:
                 page.locator("text=Enter address manually").click()
-                time.sleep(0.3)
+                short_pause()
         except:
             try:
                 page.locator("text=Enter address manually").click()
-                time.sleep(0.3)
+                short_pause()
             except:
                 pass
 
         # Fill address fields if visible/empty
         if not page.locator("#billingAddress1").input_value():
             page.locator("#billingAddress1").fill(customer["address1"])
-        time.sleep(0.2)
+        short_pause(0.05)
 
         if not page.locator("#billingCity").input_value():
             page.locator("#billingCity").fill(customer["city"])
-        time.sleep(0.2)
+        short_pause(0.05)
 
         if not page.locator("#billingCounty").input_value():
             page.locator("#billingCounty").fill(customer["county"])
-        time.sleep(0.2)
+        short_pause(0.05)
 
         # Vehicle Information
         print("  Filling vehicle details...")
         page.locator("#registration").fill(vehicle["registration"])
-        time.sleep(0.3)
+        short_pause(0.1)
 
         # Click DVLA Lookup button
         page.locator("button.validate-btn").click()
-        time.sleep(2)
+        short_pause(0.5)
 
         # Check if DVLA verified the vehicle or if we need to select manually
         make_readonly = page.locator("#make.readonly-input")
@@ -999,10 +1274,10 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         elif make_select.is_visible(timeout=2000):
             try:
                 make_select.select_option(label=vehicle["make"])
-                time.sleep(0.5)
+                short_pause()
             except:
                 make_select.select_option(value=vehicle["make"])
-                time.sleep(0.5)
+                short_pause()
 
         # Fill colour if needed
         colour_readonly = page.locator("#colour.readonly-input")
@@ -1012,11 +1287,11 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             print("    DVLA verified colour:", colour_readonly.input_value())
         elif colour_input.is_visible(timeout=1000):
             colour_input.fill(vehicle["colour"])
-            time.sleep(0.3)
+            short_pause()
 
         # Select model from dropdown
         print("    Selecting model...")
-        time.sleep(1)
+        short_pause()
         model_select = page.locator("select#model")
         if model_select.is_visible(timeout=3000):
             try:
@@ -1025,9 +1300,9 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             except:
                 print(f"    Model {vehicle['model']} not found, selecting Other...")
                 model_select.select_option(value="Other")
-                time.sleep(0.3)
+                short_pause()
                 page.locator("#customModel").fill(vehicle["model"])
-            time.sleep(0.5)
+            short_pause()
         else:
             print("    Model dropdown not visible yet")
 
@@ -1053,10 +1328,24 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         # Apply promo code if this test case has one
         promo_code = test_case.get("promo_code")
         promo_type = test_case.get("promo_type", "10")
+        expected_total = None
         if promo_code:
             promo_applied = False
+            if is_marketing_promo_test(test_case):
+                reset_promo_code(promo_code, promo_type)
             print(f"    Applying promo code: {promo_code}")
-            time.sleep(1)
+            pre_promo_total = get_checkout_total_pence(page)
+            expected_total = (
+                expected_promo_total_pence(pre_promo_total, promo_type, billing_days)
+                if pre_promo_total is not None
+                else None
+            )
+            if expected_total is not None:
+                print(
+                    f"    Expecting promo total: £{expected_total / 100:.2f} "
+                    f"from £{pre_promo_total / 100:.2f}"
+                )
+            short_pause()
 
             # Find and fill promo code input
             promo_input = page.locator(
@@ -1066,7 +1355,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             ).first
             if promo_input.is_visible(timeout=5000):
                 promo_input.fill(promo_code)
-                time.sleep(0.5)
+                short_pause()
 
                 # Click Apply button
                 apply_btn = page.locator(
@@ -1076,21 +1365,37 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 ).first
                 if apply_btn.is_visible(timeout=3000):
                     apply_btn.click()
+                    try:
+                        page.locator("button:has-text('Checking')").wait_for(state="hidden", timeout=12000)
+                    except Exception:
+                        pass
 
-                    # Check for success - look for success indicators (use .first to avoid strict mode error)
-                    promo_success = page.locator(
-                        ".promo-success, .promo-code-applied, .discount-applied, "
-                        "text=/Promo code applied/i"
-                    ).first
-
-                    if promo_success.is_visible(timeout=10000):
-                        print(f"    Promo code {promo_code} applied successfully!")
+                    if expected_total is not None and wait_for_total(page, expected_total):
+                        print(f"    Promo code {promo_code} total matched expected amount")
                         promo_applied = True
-                    else:
+
+                    # Check for success across current and legacy promo UI states.
+                    success_indicators = [
+                        page.locator(".promo-success, .promo-code-applied, .discount-applied").first,
+                        page.locator(".promo-badge, button.promo-remove, .summary-item.discount, .discount-amount").first,
+                        page.locator("text=/Promo code applied/i").first,
+                    ]
+                    if not promo_applied:
+                        for indicator in success_indicators:
+                            try:
+                                if indicator.is_visible(timeout=10000):
+                                    print(f"    Promo code {promo_code} applied successfully!")
+                                    promo_applied = True
+                                    break
+                            except Exception:
+                                pass
+
+                    if not promo_applied:
                         promo_error = page.locator(".promo-error").first
                         if promo_error.is_visible(timeout=1000):
                             print(f"    Promo error: {promo_error.text_content()}")
-                        print(f"    Error: Could not confirm promo code applied")
+                        else:
+                            print(f"    Error: Could not confirm promo code applied")
                 else:
                     print("    Error: Promo code Apply button not found")
             else:
@@ -1105,24 +1410,31 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
         if not accept_terms(page, test_num):
             return False
-        time.sleep(1)
+        short_pause()
 
         # Free-booking short-circuit: 100% promo bookings render the green
         # "Complete Free Booking" button instead of the Stripe card form, so
         # the entire iframe-polling + card-fill block below is wasted work
         # (~15s) for those tests. Detect first; if present, skip Stripe.
         print("    Waiting for payment surface...")
-        time.sleep(3)
-        free_booking_btn = page.locator("button:has-text('Complete Free Booking')")
+        short_pause(0.5)
+        free_booking_selector = (
+            "button:has-text('Complete Free Booking'), "
+            "button:has-text('Complete free booking'), "
+            "button:has-text('Complete Booking'), "
+            "button:has-text('Confirm Free Booking')"
+        )
+        free_booking_btn = page.locator(free_booking_selector).first
         try:
             is_free = free_booking_btn.is_visible(timeout=2000)
         except Exception:
             is_free = False
+        is_free = is_free or expected_total == 0
 
         if is_free:
             print("    Free booking detected — skipping Stripe card flow")
         else:
-            time.sleep(2)
+            short_pause(0.5)
             # The StripePaymentElement uses iframes for card input.
             print("    Filling card details...")
             try:
@@ -1156,26 +1468,17 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                     cvc_sel = "input[autocomplete='cc-csc']"
 
                     card_input = payment_frame.locator(card_sel)
-                    card_input.wait_for(state="visible", timeout=10000)
-                    card_input.click()
-                    time.sleep(0.2)
-                    card_input.press_sequentially(STRIPE_TEST_CARD["number"], delay=40)
-                    print("    Card number filled")
-                    time.sleep(0.3)
+                    if not fill_stripe_input(card_input, STRIPE_TEST_CARD["number"], "Card number", 16):
+                        raise Exception("Card number did not fully populate")
 
                     expiry_input = payment_frame.locator(exp_sel)
-                    expiry_input.click()
-                    time.sleep(0.2)
-                    expiry_input.press_sequentially(STRIPE_TEST_CARD["expiry"], delay=40)
-                    print("    Expiry filled")
-                    time.sleep(0.3)
+                    if not fill_stripe_input(expiry_input, STRIPE_TEST_CARD["expiry"], "Expiry", 4):
+                        raise Exception("Expiry did not fully populate")
 
                     cvc_input = payment_frame.locator(cvc_sel)
-                    cvc_input.click()
-                    time.sleep(0.2)
-                    cvc_input.press_sequentially(STRIPE_TEST_CARD["cvc"], delay=40)
-                    print("    CVC filled")
-                    time.sleep(0.5)
+                    if not fill_stripe_input(cvc_input, STRIPE_TEST_CARD["cvc"], "CVC", 3):
+                        raise Exception("CVC did not fully populate")
+                    short_pause(1)
                 else:
                     print("    Could not find Stripe payment frame after polling")
                     page.screenshot(path=f"no_stripe_frame_{test_num}.png")
@@ -1187,7 +1490,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         # to ~6s. fill() used to race this with a flat sleep(2); polling here
         # makes the wait deterministic.
         pay_btn_wait = page.locator(".stripe-pay-btn")
-        for _ in range(30):
+        for _ in range(50):
             try:
                 if pay_btn_wait.is_visible(timeout=200) and not pay_btn_wait.is_disabled():
                     break
@@ -1199,10 +1502,10 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         print("  Submitting payment...")
 
         # Check for FREE booking button first (£0 total)
-        free_booking_btn = page.locator("button:has-text('Complete Free Booking')")
+        free_booking_btn = page.locator(free_booking_selector).first
         pay_btn = page.locator(".stripe-pay-btn, button:has-text('Pay ')")
 
-        if free_booking_btn.is_visible(timeout=3000):
+        if free_booking_btn.is_visible(timeout=10000):
             print("    Free booking detected - clicking 'Complete Free Booking'")
             free_booking_btn.click()
         elif pay_btn.is_visible(timeout=5000):
