@@ -154,7 +154,11 @@ from models import (
     AvailableSlotsResponse,
 )
 from booking_service import get_booking_service, BookingService, get_base_price_for_duration
-from airport_quote_service import get_airport_quote_week1_price_pence
+from airport_quote_service import (
+    calculate_tag_price_pence,
+    get_airport_quote_discount_percent,
+    get_airport_quote_week1_price_pence,
+)
 from time_slots import get_drop_off_summary, get_pickup_summary
 from config import get_settings, is_stripe_configured
 import httpx
@@ -1384,13 +1388,15 @@ def _homepage_comparison_item(snapshot: AirportQuoteSnapshot) -> dict:
     premium_product = next((item for item in products if "premium" in item["name"].lower()), None)
     most_expensive = premium_product or max(products, key=lambda item: item["pricePence"], default=None)
     base_price_pence = _homepage_base_price_pence(snapshot.billing_days)
-    snapshot_tag_pence = int(snapshot.tag_price_pence or 0)
+    cheapest_pence = int(snapshot.cheapest_pence or min((item["pricePence"] for item in products), default=0))
     if _homepage_price_mode() == "base_rate":
         tag_price_pence = base_price_pence
     else:
-        tag_price_pence = snapshot_tag_pence or base_price_pence
+        tag_price_pence = calculate_tag_price_pence(
+            cheapest_pence,
+            get_airport_quote_discount_percent(),
+        ) if cheapest_pence else base_price_pence
 
-    cheapest_pence = int(snapshot.cheapest_pence or min((item["pricePence"] for item in products), default=0))
     premium_pence = most_expensive["pricePence"] if most_expensive else None
     return {
         "billingDays": snapshot.billing_days,
@@ -1421,7 +1427,6 @@ def get_homepage_airport_comparison(db: Session = Depends(get_db)):
                 AirportQuoteSnapshot.status == "ok",
                 AirportQuoteSnapshot.source.in_(("live", "batch")),
                 AirportQuoteSnapshot.cheapest_pence.isnot(None),
-                AirportQuoteSnapshot.tag_price_pence.isnot(None),
             )
             .order_by(AirportQuoteSnapshot.created_at.desc())
             .first()

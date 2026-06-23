@@ -73,19 +73,20 @@ def test_homepage_airport_comparison_reads_cached_live_snapshots(monkeypatch):
             billing_days=4,
             cheapest=16800,
             premium=30000,
-            tag=12600,
+            tag=13020,
             created_at=datetime(2026, 6, 23, 8, 30, tzinfo=timezone.utc),
         ),
         _snapshot(
             billing_days=7,
             cheapest=18000,
             premium=32000,
-            tag=13500,
+            tag=13950,
             created_at=datetime(2026, 6, 23, 9, 30, tzinfo=timezone.utc),
         ),
     ])
     app.dependency_overrides[main.get_db] = lambda: db
     monkeypatch.setenv("HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE", "live")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "30")
 
     try:
         response = TestClient(app).get("/api/airport-parking/homepage-comparison")
@@ -95,14 +96,51 @@ def test_homepage_airport_comparison_reads_cached_live_snapshots(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["checkedAt"] == "2026-06-23T09:30:00+00:00"
-    assert body["maxCheapestSavingPct"] == 25
-    assert body["maxPremiumSavingPct"] == 58
+    assert body["maxCheapestSavingPct"] == 30
+    assert body["maxPremiumSavingPct"] == 61
     assert [item["billingDays"] for item in body["items"]] == [4, 7]
     assert body["items"][0]["cheapestPence"] == 16800
     assert body["items"][0]["premiumPence"] == 30000
-    assert body["items"][0]["tagPricePence"] == 12600
-    assert body["items"][0]["savingPct"] == 25
+    assert body["items"][0]["tagPricePence"] == 11760
+    assert body["items"][0]["savingPct"] == 30
     assert body["items"][0]["source"] == "live"
+
+
+def test_homepage_airport_comparison_recomputes_tag_price_when_discount_changes(monkeypatch):
+    def get_response(discount):
+        db = _EndpointDb([
+            _snapshot(
+                billing_days=4,
+                cheapest=16800,
+                premium=30000,
+                tag=13020,
+                created_at=datetime(2026, 6, 23, 8, 30, tzinfo=timezone.utc),
+            ),
+            _snapshot(
+                billing_days=7,
+                cheapest=18000,
+                premium=32000,
+                tag=13950,
+                created_at=datetime(2026, 6, 23, 9, 30, tzinfo=timezone.utc),
+            ),
+        ])
+        app.dependency_overrides[main.get_db] = lambda: db
+        monkeypatch.setenv("HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE", "live")
+        monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", str(discount))
+        try:
+            return TestClient(app).get("/api/airport-parking/homepage-comparison")
+        finally:
+            app.dependency_overrides.clear()
+
+    thirty_pct = get_response(30).json()
+    twenty_five_pct = get_response(25).json()
+
+    assert thirty_pct["items"][1]["tagPricePence"] == 12600
+    assert thirty_pct["items"][1]["savingPct"] == 30
+    assert thirty_pct["items"][1]["premiumSavingPct"] == 61
+    assert twenty_five_pct["items"][1]["tagPricePence"] == 13500
+    assert twenty_five_pct["items"][1]["savingPct"] == 25
+    assert twenty_five_pct["items"][1]["premiumSavingPct"] == 58
 
 
 def test_homepage_airport_comparison_empty_when_no_live_cache(monkeypatch):
