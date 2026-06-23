@@ -2471,7 +2471,7 @@ function Bookings({ isModal = false, onClose }) {
                 <span className="step-number">{step}</span>
                 <span className="step-label">
                   {step === 1 && 'Trip'}
-                  {step === 2 && 'Tag Price'}
+                  {step === 2 && 'Pricing'}
                   {step === 3 && 'Details'}
                   {step === 4 && 'Payment'}
                 </span>
@@ -3466,7 +3466,7 @@ function Bookings({ isModal = false, onClose }) {
                   onClick={handleContinueStep1}
                   disabled={!isStep1Complete}
                 >
-                  Continue to Tag Price
+                  Continue to Pricing
                 </button>
               </div>
             </div>
@@ -3475,14 +3475,14 @@ function Bookings({ isModal = false, onClose }) {
           {/* Step 2: Package Selection */}
           {currentStep === 2 && (
             <div className="form-section">
-              <h2>Tag Price</h2>
+              <h2>Pricing</h2>
 
               {pricingInfo ? (
                 <div className="package-summary">
                   <div className="package-card selected tag-price-card">
                     <span className="price-owner-label">Our price</span>
                     <span className="package-price">£{pricingInfo.price.toFixed(2)}</span>
-                    <span className="price-owner-note">TAG Meet & Greet</span>
+                    <span className="price-owner-note">Tag Meet & Greet</span>
 
                     <ul className="package-features">
                       <li>Meet & Greet at terminal</li>

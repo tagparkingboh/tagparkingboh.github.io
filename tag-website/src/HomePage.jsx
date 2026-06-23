@@ -383,11 +383,11 @@ function HomePage() {
       <section className="pricing-section" id="pricing">
         <p className="pricing-live-kicker">
           {airportComparison?.checkedAt
-            ? `🟢 LIVE Bournemouth Airport prices · checked ${formatCheckedDate(airportComparison.checkedAt)}`
+            ? `🟢 LIVE BOH prices · checked ${formatCheckedDate(airportComparison.checkedAt)}`
             : 'Bournemouth Airport comparison · awaiting live check'}
         </p>
         <h2>Live airport comparison</h2>
-        <p className="pricing-subtitle">See how TAG compares with Bournemouth Airport's latest checked prices for the two most popular stay lengths.</p>
+        <p className="pricing-subtitle">See how Tag compares with Bournemouth Airport's latest checked prices for the two most popular stay lengths.</p>
 
         <div className="live-pricing-card">
           <div className="live-comparison-rows">
@@ -410,7 +410,6 @@ function HomePage() {
                       <span className="live-price-label">Airport</span>
                       <strong>{formatPounds(row.airportPence)}</strong>
                     </div>
-                    <div className="live-vs">vs</div>
                     <div className="live-price-side tag-side">
                       <span className="live-price-label">TAG</span>
                       <strong>{formatPounds(row.tagPence)}</strong>
@@ -431,9 +430,9 @@ function HomePage() {
             <li>✓ No hidden fees</li>
             <li>✓ Free cancellation up to 24hrs before</li>
           </ul>
-          <p className="live-savings-line">
+          <p className="live-savings-line stats-bar">
             {airportComparison?.items?.length
-              ? 'Up to 30% off their cheapest · up to 70% off Premium Parking'
+              ? 'Up to 35% cheaper than BOH\'s lowest-priced option · up to 70% cheaper than Premium Parking'
               : 'Live airport savings update automatically from recent checked prices.'}
           </p>
         </div>
