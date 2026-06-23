@@ -391,38 +391,28 @@ function HomePage() {
 
         <div className="live-pricing-card">
           <div className="live-comparison-rows">
-            {comparisonRows.map(row => {
-              const tagWidth = row.airportPence > 0
-                ? Math.max(18, Math.min(100, Math.round((row.tagPence / row.airportPence) * 100)))
-                : 55
-              return (
-                <div
-                  className={`live-comparison-row ${row.badge ? 'popular' : ''}`}
-                  key={row.billingDays}
-                  style={{ '--tag-width': `${tagWidth}%` }}
-                >
-                  <div className="live-row-heading">
-                    <span className="live-row-duration">{row.label}</span>
-                    {row.badge && <span className="live-row-badge">{row.badge}</span>}
-                  </div>
-                  <div className="live-price-grid">
-                    <div className="live-price-side airport-side">
-                      <span className="live-price-label">Airport</span>
-                      <strong>{formatPounds(row.airportPence)}</strong>
-                    </div>
-                    <div className="live-price-side tag-side">
-                      <span className="live-price-label">TAG</span>
-                      <strong>{formatPounds(row.tagPence)}</strong>
-                    </div>
-                  </div>
-                  <div className="live-price-bars" aria-hidden="true">
-                    <span className="airport-bar"></span>
-                    <span className="tag-bar"></span>
-                  </div>
-                  {!row.live && <p className="live-row-note">Using TAG base rate while the latest live airport check refreshes.</p>}
+            {comparisonRows.map(row => (
+              <div
+                className={`live-comparison-row ${row.badge ? 'popular' : ''}`}
+                key={row.billingDays}
+              >
+                <div className="live-row-heading">
+                  <span className="live-row-duration">{row.label}</span>
+                  {row.badge && <span className="live-row-badge">{row.badge}</span>}
                 </div>
-              )
-            })}
+                <div className="live-price-grid">
+                  <div className="live-price-side airport-side">
+                    <span className="live-price-label">Airport</span>
+                    <strong>{formatPounds(row.airportPence)}</strong>
+                  </div>
+                  <div className="live-price-side tag-side">
+                    <span className="live-price-label">TAG</span>
+                    <strong>{formatPounds(row.tagPence)}</strong>
+                  </div>
+                </div>
+                {!row.live && <p className="live-row-note">Using TAG base rate while the latest live airport check refreshes.</p>}
+              </div>
+            ))}
           </div>
           <ul className="live-trust-list">
             <li>✓ Meet & Greet</li>

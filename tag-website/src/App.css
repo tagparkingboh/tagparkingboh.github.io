@@ -780,10 +780,10 @@
 }
 
 .live-price-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-  align-items: end;
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.15rem;
 }
 
 .live-price-side {
@@ -818,7 +818,7 @@
 }
 
 .tag-side {
-  text-align: right;
+  text-align: left;
 }
 
 .tag-side .live-price-label {
@@ -837,31 +837,6 @@
   box-shadow:
     0 0 26px rgba(217, 255, 0, 0.72),
     0 10px 24px rgba(0, 0, 0, 0.14);
-}
-
-.live-price-bars {
-  display: grid;
-  gap: 0.45rem;
-  margin-top: 1rem;
-}
-
-.live-price-bars span {
-  display: block;
-  height: 10px;
-  border-radius: 999px;
-  transform-origin: left;
-  animation: comparisonBarIn 900ms ease both;
-}
-
-.airport-bar {
-  width: 100%;
-  background: #d6d6d6;
-}
-
-.tag-bar {
-  width: var(--tag-width);
-  background: #D9FF00;
-  box-shadow: 0 0 20px rgba(217, 255, 0, 0.55);
 }
 
 .live-row-note {
@@ -887,29 +862,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 1.75rem -2rem 0;
-  padding: 0.95rem 2rem 1rem;
+  margin: 1.2rem -2rem 0;
+  padding: 0.7rem 2rem 0.75rem;
   border-radius: 0 0 14px 14px;
   background: rgba(255, 255, 255, 0.08);
   color: #D9FF00;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 900;
   line-height: 1.35;
   min-height: auto;
   flex-direction: row;
   box-shadow: none;
   border: 0;
-}
-
-@keyframes comparisonBarIn {
-  from {
-    transform: scaleX(0);
-    opacity: 0.35;
-  }
-  to {
-    transform: scaleX(1);
-    opacity: 1;
-  }
 }
 
 @keyframes saveCountPop {
@@ -1316,7 +1280,7 @@
   }
 
   .live-price-grid {
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 1.05rem;
   }
 
   .live-price-side strong {
@@ -1385,14 +1349,6 @@
   .live-row-heading,
   .live-price-grid {
     gap: 0.6rem;
-  }
-
-  .live-price-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tag-side {
-    text-align: left;
   }
 
   .live-price-side {
