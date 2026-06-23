@@ -8,6 +8,7 @@ from datetime import date
 from airport_quote_service import (
     AirportQuoteInput,
     AirportQuoteScrapeResult,
+    BOH_REQUIRED_PRODUCT_NAMES,
     parse_boh_products,
     normalise_boh_time_slot,
 )
@@ -17,6 +18,37 @@ BOH_COLLECT_URL = "https://book.bournemouthairport.com/book/BOH/Parking?parkingC
 
 def _airport_date(value: date) -> str:
     return value.strftime("%d/%m/%Y")
+
+
+def _debug_html_enabled() -> bool:
+    return os.environ.get("AIRPORT_QUOTE_DEBUG_HTML", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _has_required_named_products(products) -> bool:
+    names = {product.name for product in products}
+    return BOH_REQUIRED_PRODUCT_NAMES.issubset(names)
+
+
+def _bounded_debug_snippet(page_html: str) -> str:
+    needles = ("item__price__val", "item__options-price", "Car Park", "Premium")
+    indexes = [page_html.find(needle) for needle in needles if page_html.find(needle) >= 0]
+    if not indexes:
+        return page_html[:6_000]
+    anchor = min(indexes)
+    start = max(anchor - 2_000, 0)
+    end = min(start + 6_000, len(page_html))
+    return page_html[start:end]
+
+
+def _log_debug_html_if_needed(page_html: str, products) -> None:
+    if not _debug_html_enabled() or _has_required_named_products(products):
+        return
+    snippet = _bounded_debug_snippet(page_html)
+    print(
+        "[AIRPORT_QUOTE_DEBUG_HTML] BOH product parse did not yield all required named products; "
+        f"parsed={[product.to_api() for product in products]}; snippet={snippet!r}",
+        flush=True,
+    )
 
 
 def fetch_bournemouth_airport_quote(
@@ -31,7 +63,7 @@ def fetch_bournemouth_airport_quote(
     Callers should perform DB reads/writes before/after this function, not
     during it, so Chromium work does not hold a request DB connection.
     """
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
     proxy_url = os.environ.get("SCRAPE_PROXY_URL")
     launch_kwargs = {"headless": True}
@@ -90,8 +122,17 @@ def fetch_bournemouth_airport_quote(
                 state="attached",
                 timeout=15_000,
             )
+            try:
+                page.wait_for_function(
+                    "() => /Car Park|Premium/i.test(document.body?.innerText || '')",
+                    timeout=5_000,
+                )
+            except PlaywrightTimeoutError:
+                pass
 
-            products = parse_boh_products(page.content())
+            page_html = page.content()
+            products = parse_boh_products(page_html)
+            _log_debug_html_if_needed(page_html, products)
             return AirportQuoteScrapeResult(products=products, source_url=page.url)
         finally:
             browser.close()

@@ -17,6 +17,7 @@ from airport_quote_service import (
     normalise_boh_time_slot,
     parse_boh_products,
     fallback_quote_from_snapshots,
+    validate_products,
 )
 from airport_quote_worker_client import build_worker_scraper
 from main import app
@@ -142,6 +143,67 @@ def test_parse_boh_product_groups_excludes_flex_prices():
         ("Car Park 1", 16920),
         ("Car Park 1 Premium", 25500),
     ]
+
+
+def test_parse_boh_flat_price_classes_maps_names_and_excludes_flex_prices():
+    html = """
+      <section class="parking-products">
+        <span class="item__price__val 7">£148.05</span>
+        <span class="item__price__val 8">£153.05</span>
+        <span class="item__price__val 5">£149.94</span>
+        <span class="item__price__val 6">£154.94</span>
+        <span class="item__price__val 1">£169.20</span>
+        <span class="item__price__val 2">£174.20</span>
+        <span class="item__price__val 3">£255.00</span>
+        <span class="item__price__val 4">£260.00</span>
+      </section>
+    """
+    products = parse_boh_products(html)
+
+    assert [(p.name, p.price_pence) for p in products] == [
+        ("Car Park 3", 14805),
+        ("Car Park 2", 14994),
+        ("Car Park 1", 16920),
+        ("Car Park 1 Premium", 25500),
+    ]
+
+
+def test_parse_boh_products_uses_flat_class_names_when_grouped_parse_is_incomplete():
+    html = """
+      <div class="product-group__item-container">
+        <div class="item__options">
+          <span class="item__options-price">£168.13</span>
+        </div>
+      </div>
+      <section class="parking-products">
+        <span class="item__price__val 7">£168.13</span>
+        <span class="item__price__val 5">£171.36</span>
+        <span class="item__price__val 1">£195.60</span>
+        <span class="item__price__val 3">£300.00</span>
+      </section>
+    """
+    products = parse_boh_products(html)
+
+    assert [(p.name, p.price_pence) for p in products] == [
+        ("Car Park 3", 16813),
+        ("Car Park 2", 17136),
+        ("Car Park 1", 19560),
+        ("Car Park 1 Premium", 30000),
+    ]
+
+
+def test_validate_products_requires_all_four_named_products():
+    ok, reason = validate_products(
+        [
+            AirportProduct("Car Park 3", 14805, "£148.05"),
+            AirportProduct("Car Park 2", 14994, "£149.94"),
+            AirportProduct("Car Park 1", 16920, "£169.20"),
+        ],
+        billing_days=8,
+    )
+
+    assert ok is False
+    assert reason == "products_missing"
 
 
 def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
@@ -510,6 +572,7 @@ def test_anomaly_zero_price_rejected_then_model(monkeypatch):
         {"name": "Car Park 3", "pricePence": 0, "priceText": "£0.00"},
         {"name": "Car Park 2", "pricePence": 14994, "priceText": "£149.94"},
         {"name": "Car Park 1", "pricePence": 16920, "priceText": "£169.20"},
+        {"name": "Car Park 1 Premium", "pricePence": 25500, "priceText": "£255.00"},
     ]
     _mock_worker_http(monkeypatch, products=zero_priced)
 
@@ -597,6 +660,7 @@ def test_deferred_day_over_day_jump_is_not_yet_a_gate(monkeypatch):
         {"name": "Car Park 3", "pricePence": 1480500, "priceText": "£14805.00"},  # 100x
         {"name": "Car Park 2", "pricePence": 1499400, "priceText": "£14994.00"},
         {"name": "Car Park 1", "pricePence": 1692000, "priceText": "£16920.00"},
+        {"name": "Car Park 1 Premium", "pricePence": 2550000, "priceText": "£25500.00"},
     ]
     _mock_worker_http(monkeypatch, products=inflated)
 

@@ -29,6 +29,16 @@ BOH_TIME_OPTIONS = (
     + ["23:59"]
 )
 
+BOH_REQUIRED_PRODUCT_NAMES = {"Car Park 1", "Car Park 2", "Car Park 3", "Car Park 1 Premium"}
+BOH_KNOWN_PRODUCT_NAMES = set(BOH_REQUIRED_PRODUCT_NAMES)
+BOH_PRICE_CLASS_PRODUCTS = {
+    "7": "Car Park 3",
+    "5": "Car Park 2",
+    "1": "Car Park 1",
+    "3": "Car Park 1 Premium",
+}
+BOH_FLEX_PRICE_CLASSES = {"8", "6", "2", "4"}
+
 BOH_DESTINATION_OTHER_ID = "2182"
 BOH_DESTINATION_IDS = {
     ("agadir", "ryanair"): "2116",
@@ -299,27 +309,54 @@ def _parse_product_groups(page_html: str) -> list[AirportProduct]:
     return products
 
 
-def parse_boh_products(page_html: str) -> list[AirportProduct]:
-    grouped = _parse_product_groups(page_html)
-    if grouped:
-        return grouped
-
+def _parse_flat_price_products(page_html: str) -> list[AirportProduct]:
     products: list[AirportProduct] = []
     for index, match in enumerate(
-        re.finditer(r'<[^>]*class="[^"]*item__price__val[^"]*"[^>]*>(.*?)</[^>]+>', page_html, re.S)
+        re.finditer(r'<[^>]*class="([^"]*\bitem__price__val\b[^"]*)"[^>]*>(.*?)</[^>]+>', page_html, re.S)
     ):
-        price_text = _strip_tags(match.group(1))
+        price_text = _strip_tags(match.group(2))
         price_pence = parse_money_to_pence(price_text)
         if price_pence is None:
             continue
+
+        class_tokens = set(match.group(1).split())
+        if class_tokens.intersection(BOH_FLEX_PRICE_CLASSES):
+            continue
+        product_name = next(
+            (
+                name
+                for class_token, name in BOH_PRICE_CLASS_PRODUCTS.items()
+                if class_token in class_tokens
+            ),
+            None,
+        )
+        if product_name is None:
+            product_name = f"Bournemouth Airport product {index + 1}"
+
         products.append(
             AirportProduct(
-                name=f"Bournemouth Airport product {index + 1}",
+                name=product_name,
                 price_pence=price_pence,
                 price_text=format_price_text(price_pence),
             )
         )
     return products
+
+
+def _has_required_product_names(products: Iterable[AirportProduct]) -> bool:
+    names = {product.name for product in products}
+    return BOH_REQUIRED_PRODUCT_NAMES.issubset(names)
+
+
+def parse_boh_products(page_html: str) -> list[AirportProduct]:
+    grouped = _parse_product_groups(page_html)
+    if _has_required_product_names(grouped):
+        return grouped
+
+    flat = _parse_flat_price_products(page_html)
+    if flat:
+        return flat
+    return grouped
 
 
 def detect_airline(value: Optional[str]) -> Optional[str]:
@@ -349,18 +386,17 @@ def map_destination_to_boh_id(destination: Optional[str], airline_hint: Optional
 
 def validate_products(products: Iterable[AirportProduct], billing_days: int) -> tuple[bool, Optional[str]]:
     products = list(products)
-    if len(products) < 3:
+    if len(products) < len(BOH_REQUIRED_PRODUCT_NAMES):
         return False, "products_missing"
-    known = {"Car Park 1", "Car Park 2", "Car Park 3", "Car Park 1 Premium"}
     names = {product.name for product in products}
-    if not {"Car Park 1", "Car Park 2", "Car Park 3"}.issubset(names):
+    if not BOH_REQUIRED_PRODUCT_NAMES.issubset(names):
         return False, "products_misnamed"
     cheapest = min(product.price_pence for product in products)
     if cheapest <= 0:
         return False, "price_zero"
     if cheapest < billing_days * get_airport_price_floor_per_day_pence():
         return False, "price_below_floor"
-    if not names.issubset(known):
+    if not names.issubset(BOH_KNOWN_PRODUCT_NAMES):
         return False, "unexpected_product_name"
     return True, None
 
