@@ -118,6 +118,9 @@ describe('BookingsNew — airport quote fires from the manual departure flow', (
 
     await waitFor(() => expect(capturedQuoteBody).not.toBeNull(), { timeout: 5000 })
 
+    expect(await screen.findByText('Bournemouth Airport Prices')).toBeInTheDocument()
+    expect(screen.getByText('£168.00 – £190.00')).toBeInTheDocument()
+    expect(screen.queryByText(/Bournemouth Airport:/)).not.toBeInTheDocument()
     expect(await screen.findByText('30% cheaper')).toBeInTheDocument()
     expect(screen.getByText('38% cheaper')).toBeInTheDocument()
     expect(screen.queryByText('0% cheaper')).not.toBeInTheDocument()

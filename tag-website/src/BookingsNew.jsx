@@ -3493,9 +3493,9 @@ function Bookings({ isModal = false, onClose }) {
                   </div>
                   {airportQuote?.airportPrices?.length > 0 && (
                     <div className="airport-comparison">
-                      <h3>Their price</h3>
+                      <h3>Bournemouth Airport Prices</h3>
                       <p className="airport-comparison-note">
-                        Bournemouth Airport: {airportPriceSummary || 'checked just now'}
+                        {airportPriceSummary || 'checked just now'}
                       </p>
                       <div className="airport-price-list">
                         {airportQuote.airportPrices.map((product) => {
