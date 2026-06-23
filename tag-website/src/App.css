@@ -721,7 +721,7 @@
 .live-pricing-card {
   width: min(820px, 100%);
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2.25rem 2rem 0;
   border: 1px solid rgba(217, 255, 0, 0.28);
   border-radius: 14px;
   background:
@@ -733,12 +733,12 @@
 .live-comparison-rows {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 1.1rem;
 }
 
 .live-comparison-row {
-  min-height: 240px;
-  padding: 1.55rem;
+  min-height: 285px;
+  padding: 1.8rem 1.55rem;
   border-radius: 10px;
   background: #ffffff;
   color: #343434;
@@ -826,10 +826,17 @@
 }
 
 .tag-side strong {
-  color: #293300;
-  font-size: 2.35rem;
-  font-weight: 950;
-  text-shadow: 0 0 18px rgba(217, 255, 0, 0.55);
+  display: inline-block;
+  color: #202700;
+  font-size: 2.75rem;
+  font-weight: 1000;
+  letter-spacing: 0;
+  padding: 0.35rem 0.5rem 0.28rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #D9FF00 0%, #efff7a 100%);
+  box-shadow:
+    0 0 26px rgba(217, 255, 0, 0.72),
+    0 10px 24px rgba(0, 0, 0, 0.14);
 }
 
 .live-price-bars {
@@ -870,23 +877,28 @@
   justify-content: center;
   gap: 0.75rem 1.2rem;
   padding: 0;
-  margin: 1.25rem 0 0;
+  margin: 1.55rem 0 0;
   color: #ffffff;
   font-size: 0.92rem;
   font-weight: 800;
 }
 
 .live-savings-line {
-  margin: 1.5rem -2rem -2rem;
-  padding: 1.35rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 1.75rem -2rem 0;
+  padding: 0.95rem 2rem 1rem;
   border-radius: 0 0 14px 14px;
+  background: rgba(255, 255, 255, 0.08);
   color: #D9FF00;
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 900;
   line-height: 1.35;
   min-height: auto;
   flex-direction: row;
   box-shadow: none;
+  border: 0;
 }
 
 @keyframes comparisonBarIn {
@@ -1248,7 +1260,11 @@
 
   .live-pricing-card {
     width: min(640px, 100%);
-    padding: 1.75rem;
+    padding: 2rem 1.75rem 0;
+  }
+
+  .live-comparison-row {
+    min-height: 260px;
   }
 
   .live-comparison-rows {
@@ -1260,7 +1276,7 @@
   }
 
   .tag-side strong {
-    font-size: 2.15rem;
+    font-size: 2.45rem;
   }
 }
 
@@ -1314,6 +1330,7 @@
 
   .live-savings-line {
     margin: 1rem -1rem -1rem;
+    padding: 1rem;
     font-size: 1.05rem;
     line-height: 1.35;
   }
