@@ -2065,6 +2065,12 @@ function Bookings({ isModal = false, onClose }) {
     : airportMinPricePence === airportMaxPricePence
       ? `£${(airportMinPricePence / 100).toFixed(2)}`
       : `£${(airportMinPricePence / 100).toFixed(2)} – £${(airportMaxPricePence / 100).toFixed(2)}`
+  const tagPricePence = airportQuote?.tagPricePence ?? pricingInfo?.price_pence ?? (pricingInfo?.price ? Math.floor(pricingInfo.price * 100) : null)
+  const airportSavingPct = (bohPricePence) => {
+    if (!tagPricePence || !bohPricePence || tagPricePence >= bohPricePence) return null
+    const pct = Math.floor(((bohPricePence - tagPricePence) / bohPricePence) * 100)
+    return pct > 0 ? pct : null
+  }
 
   // Scroll to first incomplete/invalid field for the current step
   const scrollToFirstError = (step) => {
@@ -3492,12 +3498,20 @@ function Bookings({ isModal = false, onClose }) {
                         Bournemouth Airport: {airportPriceSummary || 'checked just now'}
                       </p>
                       <div className="airport-price-list">
-                        {airportQuote.airportPrices.map((product) => (
-                          <div className="airport-price-row" key={`${product.name}-${product.pricePence}`}>
-                            <span>{product.name}</span>
-                            <strong>{product.priceText || `£${(product.pricePence / 100).toFixed(2)}`}</strong>
-                          </div>
-                        ))}
+                        {airportQuote.airportPrices.map((product) => {
+                          const savingPct = airportSavingPct(Number(product.pricePence))
+                          return (
+                            <div className="airport-price-row" key={`${product.name}-${product.pricePence}`}>
+                              <span>{product.name}</span>
+                              <div className="airport-price-value">
+                                {savingPct !== null && (
+                                  <span className="airport-saving-pill">{savingPct}% cheaper</span>
+                                )}
+                                <strong>{product.priceText || `£${(product.pricePence / 100).toFixed(2)}`}</strong>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
