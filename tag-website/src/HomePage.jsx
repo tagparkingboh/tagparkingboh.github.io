@@ -420,7 +420,7 @@ function HomePage() {
             <li>✓ No hidden fees</li>
             <li>✓ Free cancellation up to 24hrs before</li>
           </ul>
-          <p className="live-savings-line stats-bar">
+          <p className="live-savings-line">
             {airportComparison?.items?.length
               ? 'Up to 35% cheaper than BOH\'s lowest-priced option · up to 70% cheaper than Premium Parking'
               : 'Live airport savings update automatically from recent checked prices.'}
