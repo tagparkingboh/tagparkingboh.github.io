@@ -192,6 +192,28 @@ def test_parse_boh_products_uses_flat_class_names_when_grouped_parse_is_incomple
     ]
 
 
+def test_parse_boh_flat_products_drops_generic_duplicate_price_nodes():
+    html = """
+      <section class="parking-products">
+        <span class="item__price__val">£175.00</span>
+        <span class="item__price__val 5">£175.00</span>
+        <span class="item__price__val">£177.66</span>
+        <span class="item__price__val 7">£177.66</span>
+        <span class="item__price__val">£205.20</span>
+        <span class="item__price__val 1">£205.20</span>
+        <span class="item__price__val 3">£312.50</span>
+      </section>
+    """
+    products = parse_boh_products(html)
+
+    assert [(p.name, p.price_pence) for p in products] == [
+        ("Car Park 2", 17500),
+        ("Car Park 3", 17766),
+        ("Car Park 1", 20520),
+        ("Car Park 1 Premium", 31250),
+    ]
+
+
 def test_validate_products_requires_all_four_named_products():
     ok, reason = validate_products(
         [

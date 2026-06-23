@@ -340,7 +340,19 @@ def _parse_flat_price_products(page_html: str) -> list[AirportProduct]:
                 price_text=format_price_text(price_pence),
             )
         )
-    return products
+    named_prices = {
+        product.price_pence
+        for product in products
+        if product.name in BOH_KNOWN_PRODUCT_NAMES
+    }
+    return [
+        product
+        for product in products
+        if not (
+            product.name.startswith("Bournemouth Airport product ")
+            and product.price_pence in named_prices
+        )
+    ]
 
 
 def _has_required_product_names(products: Iterable[AirportProduct]) -> bool:
