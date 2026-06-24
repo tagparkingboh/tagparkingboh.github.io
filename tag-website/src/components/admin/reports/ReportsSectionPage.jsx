@@ -1,5 +1,6 @@
 import React from 'react'
 import DatePicker from 'react-datepicker'
+import BookingLocationMap from '../../BookingLocationMap'
 
 const ReportsSectionPage = ({
   abandonedCartsData,
