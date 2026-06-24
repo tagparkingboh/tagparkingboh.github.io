@@ -1,4 +1,5 @@
 import React from 'react'
+import DatePicker from 'react-datepicker'
 
 const ReportsSectionPage = ({
   abandonedCartsData,
