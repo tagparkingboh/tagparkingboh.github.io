@@ -2825,7 +2825,7 @@ function Bookings({ isModal = false, onClose }) {
               </div>
 
               {/* Vehicle Make - from DVLA lookup */}
-              {(formData.registration && (dvlaVerified || formData.make)) && (
+              {(formData.registration && (dvlaVerified || dvlaError || formData.make)) && (
                 <div className="form-group fade-in">
                   <label htmlFor="make">Vehicle Make <span className="required">*</span></label>
                   {dvlaVerified && formData.make ? (

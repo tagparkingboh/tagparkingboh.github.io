@@ -1262,16 +1262,40 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         short_pause(0.1)
 
         # Click DVLA Lookup button
-        page.locator("button.validate-btn").click()
-        short_pause(0.5)
+        print("    Running DVLA lookup...")
+        try:
+            with page.expect_response(
+                lambda response: "/api/vehicles/dvla-lookup" in response.url
+                and response.request.method == "POST",
+                timeout=15000,
+            ) as dvla_response_info:
+                page.locator("button.validate-btn").click()
+            dvla_response = dvla_response_info.value
+            print(f"    DVLA lookup response: {dvla_response.status}")
+        except Exception:
+            print("    Warning: DVLA lookup response was not observed within 15s")
+        short_pause(1.5)
+
+        try:
+            page.locator(
+                "#make.readonly-input, select#make, #colour.readonly-input, select#model"
+            ).first.wait_for(state="visible", timeout=10000)
+        except Exception:
+            print("    Warning: vehicle fields did not settle within 10s")
+        short_pause(0.75)
 
         # Check if DVLA verified the vehicle or if we need to select manually
         make_readonly = page.locator("#make.readonly-input")
+        make_input = page.locator("input#make:not(.readonly-input)")
         make_select = page.locator("select#make")
 
-        if make_readonly.is_visible(timeout=2000):
+        if make_readonly.is_visible(timeout=5000):
             print("    DVLA verified make:", make_readonly.input_value())
-        elif make_select.is_visible(timeout=2000):
+        elif make_input.is_visible(timeout=5000):
+            print("    Entering make manually...")
+            make_input.fill(vehicle["make"])
+            short_pause()
+        elif make_select.is_visible(timeout=5000):
             try:
                 make_select.select_option(label=vehicle["make"])
                 short_pause()
@@ -1286,14 +1310,15 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         if colour_readonly.is_visible(timeout=1000):
             print("    DVLA verified colour:", colour_readonly.input_value())
         elif colour_input.is_visible(timeout=1000):
+            print("    Entering colour manually...")
             colour_input.fill(vehicle["colour"])
             short_pause()
 
-        # Select model from dropdown
+        # Select model from dropdown when the active booking form exposes one.
         print("    Selecting model...")
-        short_pause()
+        short_pause(1.0)
         model_select = page.locator("select#model")
-        if model_select.is_visible(timeout=3000):
+        if model_select.is_visible(timeout=10000):
             try:
                 model_select.select_option(label=vehicle["model"])
                 print(f"    Selected model: {vehicle['model']}")
@@ -1304,10 +1329,11 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 page.locator("#customModel").fill(vehicle["model"])
             short_pause()
         else:
-            print("    Model dropdown not visible yet")
+            print("    Model dropdown not visible on this form; continuing with make/colour")
 
         # Click Continue to Payment
         print("  Proceeding to Step 4 (Payment)...")
+        short_pause(1.0)
         continue_payment_btn = page.locator("button:has-text('Continue to Payment')")
         if continue_payment_btn.is_visible(timeout=5000):
             continue_payment_btn.click()
