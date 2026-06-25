@@ -42,12 +42,16 @@ Usage:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_FLOOR
 from zoneinfo import ZoneInfo
 import time
 import random
 import os
 import sys
 import psycopg2
+import json
+import urllib.error
+import urllib.request
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -58,6 +62,7 @@ HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 SINGLE_TEST = os.environ.get("SINGLE_TEST", "false").lower() == "true"  # Run only first test
 PROMO_ONLY = os.environ.get("PROMO_ONLY", "false").lower() == "true"  # Run only promo code tests
 REFERRAL_ONLY = os.environ.get("REFERRAL_ONLY", "false").lower() == "true"  # Run only referral code tests
+AIRPORT_QUOTE_E2E_ONLY = os.environ.get("AIRPORT_QUOTE_E2E_ONLY", "false").lower() == "true"
 TEST_FILTER = os.environ.get("TEST_FILTER", "")  # Filter tests by name (case-insensitive partial match)
 TEST_INDEX = os.environ.get("TEST_INDEX", "")    # 1-based index of a single test to run (used by batch runner)
 BROWSER = os.environ.get("BROWSER", "chromium").lower()  # chromium | firefox | webkit
@@ -65,6 +70,11 @@ DEVICE = os.environ.get("DEVICE", "")            # e.g. "iPhone 15 Pro", "iPad P
 
 # Staging URL
 STAGING_URL = "https://staging-tagparking.netlify.app/tag-it"
+STAGING_API_URL = (
+    os.environ.get("STAGING_API_URL")
+    or os.environ.get("VITE_API_URL")
+    or "https://staging.tagparking.co.uk"
+).rstrip("/")
 
 # Test customer details
 CUSTOMER = {
@@ -122,6 +132,20 @@ TEST_REFERRAL_CODE = "REF-JH2C-4WCH"  # qa.orca.contact@gmail.com referral code
 MARKETING_PROMO_TYPES = {"10", "free", "free_week", "free_100"}
 
 LEAN_STAGING_TEST_INDEXES = [1, 2, 7, 10, 11, 14, 16, 17, 18, 19, 20, 23, 24, 25]
+AIRPORT_QUOTE_E2E_TODAY = os.environ.get(
+    "AIRPORT_QUOTE_E2E_TODAY",
+    datetime.now(ZoneInfo("Europe/London")).date().isoformat(),
+)
+AIRPORT_QUOTE_MATRIX = {
+    "near-short": Decimal("25"),
+    "near-long": Decimal("20"),
+    "far-short": Decimal("15"),
+    "far-long": Decimal("10"),
+}
+AIRPORT_QUOTE_MIN_PRICE_PENCE = 6500
+AIRPORT_QUOTE_WEEK1_PRICE_PENCE = 6000
+AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS = 70
+AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS = 7
 
 DYNAMIC_FLIGHT_OPTIONS = [
     {"airline": "Ryanair", "airline_code": "FR", "destination": "Alicante", "destination_code": "ALC"},
@@ -600,15 +624,238 @@ TEST_CASES = [
         "promo_code": TEST_REFERRAL_CODE,
         "promo_type": "referral",
     },
+    # ============ AIRPORT QUOTE MATRIX + CONVERSION E2E ============
+    # These use the live Europe/London date by default (override with
+    # AIRPORT_QUOTE_E2E_TODAY for pinned-date debugging). The form time is the
+    # flight departure time; dropoff_slot_id fixes the customer handover time
+    # used by the quote.
+    {
+        "name": "AQ matrix near-short converts (25%)",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 21,
+        "duration": 3,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "near-short",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "AQ260",
+        "return_flight_number": "AQ261",
+    },
+    {
+        "name": "AQ matrix near-long converts (20%, 7d+1m => billing 8)",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 28,
+        "duration": 7,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:31",
+        "expected_band": "near-long",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Malaga",
+        "destination_code": "AGP",
+        "flight_number": "AQ270",
+        "return_flight_number": "AQ271",
+    },
+    {
+        "name": "AQ matrix far-short converts (15%)",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 82,
+        "duration": 3,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "far-short",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Faro",
+        "destination_code": "FAO",
+        "flight_number": "AQ280",
+        "return_flight_number": "AQ281",
+    },
+    {
+        "name": "AQ matrix far-long converts (10%)",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 85,
+        "duration": 10,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "far-long",
+        "airline": "TUI",
+        "airline_code": "BY",
+        "destination": "Tenerife",
+        "destination_code": "TFS",
+        "flight_number": "AQ290",
+        "return_flight_number": "AQ291",
+    },
+    {
+        "name": "AQ promo TEST10 near-short paid converts after floor",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 35,
+        "duration": 3,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "near-short",
+        "promo_code": "TEST10",
+        "promo_type": "10",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "AQ300",
+        "return_flight_number": "AQ301",
+    },
+    {
+        "name": "AQ promo FREE100 near-short free converts without Stripe",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 36,
+        "duration": 3,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "near-short",
+        "promo_code": "FREE100",
+        "promo_type": "free_100",
+        "airline": "Virgin Atlantic",
+        "airline_code": "OTHER",
+        "destination": "Barcelona",
+        "destination_code": "OTHER",
+        "flight_number": "AQ310",
+        "return_flight_number": "AQ311",
+    },
+    {
+        "name": "AQ FREEWEEK 3d boundary free converts",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 37,
+        "duration": 3,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "near-short",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Malaga",
+        "destination_code": "AGP",
+        "flight_number": "AQ320",
+        "return_flight_number": "AQ321",
+    },
+    {
+        "name": "AQ FREEWEEK 7d exact pickup boundary free converts",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 38,
+        "duration": 7,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "near-short",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Faro",
+        "destination_code": "FAO",
+        "flight_number": "AQ330",
+        "return_flight_number": "AQ331",
+    },
+    {
+        "name": "AQ FREEWEEK 7d+1m pickup boundary paid deducts 60",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 39,
+        "duration": 7,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:31",
+        "expected_band": "near-long",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Palma",
+        "destination_code": "PMI",
+        "flight_number": "AQ340",
+        "return_flight_number": "AQ341",
+    },
+    {
+        "name": "AQ FREEWEEK 10d paid deducts 60",
+        "airport_quote_e2e": True,
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 40,
+        "duration": 10,
+        "dropoff_time": "12:00",
+        "dropoff_slot_id": "120",
+        "return_time": "09:30",
+        "expected_band": "near-long",
+        "promo_code": "FREEWEEK",
+        "promo_type": "free_week",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "AQ350",
+        "return_flight_number": "AQ351",
+    },
+    {
+        "name": "AQ abandoned checkout leaves conversion false",
+        "airport_quote_api_only": "abandon",
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 41,
+        "duration": 3,
+        "entry_time": "10:00",
+        "exit_time": "10:00",
+        "expected_band": "near-short",
+    },
+    {
+        "name": "AQ re-show leaves first conversion row untouched",
+        "airport_quote_api_only": "reshow",
+        "today": AIRPORT_QUOTE_E2E_TODAY,
+        "days_from_now": 42,
+        "duration": 3,
+        "entry_time": "10:00",
+        "exit_time": "10:00",
+        "expected_band": "near-short",
+    },
+    {
+        "name": "AQ homepage comparison writes zero conversion rows",
+        "airport_quote_api_only": "homepage",
+    },
+]
+
+AIRPORT_QUOTE_E2E_INDEXES = [
+    index
+    for index, test_case in enumerate(TEST_CASES, start=1)
+    if test_case.get("airport_quote_e2e") or test_case.get("airport_quote_api_only")
 ]
 
 
 def get_today_for_test_case(test_case):
     """Return the test's date anchor; referral referrees use UK date boundaries."""
+    if test_case.get("today"):
+        return datetime.strptime(test_case["today"], "%Y-%m-%d").date()
     timezone_name = test_case.get("date_timezone")
     if timezone_name:
         return datetime.now(ZoneInfo(timezone_name)).date()
     return datetime.now().date()
+
+
+def get_airport_quote_only_test_cases():
+    return [tc for tc in TEST_CASES if tc.get("airport_quote_e2e") or tc.get("airport_quote_api_only")]
 
 
 def is_marketing_promo_test(test_case):
@@ -617,6 +864,244 @@ def is_marketing_promo_test(test_case):
 
 def is_referral_promo_test(test_case):
     return test_case.get("promo_type") == "referral"
+
+
+def require_staging_db():
+    if not STAGING_DB:
+        raise RuntimeError("STAGING_DATABASE_URL or DATABASE_URL is required for airport quote E2E assertions")
+    return STAGING_DB
+
+
+def with_staging_db(query: str, params: tuple = (), fetch: str = "all"):
+    conn = psycopg2.connect(**require_staging_db())
+    try:
+        cur = conn.cursor()
+        cur.execute(query, params)
+        if fetch == "one":
+            result = cur.fetchone()
+        elif fetch == "scalar":
+            row = cur.fetchone()
+            result = row[0] if row else None
+        elif fetch == "none":
+            result = None
+        else:
+            result = cur.fetchall()
+        conn.commit()
+        cur.close()
+        return result
+    finally:
+        conn.close()
+
+
+def parse_iso_date(value: str):
+    return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def add_days(date_text: str, days: int):
+    return parse_iso_date(date_text) + timedelta(days=days)
+
+
+def pence_floor_discount(cheapest_pence: int, discount_pct: Decimal) -> int:
+    discounted = int(
+        (Decimal(cheapest_pence) * (Decimal("1") - discount_pct / Decimal("100")))
+        .to_integral_value(rounding=ROUND_FLOOR)
+    )
+    return max(min(discounted, cheapest_pence - 1), AIRPORT_QUOTE_MIN_PRICE_PENCE)
+
+
+def expected_band_for(lead_days: int, billing_days: int) -> str:
+    lead = "near" if lead_days <= AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS else "far"
+    duration = "short" if billing_days <= AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS else "long"
+    return f"{lead}-{duration}"
+
+
+def expected_promo_total_for_airport_quote(tag_pence: int, promo_type: str, billing_days: int) -> Optional[int]:
+    if promo_type == "10":
+        return int(tag_pence * 0.9)
+    if promo_type == "free_100":
+        return 0
+    if promo_type == "free_week":
+        if billing_days <= 7:
+            return 0
+        return max(0, tag_pence - AIRPORT_QUOTE_WEEK1_PRICE_PENCE)
+    return None
+
+
+def post_json(url: str, payload: dict) -> dict:
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"POST {url} failed with HTTP {exc.code}: {body[:500]}") from exc
+
+
+def get_json(url: str) -> dict:
+    try:
+        with urllib.request.urlopen(url, timeout=45) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"GET {url} failed with HTTP {exc.code}: {body[:500]}") from exc
+
+
+def airport_quote_payload_from_case(test_case: dict) -> dict:
+    today = get_today_for_test_case(test_case)
+    entry_date = today + timedelta(days=test_case["days_from_now"])
+    exit_date = entry_date + timedelta(days=test_case["duration"])
+    return {
+        "entryDate": entry_date.isoformat(),
+        "entryTime": test_case.get("entry_time", "10:00"),
+        "exitDate": exit_date.isoformat(),
+        "exitTime": test_case.get("exit_time", "10:00"),
+        "destination": test_case.get("destination", "Other"),
+    }
+
+
+def fetch_airport_quote(payload: dict) -> tuple[dict, dict]:
+    response = post_json(f"{STAGING_API_URL}/api/airport-parking/quote", payload)
+    return response, payload
+
+
+def airport_quote_snapshot_id_from_response(response: dict):
+    return response.get("quoteId") or response.get("pricingInfo", {}).get("airport_quote_snapshot_id")
+
+
+def conversion_row(snapshot_id: int):
+    return with_staging_db(
+        """
+        SELECT airport_quote_snapshot_id, lead_days, billing_days, discount_band,
+               tag_pence, cheapest_boh_pence, converted, shown_at
+        FROM airport_quote_conversion_log
+        WHERE airport_quote_snapshot_id = %s
+        """,
+        (snapshot_id,),
+        fetch="one",
+    )
+
+
+def wait_for_conversion_state(snapshot_id: int, expected: bool, timeout_seconds: int = 45):
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        row = conversion_row(snapshot_id)
+        if row and bool(row[6]) is expected:
+            return row
+        time.sleep(1)
+    row = conversion_row(snapshot_id)
+    raise AssertionError(f"conversion row {snapshot_id} did not reach converted={expected}; last row={row}")
+
+
+def assert_airport_quote_response_and_log(response: dict, request_payload: dict, expected_band: str):
+    snapshot_id = airport_quote_snapshot_id_from_response(response)
+    assert snapshot_id, f"quote response missing snapshot id: {response}"
+
+    airport_prices = response.get("airportPrices") or []
+    cheapest = min(int(item["pricePence"]) for item in airport_prices if int(item.get("pricePence") or 0) > 0)
+    billing_days = int(response["billing_days"])
+    lead_days = (parse_iso_date(request_payload["entryDate"]) - parse_iso_date(AIRPORT_QUOTE_E2E_TODAY)).days
+    computed_band = expected_band_for(lead_days, billing_days)
+    assert computed_band == expected_band, (
+        f"test dates landed in {computed_band}, expected {expected_band}; "
+        f"lead={lead_days}, billing={billing_days}, payload={request_payload}"
+    )
+
+    discount_pct = AIRPORT_QUOTE_MATRIX[expected_band]
+    expected_tag = pence_floor_discount(cheapest, discount_pct)
+    actual_tag = int(response["tagPricePence"])
+    actual_discount = Decimal(str(response.get("pricingInfo", {}).get("discount_pct_used")))
+    assert actual_discount == discount_pct, f"{expected_band} expected {discount_pct}% got {actual_discount}%"
+    assert actual_tag == expected_tag, (
+        f"{expected_band} expected TAG {expected_tag} from BOH {cheapest}, got {actual_tag}; "
+        f"response={response}"
+    )
+
+    row = wait_for_conversion_state(int(snapshot_id), False, timeout_seconds=20)
+    assert row[1] == lead_days, f"lead_days mismatch for snapshot {snapshot_id}: {row}"
+    assert row[2] == billing_days, f"billing_days mismatch for snapshot {snapshot_id}: {row}"
+    assert row[3] == expected_band, f"discount_band mismatch for snapshot {snapshot_id}: {row}"
+    assert row[4] == expected_tag, f"tag_pence mismatch for snapshot {snapshot_id}: {row}"
+    assert row[5] == cheapest, f"cheapest_boh_pence mismatch for snapshot {snapshot_id}: {row}"
+    return {
+        "snapshot_id": int(snapshot_id),
+        "lead_days": lead_days,
+        "billing_days": billing_days,
+        "discount_band": expected_band,
+        "tag_pence": expected_tag,
+        "cheapest_boh_pence": cheapest,
+        "shown_at": row[7],
+    }
+
+
+def assert_airport_quote_conversion_row(snapshot_id: int, expected_band: str, expected_converted: bool):
+    row = wait_for_conversion_state(snapshot_id, expected_converted, timeout_seconds=60)
+    lead_days = int(row[1])
+    billing_days = int(row[2])
+    cheapest = int(row[5])
+    expected_tag = pence_floor_discount(cheapest, AIRPORT_QUOTE_MATRIX[expected_band])
+    computed_band = expected_band_for(lead_days, billing_days)
+    assert computed_band == expected_band, (
+        f"snapshot {snapshot_id} landed in {computed_band}, expected {expected_band}; row={row}"
+    )
+    assert row[3] == expected_band, f"discount_band mismatch for snapshot {snapshot_id}: {row}"
+    assert int(row[4]) == expected_tag, f"tag_pence mismatch for snapshot {snapshot_id}: {row}"
+    return {
+        "snapshot_id": int(snapshot_id),
+        "lead_days": lead_days,
+        "billing_days": billing_days,
+        "discount_band": expected_band,
+        "tag_pence": expected_tag,
+        "cheapest_boh_pence": cheapest,
+        "shown_at": row[7],
+    }
+
+
+def count_conversion_rows() -> int:
+    return int(with_staging_db("SELECT COUNT(*) FROM airport_quote_conversion_log", fetch="scalar") or 0)
+
+
+def run_airport_quote_api_only(test_case: dict, test_num: int) -> bool:
+    print(f"\n[Test {test_num}] {test_case['name']}")
+    try:
+        mode = test_case["airport_quote_api_only"]
+        if mode == "homepage":
+            before = count_conversion_rows()
+            get_json(f"{STAGING_API_URL}/api/airport-parking/homepage-comparison")
+            after = count_conversion_rows()
+            assert after == before, f"homepage comparison wrote conversion rows: before={before}, after={after}"
+            print("  ✓ Homepage comparison wrote zero conversion rows")
+            return True
+
+        payload = airport_quote_payload_from_case(test_case)
+        quote, request_payload = fetch_airport_quote(payload)
+        state = assert_airport_quote_response_and_log(quote, request_payload, test_case["expected_band"])
+
+        if mode == "abandon":
+            row = conversion_row(state["snapshot_id"])
+            assert row and bool(row[6]) is False, f"abandoned quote converted unexpectedly: {row}"
+            print(f"  ✓ Abandoned quote {state['snapshot_id']} remains converted=false")
+            return True
+
+        if mode == "reshow":
+            original_row = conversion_row(state["snapshot_id"])
+            second_quote, _ = fetch_airport_quote(payload)
+            second_id = int(second_quote["quoteId"])
+            assert second_id != state["snapshot_id"], "re-show should create a fresh snapshot id"
+            after_row = conversion_row(state["snapshot_id"])
+            assert after_row == original_row, f"first conversion row was clobbered: before={original_row}, after={after_row}"
+            print(f"  ✓ Re-show left first row {state['snapshot_id']} untouched")
+            return True
+
+        raise AssertionError(f"unknown airport_quote_api_only mode {mode}")
+    except Exception as exc:
+        print(f"  ✗ Airport quote API assertion failed: {exc}")
+        return False
 
 
 def get_promo_only_test_cases():
@@ -816,7 +1301,7 @@ def get_airport_quote_week1_price_for_test() -> int:
             return max(0, int(raw))
         except ValueError:
             pass
-    return 10700
+    return AIRPORT_QUOTE_WEEK1_PRICE_PENCE
 
 
 def expected_promo_total_pence(original_total_pence: int, promo_type: str, duration_days: int) -> Optional[int]:
@@ -834,6 +1319,12 @@ def expected_promo_total_pence(original_total_pence: int, promo_type: str, durat
 def parse_hhmm_for_test(value: str) -> tuple[int, int]:
     hour, minute = value.split(":")[:2]
     return int(hour), int(minute)
+
+
+def offset_hhmm_for_test(value: str, minutes_delta: int) -> str:
+    hour, minute = parse_hhmm_for_test(value)
+    total = (hour * 60 + minute + minutes_delta) % (24 * 60)
+    return f"{total // 60:02d}:{total % 60:02d}"
 
 
 def calculate_billing_days_for_test(dropoff_date, dropoff_time: str, pickup_date, pickup_time: str) -> int:
@@ -889,6 +1380,65 @@ def fill_stripe_input(locator, value: str, label: str, min_digits: int) -> bool:
         print(f"    {label} fill attempt {attempt + 1} incomplete: {actual_digits!r}")
 
     return False
+
+
+def find_stripe_payment_frame(page: Page):
+    """Find Stripe's card-number frame once Elements has mounted."""
+    card_number_sel = "input[autocomplete='cc-number']"
+    for _ in range(30):
+        stripe_frames = [
+            f for f in page.frames if "stripe" in (f.url or "").lower()
+        ] or page.frames
+        for frame in stripe_frames:
+            try:
+                if frame.locator(card_number_sel).count() > 0:
+                    return frame
+            except Exception:
+                continue
+        time.sleep(0.5)
+    return None
+
+
+def recover_payment_refresh_prompt(page: Page) -> bool:
+    """Recover the payment step when Stripe asks for a page refresh."""
+    refresh_text = page.locator(
+        "text=/refresh the page|please refresh|refresh this page/i"
+    ).first
+    continue_btn = page.locator(
+        "button:has-text('Continue to booking'), "
+        "button:has-text('Continue Booking'), "
+        "button:has-text('Continue to Booking')"
+    ).first
+
+    try:
+        should_refresh = refresh_text.is_visible(timeout=1000) or continue_btn.is_visible(timeout=1000)
+    except Exception:
+        should_refresh = False
+
+    if not should_refresh:
+        return False
+
+    print("    Stripe requested refresh; reloading and continuing booking...")
+    page.reload(wait_until="load", timeout=45000)
+    short_pause(2.0)
+    continue_btn = page.locator(
+        "button:has-text('Continue to booking'), "
+        "button:has-text('Continue Booking'), "
+        "button:has-text('Continue to Booking')"
+    ).first
+    try:
+        continue_btn.wait_for(state="visible", timeout=15000)
+        continue_btn.click()
+        page.locator(
+            ".promo-code-section, .promo-code-input input, "
+            "iframe[name^='__privateStripeFrame'], "
+            ".stripe-pay-btn, button:has-text('Pay ')"
+        ).first.wait_for(state="visible", timeout=20000)
+        return True
+    except Exception as exc:
+        print(f"    Refresh recovery did not reach payment surface: {exc}")
+        page.screenshot(path="payment_refresh_recovery_failed.png")
+        return False
 
 
 def answer_heard_about_us_if_present(page: Page) -> bool:
@@ -958,20 +1508,70 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
     today = get_today_for_test_case(test_case)
     dropoff_date = today + timedelta(days=test_case["days_from_now"])
     pickup_date = dropoff_date + timedelta(days=test_case["duration"])
+    billing_dropoff_time = test_case["dropoff_time"]
+    billing_pickup_time = test_case["return_time"]
+    if test_case.get("airport_quote_e2e"):
+        if test_case.get("dropoff_slot_id"):
+            billing_dropoff_time = offset_hhmm_for_test(
+                test_case["dropoff_time"],
+                -int(test_case["dropoff_slot_id"]),
+            )
+        billing_pickup_time = offset_hhmm_for_test(test_case["return_time"], 30)
     billing_days = calculate_billing_days_for_test(
         dropoff_date,
-        test_case["dropoff_time"],
+        billing_dropoff_time,
         pickup_date,
-        test_case["return_time"],
+        billing_pickup_time,
     )
 
     print(f"\n[Test {test_num}] {test_case['name']}")
-    print(f"  Drop-off: {dropoff_date} at {test_case['dropoff_time']}")
-    print(f"  Pickup: {pickup_date} at {test_case['return_time']}")
+    print(f"  Drop-off flight: {dropoff_date} at {test_case['dropoff_time']}")
+    print(f"  Return arrival: {pickup_date} at {test_case['return_time']}")
+    if test_case.get("airport_quote_e2e"):
+        print(
+            "  Quote billing window: "
+            f"{dropoff_date} {billing_dropoff_time} -> {pickup_date} {billing_pickup_time}"
+        )
     print(f"  Duration: {test_case['duration']} calendar days ({billing_days} billing days)")
     print(f"  Customer: {customer['email']}")
 
     try:
+        airport_quote_capture = {"response": None, "request": None, "events": []}
+        create_intent_capture = {"request": None, "response": None}
+        airport_quote_state = None
+
+        if test_case.get("airport_quote_e2e"):
+            def capture_response(response):
+                try:
+                    if "/api/airport-parking/quote" in response.url:
+                        event = {"status": response.status, "url": response.url}
+                        if response.status != 200:
+                            try:
+                                event["body"] = response.text()[:300]
+                            except Exception:
+                                pass
+                        airport_quote_capture["events"].append(event)
+                        if response.status == 200:
+                            airport_quote_capture["response"] = response.json()
+                            try:
+                                airport_quote_capture["request"] = response.request.post_data_json
+                            except Exception:
+                                airport_quote_capture["request"] = None
+                    elif "/api/payments/create-intent" in response.url and response.status == 200:
+                        create_intent_capture["response"] = response.json()
+                except Exception:
+                    pass
+
+            def capture_request(request):
+                try:
+                    if "/api/payments/create-intent" in request.url and request.method == "POST":
+                        create_intent_capture["request"] = request.post_data_json
+                except Exception:
+                    pass
+
+            page.on("response", capture_response)
+            page.on("request", capture_request)
+
         # Navigate to booking page. Use "load" instead of "networkidle" —
         # the app's network never idles within 30s on WebKit (Stripe Elements
         # keeps pinging, fonts/analytics in flight), which was failing every
@@ -1063,8 +1663,15 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         slot_cards = page.locator(".dropoff-slot .slot-card")
         slot_count = slot_cards.count()
         if slot_count > 0:
-            # Randomly select a slot (usually 2 options: 2hr and 2.75hr windows)
+            requested_slot = test_case.get("dropoff_slot_id")
             random_index = random.randint(0, slot_count - 1)
+            if requested_slot:
+                wanted = "2 hours before" if requested_slot == "120" else "1½ hours before"
+                for slot_index in range(slot_count):
+                    slot_text = slot_cards.nth(slot_index).text_content() or ""
+                    if wanted in slot_text:
+                        random_index = slot_index
+                        break
             selected_slot = slot_cards.nth(random_index)
             dismiss_busy_warning(page)
             selected_slot.click()
@@ -1200,7 +1807,31 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         if continue_details_btn.is_visible(timeout=5000):
             print("    Continuing to your details after times confirmation...")
             continue_details_btn.click()
-            page.locator("#firstName").wait_for(state="visible", timeout=15000)
+        page.locator("#firstName").wait_for(state="visible", timeout=15000)
+
+        if test_case.get("airport_quote_e2e"):
+            deadline = time.time() + 90
+            while time.time() < deadline and not airport_quote_capture["response"]:
+                short_pause(0.5)
+            if not airport_quote_capture["response"] or not airport_quote_capture["request"]:
+                raise AssertionError(
+                    "airport quote response/request was not captured before checkout; "
+                    f"events={airport_quote_capture['events']}"
+                )
+            airport_quote_state = assert_airport_quote_response_and_log(
+                airport_quote_capture["response"],
+                airport_quote_capture["request"],
+                test_case["expected_band"],
+            )
+            billing_days = airport_quote_state["billing_days"]
+            print(
+                "    Airport quote verified: "
+                f"snapshot={airport_quote_state['snapshot_id']} "
+                f"band={airport_quote_state['discount_band']} "
+                f"billing={airport_quote_state['billing_days']} "
+                f"BOH=£{airport_quote_state['cheapest_boh_pence'] / 100:.2f} "
+                f"TAG=£{airport_quote_state['tag_pence'] / 100:.2f}"
+            )
 
         # ============ STEP 3: Your Details (Customer + Billing + Vehicle) ============
         print("  Step 3: Filling customer details...")
@@ -1355,17 +1986,33 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         promo_code = test_case.get("promo_code")
         promo_type = test_case.get("promo_type", "10")
         expected_total = None
+        if airport_quote_state:
+            pre_checkout_total = get_checkout_total_pence(page)
+            if pre_checkout_total != airport_quote_state["tag_pence"]:
+                raise AssertionError(
+                    f"checkout pre-promo total {pre_checkout_total} did not match "
+                    f"quote TAG {airport_quote_state['tag_pence']}"
+                )
+            print(f"    Checkout pre-promo TAG matched quote: £{pre_checkout_total / 100:.2f}")
+
         if promo_code:
             promo_applied = False
             if is_marketing_promo_test(test_case):
                 reset_promo_code(promo_code, promo_type)
             print(f"    Applying promo code: {promo_code}")
             pre_promo_total = get_checkout_total_pence(page)
-            expected_total = (
-                expected_promo_total_pence(pre_promo_total, promo_type, billing_days)
-                if pre_promo_total is not None
-                else None
-            )
+            if airport_quote_state:
+                expected_total = expected_promo_total_for_airport_quote(
+                    airport_quote_state["tag_pence"],
+                    promo_type,
+                    airport_quote_state["billing_days"],
+                )
+            else:
+                expected_total = (
+                    expected_promo_total_pence(pre_promo_total, promo_type, billing_days)
+                    if pre_promo_total is not None
+                    else None
+                )
             if expected_total is not None:
                 print(
                     f"    Expecting promo total: £{expected_total / 100:.2f} "
@@ -1447,12 +2094,11 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         free_booking_selector = (
             "button:has-text('Complete Free Booking'), "
             "button:has-text('Complete free booking'), "
-            "button:has-text('Complete Booking'), "
             "button:has-text('Confirm Free Booking')"
         )
         free_booking_btn = page.locator(free_booking_selector).first
         try:
-            is_free = free_booking_btn.is_visible(timeout=2000)
+            is_free = expected_total == 0 and free_booking_btn.is_visible(timeout=2000)
         except Exception:
             is_free = False
         is_free = is_free or expected_total == 0
@@ -1468,23 +2114,31 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 # Continue-to-Payment click for Stripe Elements to attach the
                 # iframe, so poll up to ~15s. Detect by the standard autocomplete
                 # attribute the card number input always carries.
-                payment_frame = None
                 CARD_NUMBER_SEL = "input[autocomplete='cc-number']"
-                for _ in range(30):
-                    stripe_frames = [
-                        f for f in page.frames if "stripe" in (f.url or "").lower()
-                    ] or page.frames
-                    for frame in stripe_frames:
-                        try:
-                            if frame.locator(CARD_NUMBER_SEL).count() > 0:
-                                payment_frame = frame
-                                break
-                        except Exception:
-                            continue
-                    if payment_frame:
-                        print(f"    Found Stripe payment frame: {payment_frame.url[:60]}...")
-                        break
-                    time.sleep(0.5)
+                payment_frame = find_stripe_payment_frame(page)
+                if not payment_frame and recover_payment_refresh_prompt(page):
+                    latest_snapshot_id = airport_quote_snapshot_id_from_response(
+                        airport_quote_capture["response"] or {}
+                    )
+                    if airport_quote_state and latest_snapshot_id and int(latest_snapshot_id) != airport_quote_state["snapshot_id"]:
+                        old_snapshot_id = airport_quote_state["snapshot_id"]
+                        airport_quote_state = assert_airport_quote_response_and_log(
+                            airport_quote_capture["response"],
+                            airport_quote_capture["request"],
+                            test_case["expected_band"],
+                        )
+                        billing_days = airport_quote_state["billing_days"]
+                        if promo_code:
+                            expected_total = expected_promo_total_for_airport_quote(
+                                airport_quote_state["tag_pence"],
+                                promo_type,
+                                airport_quote_state["billing_days"],
+                            )
+                        print(
+                            "    Airport quote refreshed after payment recovery: "
+                            f"{old_snapshot_id} -> {airport_quote_state['snapshot_id']}"
+                        )
+                    payment_frame = find_stripe_payment_frame(page)
 
                 if payment_frame:
                     # Use standard autocomplete attributes — survive Stripe internal
@@ -1531,7 +2185,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         free_booking_btn = page.locator(free_booking_selector).first
         pay_btn = page.locator(".stripe-pay-btn, button:has-text('Pay ')")
 
-        if free_booking_btn.is_visible(timeout=10000):
+        if expected_total == 0 and free_booking_btn.is_visible(timeout=10000):
             print("    Free booking detected - clicking 'Complete Free Booking'")
             free_booking_btn.click()
         elif pay_btn.is_visible(timeout=5000):
@@ -1573,6 +2227,39 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 print(f"  ✓ Booking created! Reference: {booking_ref}")
             else:
                 print(f"  ✓ Booking created successfully!")
+
+            if airport_quote_state:
+                intent_request = create_intent_capture.get("request") or {}
+                intent_response = create_intent_capture.get("response") or {}
+                sent_snapshot_id = intent_request.get("airport_quote_snapshot_id")
+                if not sent_snapshot_id:
+                    raise AssertionError(
+                        f"create-intent sent airport_quote_snapshot_id={sent_snapshot_id}, "
+                        f"expected {airport_quote_state['snapshot_id']}"
+                    )
+                if int(sent_snapshot_id) != airport_quote_state["snapshot_id"]:
+                    old_snapshot_id = airport_quote_state["snapshot_id"]
+                    airport_quote_state = assert_airport_quote_conversion_row(
+                        int(sent_snapshot_id),
+                        test_case["expected_band"],
+                        True,
+                    )
+                    print(
+                        "    Payment used refreshed airport quote snapshot: "
+                        f"{old_snapshot_id} -> {airport_quote_state['snapshot_id']}"
+                    )
+                expected_free = expected_total == 0
+                if expected_free:
+                    assert intent_response.get("is_free_booking") is True, intent_response
+                    assert str(intent_response.get("payment_intent_id", "")).startswith("free_"), intent_response
+                    print("    Free-booking path verified: no Stripe PaymentIntent")
+                else:
+                    assert intent_response.get("is_free_booking") in (False, None), intent_response
+                    assert str(intent_response.get("payment_intent_id", "")).startswith("pi_"), intent_response
+                    print("    Paid Stripe path verified via PaymentIntent response")
+
+                wait_for_conversion_state(airport_quote_state["snapshot_id"], True, timeout_seconds=60)
+                print(f"    Conversion row flipped true for snapshot {airport_quote_state['snapshot_id']}")
 
             # Reset promo code for reuse if this was a promo test
             if promo_code:
@@ -1635,6 +2322,9 @@ def main():
         elif REFERRAL_ONLY:
             test_cases_to_run = get_referral_only_test_cases()
             print(f"Running REFERRAL_ONLY: {len(test_cases_to_run)} referral code tests")
+        elif AIRPORT_QUOTE_E2E_ONLY:
+            test_cases_to_run = get_airport_quote_only_test_cases()
+            print(f"Running AIRPORT_QUOTE_E2E_ONLY: {len(test_cases_to_run)} airport quote tests")
         elif TEST_FILTER:
             test_cases_to_run = [tc for tc in TEST_CASES if TEST_FILTER.lower() in tc["name"].lower()]
             print(f"Running tests matching '{TEST_FILTER}': {len(test_cases_to_run)} tests")
@@ -1642,7 +2332,10 @@ def main():
             test_cases_to_run = TEST_CASES
 
         for i, test_case in enumerate(test_cases_to_run, 1):
-            success = create_booking(page, test_case, i)
+            if test_case.get("airport_quote_api_only"):
+                success = run_airport_quote_api_only(test_case, i)
+            else:
+                success = create_booking(page, test_case, i)
             if success:
                 results["success"].append(test_case["name"])
             else:

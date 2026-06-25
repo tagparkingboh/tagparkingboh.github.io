@@ -3,9 +3,9 @@ Mocked-integration tests for the booking lead-time rule (locked 2026-05-12).
 
 Replaces the old 4-hour-notice tests now that the rule is:
   - Same-day drop-offs are blocked outright.
-  - Bookings placed past 20:00 UK can't have a drop-off the next day.
-    "Past 20:00" means now_uk_minutes > 20*60, so 20:00:00..20:00:59 still
-    allow tomorrow's drop-off; 20:01:00 onwards blocks it.
+  - Bookings placed past 17:00 UK can't have a drop-off the next day.
+    "Past 17:00" means now_uk_minutes > 17*60, so 17:00:00..17:00:59 still
+    allow tomorrow's drop-off; 17:01:00 onwards blocks it.
 
 Admin manual booking (/api/admin/bookings) is exempt — only the customer
 payment-intent endpoint enforces this gate.
@@ -103,35 +103,35 @@ def _make(request, *, dropoff_date, pickup_date=None, slot="120", flight_time="1
 class TestLeadTimeHappy:
 
     @freeze_time("2026-03-17 10:00:00", tz_offset=0)
-    def test_happy_tomorrow_before_2000_allowed(self, client, mock_stripe, base_booking_request):
+    def test_happy_tomorrow_before_1700_allowed(self, client, mock_stripe, base_booking_request):
         """At 10:00 UK, tomorrow's drop-off should clear the lead-time gate."""
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
             json=_make(base_booking_request, dropoff_date=tomorrow,
-                       session_id_suffix="tomorrow_before_2000"),
+                       session_id_suffix="tomorrow_before_1700"),
         )
         if response.status_code == 400:
             assert "same-day" not in response.json().get("detail", "").lower()
-            assert "after 20:00" not in response.json().get("detail", "")
+            assert "after 17:00" not in response.json().get("detail", "")
 
-    @freeze_time("2026-03-17 19:59:59", tz_offset=0)
-    def test_happy_tomorrow_at_1959_allowed(self, client, mock_stripe, base_booking_request):
-        """One second before the 20:00 boundary still allows tomorrow."""
+    @freeze_time("2026-03-17 16:59:59", tz_offset=0)
+    def test_happy_tomorrow_at_1659_allowed(self, client, mock_stripe, base_booking_request):
+        """One second before the 17:00 boundary still allows tomorrow."""
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
             json=_make(base_booking_request, dropoff_date=tomorrow,
-                       session_id_suffix="tomorrow_1959"),
+                       session_id_suffix="tomorrow_1659"),
         )
         if response.status_code == 400:
-            assert "after 20:00" not in response.json().get("detail", "")
+            assert "after 17:00" not in response.json().get("detail", "")
 
     @freeze_time("2026-03-17 23:30:00", tz_offset=0)
     def test_happy_day_after_tomorrow_always_allowed_even_late_at_night(
         self, client, mock_stripe, base_booking_request,
     ):
-        """Day-after-tomorrow is unaffected by the 20:00 cutoff."""
+        """Day-after-tomorrow is unaffected by the 17:00 cutoff."""
         d = date(2026, 3, 19)
         response = client.post(
             "/api/payments/create-intent",
@@ -141,7 +141,7 @@ class TestLeadTimeHappy:
         if response.status_code == 400:
             detail = response.json().get("detail", "")
             assert "same-day" not in detail.lower()
-            assert "after 20:00" not in detail
+            assert "after 17:00" not in detail
 
 
 # ---------------------------------------------------------------------------
@@ -177,25 +177,25 @@ class TestLeadTimeUnhappy:
         assert response.status_code == 400
         assert "same-day" in response.json()["detail"].lower()
 
-    @freeze_time("2026-03-17 20:01:00", tz_offset=0)
-    def test_unhappy_tomorrow_at_2001_rejected(self, client, mock_stripe, base_booking_request):
-        """One second past the 20:00 boundary blocks tomorrow's drop-off."""
+    @freeze_time("2026-03-17 17:01:00", tz_offset=0)
+    def test_unhappy_tomorrow_at_1701_rejected(self, client, mock_stripe, base_booking_request):
+        """One second past the 17:00 boundary blocks tomorrow's drop-off."""
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
             json=_make(base_booking_request, dropoff_date=tomorrow,
-                       session_id_suffix="tomorrow_2001"),
+                       session_id_suffix="tomorrow_1701"),
         )
         assert response.status_code == 400
         detail = response.json()["detail"]
-        assert "after 20:00" in detail
+        assert "after 17:00" in detail
         assert "01202 798710" in detail
 
     @freeze_time("2026-03-17 23:30:00", tz_offset=0)
     def test_unhappy_tomorrow_late_evening_rejected(
         self, client, mock_stripe, base_booking_request,
     ):
-        """Anywhere past 20:00 — including 23:30 — blocks tomorrow."""
+        """Anywhere past 17:00 — including 23:30 — blocks tomorrow."""
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
@@ -203,7 +203,7 @@ class TestLeadTimeUnhappy:
                        session_id_suffix="tomorrow_2330"),
         )
         assert response.status_code == 400
-        assert "after 20:00" in response.json()["detail"]
+        assert "after 17:00" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -229,14 +229,14 @@ class TestLeadTimeEdgeMessages:
         assert "try a later" not in detail.lower()
 
     @freeze_time("2026-03-17 21:00:00", tz_offset=0)
-    def test_edge_after_2000_message_points_to_phone(
+    def test_edge_after_1700_message_points_to_phone(
         self, client, mock_stripe, base_booking_request,
     ):
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
             json=_make(base_booking_request, dropoff_date=tomorrow,
-                       session_id_suffix="after_2000_phone"),
+                       session_id_suffix="after_1700_phone"),
         )
         assert response.status_code == 400
         detail = response.json()["detail"]
@@ -246,39 +246,39 @@ class TestLeadTimeEdgeMessages:
 
 
 # ---------------------------------------------------------------------------
-# Boundary — exactly-on-20:00 and adjacent seconds
+# Boundary — exactly-on-17:00 and adjacent seconds
 # ---------------------------------------------------------------------------
 
 class TestLeadTimeBoundary:
 
-    @freeze_time("2026-03-17 20:00:00", tz_offset=0)
-    def test_boundary_tomorrow_at_exactly_2000_still_allowed(
+    @freeze_time("2026-03-17 17:00:00", tz_offset=0)
+    def test_boundary_tomorrow_at_exactly_1700_still_allowed(
         self, client, mock_stripe, base_booking_request,
     ):
-        """The cutoff is > 20*60 minutes, so 20:00 itself (1200 == 1200) is
+        """The cutoff is > 17*60 minutes, so 17:00 itself (1020 == 1020) is
         the last accepted minute."""
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
             json=_make(base_booking_request, dropoff_date=tomorrow,
-                       session_id_suffix="boundary_2000"),
+                       session_id_suffix="boundary_1700"),
         )
         if response.status_code == 400:
-            assert "after 20:00" not in response.json().get("detail", "")
+            assert "after 17:00" not in response.json().get("detail", "")
 
-    @freeze_time("2026-03-17 20:00:59", tz_offset=0)
-    def test_boundary_tomorrow_at_2000_59_still_allowed(
+    @freeze_time("2026-03-17 17:00:59", tz_offset=0)
+    def test_boundary_tomorrow_at_1700_59_still_allowed(
         self, client, mock_stripe, base_booking_request,
     ):
-        """The check truncates to whole minutes, so 20:00:59 is still 20:00."""
+        """The check truncates to whole minutes, so 17:00:59 is still 17:00."""
         tomorrow = date(2026, 3, 18)
         response = client.post(
             "/api/payments/create-intent",
             json=_make(base_booking_request, dropoff_date=tomorrow,
-                       session_id_suffix="boundary_2000_59"),
+                       session_id_suffix="boundary_1700_59"),
         )
         if response.status_code == 400:
-            assert "after 20:00" not in response.json().get("detail", "")
+            assert "after 17:00" not in response.json().get("detail", "")
 
     @freeze_time("2026-03-17 00:00:00", tz_offset=0)
     def test_boundary_midnight_same_day_still_blocked(

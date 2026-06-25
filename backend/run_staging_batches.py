@@ -22,6 +22,7 @@ Per-test stdout/stderr is captured to backend/staging_logs/test_<NN>.log.
 Usage:
     python3 run_staging_batches.py             # batches of 2
     python3 run_staging_batches.py --size 2    # batches of 2
+    python3 run_staging_batches.py --only 16   # one case through this runner
 
 Loads DATABASE_URL / STAGING_DATABASE_URL etc. from backend/.env if python-dotenv is present.
 """
@@ -46,7 +47,7 @@ except ImportError:
     pass
 
 # Import TEST_CASES + STAGING_URL just to enumerate names (no Playwright at import).
-from create_test_bookings import LEAN_STAGING_TEST_INDEXES, TEST_CASES, STAGING_URL
+from create_test_bookings import AIRPORT_QUOTE_E2E_INDEXES, LEAN_STAGING_TEST_INDEXES, TEST_CASES, STAGING_URL
 
 
 LOG_DIR = ROOT / "staging_logs"
@@ -68,6 +69,11 @@ BATCHES = [
     [25],
 ]
 assert [idx for batch in BATCHES for idx in batch] == LEAN_STAGING_TEST_INDEXES
+
+AIRPORT_QUOTE_BATCHES = [
+    [idx]
+    for idx in AIRPORT_QUOTE_E2E_INDEXES
+]
 
 
 def run_one_attempt(test_idx_1based, env_label, browser, device, log_path, headless=True):
@@ -184,7 +190,7 @@ def post_results_to_api(env_tag, passed, failed, total, duration_seconds, run_ty
         print(f"[{env_tag}] POST failed: {e}")
 
 
-def run_one_env(label, browser, device, batch_size, retries=1, env_tag=None, post_results=False):
+def run_one_env(label, browser, device, batch_size, retries=1, env_tag=None, post_results=False, batches=None, headless=True):
     """Run the full 25-test suite for one (browser, device) env. Returns list of results."""
     log_dir = ROOT / "staging_logs" / label
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -195,12 +201,14 @@ def run_one_env(label, browser, device, batch_size, retries=1, env_tag=None, pos
     results = []
     env_started = time.time()
 
-    for batch_idx, indices in enumerate(BATCHES, start=1):
+    selected_batches = batches or BATCHES
+    for batch_idx, indices in enumerate(selected_batches, start=1):
         batch = [(i, TEST_CASES[i - 1]) for i in indices]
-        print(f"\n[{label}] Batch {batch_idx}/{len(BATCHES)} (parallel)")
+        print(f"\n[{label}] Batch {batch_idx}/{len(selected_batches)} (parallel)")
         with ThreadPoolExecutor(max_workers=batch_size) as pool:
             futures = [
-                pool.submit(run_one, idx, tc["name"], label, browser, device, log_dir, retries=retries)
+                pool.submit(run_one, idx, tc["name"], label, browser, device, log_dir,
+                            headless=headless, retries=retries)
                 for idx, tc in batch
             ]
             for fut in as_completed(futures):
@@ -227,12 +235,18 @@ def main():
     parser.add_argument("--browser", default=None, help="single env: chromium|firefox|webkit (ignores --matrix)")
     parser.add_argument("--device", default=None, help="single env: Playwright device name")
     parser.add_argument("--matrix", action="store_true", help="run the cross-browser matrix sequentially")
+    parser.add_argument("--airport-quote", action="store_true", help="run only the airport quote matrix/conversion E2E subset")
+    parser.add_argument("--only", type=int, default=None, help="run a single 1-based test index through this runner")
+    parser.add_argument("--headed", action="store_true", help="run browsers headed (HEADLESS=false)")
     parser.add_argument("--post-results", action="store_true",
                         help="POST per-env results to PROD_API_URL/api/test-results (used by the cron job)")
     args = parser.parse_args()
 
     LOG_DIR.mkdir(exist_ok=True)
-    total_tests_per_env = sum(len(b) for b in BATCHES)
+    selected_batches = AIRPORT_QUOTE_BATCHES if args.airport_quote else BATCHES
+    if args.only is not None:
+        selected_batches = [[args.only]]
+    total_tests_per_env = sum(len(b) for b in selected_batches)
     started_all = time.time()
     all_results = []
 
@@ -250,13 +264,16 @@ def main():
             all_results.extend(
                 run_one_env(label, browser, device, args.size,
                             retries=args.retries,
-                            env_tag=env_tag, post_results=args.post_results)
+                            env_tag=env_tag, post_results=args.post_results,
+                            batches=selected_batches,
+                            headless=not args.headed)
             )
     else:
         label = (args.browser or "chromium") + ("-" + (args.device or "desktop").replace(" ", "_").lower())
         all_results.extend(run_one_env(
             label, args.browser or "chromium", args.device, args.size, retries=args.retries,
-            env_tag=label[:20], post_results=args.post_results,
+            env_tag=label[:20], post_results=args.post_results, batches=selected_batches,
+            headless=not args.headed,
         ))
 
     total_duration = time.time() - started_all

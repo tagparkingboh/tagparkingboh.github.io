@@ -3,10 +3,10 @@
  *
  * Rule (locked 2026-05-12):
  *   - Same-day drop-offs are blocked outright.
- *   - Bookings placed past 20:00 UK can't have a drop-off the next day.
- *     "Past 20:00" = ukMinutesFromMidnight > 20*60. So 20:00:00..20:00:59
- *     still allow tomorrow; 20:01:00 onwards blocks it.
- *   - Re-check window: 19:50..20:10 UK (the booking page polls every minute
+ *   - Bookings placed past 17:00 UK can't have a drop-off the next day.
+ *     "Past 17:00" = ukMinutesFromMidnight > 17*60. So 17:00:00..17:00:59
+ *     still allow tomorrow; 17:01:00 onwards blocks it.
+ *   - Re-check window: 16:50..17:10 UK (the booking page polls every minute
  *     inside this span so a long-dwelling session sees the gate flip live).
  *
  * Boundary discipline per SPEC: each cutoff gets t-ε / t / t+ε tests on
@@ -26,7 +26,7 @@ import {
 } from '../utils/leadTime'
 
 // Helpers — pin the wall clock to a specific UK wall-clock moment. May 2026
-// is BST (UTC+1), so a UK "20:00" is "19:00 UTC". Date.UTC() handles negative
+// is BST (UTC+1), so a UK "17:00" is "16:00 UTC". Date.UTC() handles negative
 // hours correctly (UK 00:30 → UTC -1:30 → previous-day 23:30 UTC).
 function fakeNowAt(ukHour, ukMinute, ukSecond = 0, ymd = '2026-05-12') {
   const [y, m, d] = ymd.split('-').map(Number)
@@ -49,13 +49,13 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('leadTime constants', () => {
-  it('LATE_CUTOFF_UK_MINUTES is 20:00 (1200)', () => {
-    expect(LATE_CUTOFF_UK_MINUTES).toBe(1200)
+  it('LATE_CUTOFF_UK_MINUTES is 17:00 (1020)', () => {
+    expect(LATE_CUTOFF_UK_MINUTES).toBe(1020)
   })
 
-  it('Re-check window spans 19:50→20:10 UK', () => {
-    expect(RECHECK_WINDOW_START_MINUTES).toBe(19 * 60 + 50)
-    expect(RECHECK_WINDOW_END_MINUTES).toBe(20 * 60 + 10)
+  it('Re-check window spans 16:50→17:10 UK', () => {
+    expect(RECHECK_WINDOW_START_MINUTES).toBe(16 * 60 + 50)
+    expect(RECHECK_WINDOW_END_MINUTES).toBe(17 * 60 + 10)
   })
 })
 
@@ -65,16 +65,16 @@ describe('leadTime constants', () => {
 // ---------------------------------------------------------------------------
 
 describe('ukMinutesFromMidnight', () => {
-  it('happy: 20:00:00 → 1200', () => {
-    expect(ukMinutesFromMidnight(fakeNowAt(20, 0, 0))).toBe(1200)
+  it('happy: 17:00:00 → 1020', () => {
+    expect(ukMinutesFromMidnight(fakeNowAt(17, 0, 0))).toBe(1020)
   })
 
-  it('boundary: 20:00:59 still resolves to 1200 (truncates seconds)', () => {
-    expect(ukMinutesFromMidnight(fakeNowAt(20, 0, 59))).toBe(1200)
+  it('boundary: 17:00:59 still resolves to 1020 (truncates seconds)', () => {
+    expect(ukMinutesFromMidnight(fakeNowAt(17, 0, 59))).toBe(1020)
   })
 
-  it('boundary: 20:01:00 → 1201', () => {
-    expect(ukMinutesFromMidnight(fakeNowAt(20, 1, 0))).toBe(1201)
+  it('boundary: 17:01:00 → 1021', () => {
+    expect(ukMinutesFromMidnight(fakeNowAt(17, 1, 0))).toBe(1021)
   })
 
   it('edge: 00:00 → 0', () => {
@@ -116,7 +116,7 @@ describe('ukDateAtMidnight', () => {
 
 
 // ---------------------------------------------------------------------------
-// computeEarliestBookableDate — tomorrow vs day-after at 20:00 boundary
+// computeEarliestBookableDate — tomorrow vs day-after at 17:00 boundary
 // ---------------------------------------------------------------------------
 
 describe('computeEarliestBookableDate', () => {
@@ -124,8 +124,8 @@ describe('computeEarliestBookableDate', () => {
     return new Date(y, m - 1, d)
   }
 
-  it('happy: 19:55 → earliest is tomorrow (today + 1)', () => {
-    const earliest = computeEarliestBookableDate(fakeNowAt(19, 55, 0, '2026-05-12'))
+  it('happy: 16:55 → earliest is tomorrow (today + 1)', () => {
+    const earliest = computeEarliestBookableDate(fakeNowAt(16, 55, 0, '2026-05-12'))
     expect(earliest.getTime()).toBe(asDate(2026, 5, 13).getTime())
   })
 
@@ -134,23 +134,23 @@ describe('computeEarliestBookableDate', () => {
     expect(earliest.getTime()).toBe(asDate(2026, 5, 13).getTime())
   })
 
-  it('boundary: 19:59 UK → tomorrow (last full minute below cutoff)', () => {
-    const earliest = computeEarliestBookableDate(fakeNowAt(19, 59, 0, '2026-05-12'))
+  it('boundary: 16:59 UK → tomorrow (last full minute below cutoff)', () => {
+    const earliest = computeEarliestBookableDate(fakeNowAt(16, 59, 0, '2026-05-12'))
     expect(earliest.getTime()).toBe(asDate(2026, 5, 13).getTime())
   })
 
-  it('boundary: 20:00:00 UK → tomorrow (cutoff is exclusive of 20:00 itself)', () => {
-    const earliest = computeEarliestBookableDate(fakeNowAt(20, 0, 0, '2026-05-12'))
+  it('boundary: 17:00:00 UK → tomorrow (cutoff is exclusive of 17:00 itself)', () => {
+    const earliest = computeEarliestBookableDate(fakeNowAt(17, 0, 0, '2026-05-12'))
     expect(earliest.getTime()).toBe(asDate(2026, 5, 13).getTime())
   })
 
-  it('boundary: 20:00:59 UK → tomorrow (seconds truncate to minute 1200)', () => {
-    const earliest = computeEarliestBookableDate(fakeNowAt(20, 0, 59, '2026-05-12'))
+  it('boundary: 17:00:59 UK → tomorrow (seconds truncate to minute 1020)', () => {
+    const earliest = computeEarliestBookableDate(fakeNowAt(17, 0, 59, '2026-05-12'))
     expect(earliest.getTime()).toBe(asDate(2026, 5, 13).getTime())
   })
 
-  it('boundary: 20:01:00 UK → day-after-tomorrow', () => {
-    const earliest = computeEarliestBookableDate(fakeNowAt(20, 1, 0, '2026-05-12'))
+  it('boundary: 17:01:00 UK → day-after-tomorrow', () => {
+    const earliest = computeEarliestBookableDate(fakeNowAt(17, 1, 0, '2026-05-12'))
     expect(earliest.getTime()).toBe(asDate(2026, 5, 14).getTime())
   })
 
@@ -159,8 +159,8 @@ describe('computeEarliestBookableDate', () => {
     expect(earliest.getTime()).toBe(asDate(2026, 5, 14).getTime())
   })
 
-  it('edge: month-end wraps cleanly (31 May 21:00 → 2 June)', () => {
-    const earliest = computeEarliestBookableDate(fakeNowAt(21, 0, 0, '2026-05-31'))
+  it('edge: month-end wraps cleanly (31 May 18:00 → 2 June)', () => {
+    const earliest = computeEarliestBookableDate(fakeNowAt(18, 0, 0, '2026-05-31'))
     expect(earliest.getTime()).toBe(asDate(2026, 6, 2).getTime())
   })
 })
@@ -181,23 +181,23 @@ describe('isLeadTimeAllowedFor', () => {
     expect(isLeadTimeAllowedFor(undefined, now)).toBe(true)
   })
 
-  it('happy: Wed 19:55 + Thu dropoff → allowed', () => {
-    const now = fakeNowAt(19, 55, 0, '2026-05-13')  // Wed
+  it('happy: Wed 16:55 + Thu dropoff → allowed', () => {
+    const now = fakeNowAt(16, 55, 0, '2026-05-13')  // Wed
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 14), now)).toBe(true)
   })
 
-  it('unhappy: Wed 20:01 + Thu dropoff → blocked', () => {
-    const now = fakeNowAt(20, 1, 0, '2026-05-13')  // Wed
+  it('unhappy: Wed 17:01 + Thu dropoff → blocked', () => {
+    const now = fakeNowAt(17, 1, 0, '2026-05-13')  // Wed
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 14), now)).toBe(false)
   })
 
-  it('happy: Wed 19:55 + Fri dropoff → allowed (day-after-tomorrow always passes)', () => {
-    const now = fakeNowAt(19, 55, 0, '2026-05-13')
+  it('happy: Wed 16:55 + Fri dropoff → allowed (day-after-tomorrow always passes)', () => {
+    const now = fakeNowAt(16, 55, 0, '2026-05-13')
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 15), now)).toBe(true)
   })
 
-  it('happy: Wed 20:01 + Fri dropoff → allowed (cutoff only gates tomorrow)', () => {
-    const now = fakeNowAt(20, 1, 0, '2026-05-13')
+  it('happy: Wed 17:01 + Fri dropoff → allowed (cutoff only gates tomorrow)', () => {
+    const now = fakeNowAt(17, 1, 0, '2026-05-13')
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 15), now)).toBe(true)
   })
 
@@ -211,49 +211,49 @@ describe('isLeadTimeAllowedFor', () => {
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 11), now)).toBe(false)
   })
 
-  it('boundary: exactly 20:00 + tomorrow → allowed (last minute before cutoff)', () => {
-    const now = fakeNowAt(20, 0, 0, '2026-05-12')
+  it('boundary: exactly 17:00 + tomorrow → allowed (last minute before cutoff)', () => {
+    const now = fakeNowAt(17, 0, 0, '2026-05-12')
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 13), now)).toBe(true)
   })
 
-  it('boundary: 20:01 + tomorrow → blocked (cutoff just crossed)', () => {
-    const now = fakeNowAt(20, 1, 0, '2026-05-12')
+  it('boundary: 17:01 + tomorrow → blocked (cutoff just crossed)', () => {
+    const now = fakeNowAt(17, 1, 0, '2026-05-12')
     expect(isLeadTimeAllowedFor(asDate(2026, 5, 13), now)).toBe(false)
   })
 
-  it("bathroom-break scenario: gate flips false between 19:55 and 20:03 for same dropoff", () => {
+  it("bathroom-break scenario: gate flips false between 16:55 and 17:03 for same dropoff", () => {
     const tomorrow = asDate(2026, 5, 13)
-    // 19:55 — gate open
-    expect(isLeadTimeAllowedFor(tomorrow, fakeNowAt(19, 55, 0, '2026-05-12'))).toBe(true)
-    // 20:03 — gate closed
-    expect(isLeadTimeAllowedFor(tomorrow, fakeNowAt(20, 3, 0, '2026-05-12'))).toBe(false)
+    // 16:55 — gate open
+    expect(isLeadTimeAllowedFor(tomorrow, fakeNowAt(16, 55, 0, '2026-05-12'))).toBe(true)
+    // 17:03 — gate closed
+    expect(isLeadTimeAllowedFor(tomorrow, fakeNowAt(17, 3, 0, '2026-05-12'))).toBe(false)
   })
 })
 
 
 // ---------------------------------------------------------------------------
-// inLeadTimeRecheckWindow — only poll within 19:50→20:10
+// inLeadTimeRecheckWindow — only poll within 16:50→17:10
 // ---------------------------------------------------------------------------
 
 describe('inLeadTimeRecheckWindow', () => {
-  it('happy: 20:00 falls inside the window', () => {
-    expect(inLeadTimeRecheckWindow(fakeNowAt(20, 0, 0))).toBe(true)
+  it('happy: 17:00 falls inside the window', () => {
+    expect(inLeadTimeRecheckWindow(fakeNowAt(17, 0, 0))).toBe(true)
   })
 
-  it('happy: 19:50:00 falls inside (inclusive on the lower bound)', () => {
-    expect(inLeadTimeRecheckWindow(fakeNowAt(19, 50, 0))).toBe(true)
+  it('happy: 16:50:00 falls inside (inclusive on the lower bound)', () => {
+    expect(inLeadTimeRecheckWindow(fakeNowAt(16, 50, 0))).toBe(true)
   })
 
-  it('happy: 20:10:00 falls inside (inclusive on the upper bound)', () => {
-    expect(inLeadTimeRecheckWindow(fakeNowAt(20, 10, 0))).toBe(true)
+  it('happy: 17:10:00 falls inside (inclusive on the upper bound)', () => {
+    expect(inLeadTimeRecheckWindow(fakeNowAt(17, 10, 0))).toBe(true)
   })
 
-  it('boundary: 19:49 is OUTSIDE the window', () => {
-    expect(inLeadTimeRecheckWindow(fakeNowAt(19, 49, 0))).toBe(false)
+  it('boundary: 16:49 is OUTSIDE the window', () => {
+    expect(inLeadTimeRecheckWindow(fakeNowAt(16, 49, 0))).toBe(false)
   })
 
-  it('boundary: 20:11 is OUTSIDE the window', () => {
-    expect(inLeadTimeRecheckWindow(fakeNowAt(20, 11, 0))).toBe(false)
+  it('boundary: 17:11 is OUTSIDE the window', () => {
+    expect(inLeadTimeRecheckWindow(fakeNowAt(17, 11, 0))).toBe(false)
   })
 
   it('edge: 00:00 is OUTSIDE the window', () => {

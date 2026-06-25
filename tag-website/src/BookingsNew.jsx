@@ -276,6 +276,8 @@ function Bookings({ isModal = false, onClose }) {
   // - 'free_week': "1 Week Free Parking" - deducts week1_price (free for ≤7 days, partial for >7 days)
   // - 'free_100': "100% Off" - completely free regardless of trip length
   const [promoCodeType, setPromoCodeType] = useState(() => loadBookingState('promoCodeType', 'percentage'))
+  const [promoTypeHydrating, setPromoTypeHydrating] = useState(false)
+  const promoTypeHydratedRef = useRef(false)
 
   // "Where did you hear about us?" marketing attribution state
   const [heardAboutUsSource, setHeardAboutUsSource] = useState(() => loadBookingState('heardAboutUsSource', ''))
@@ -462,8 +464,8 @@ function Bookings({ isModal = false, onClose }) {
   }, [formData.dropoffDate, earliestBookableDate])
 
   // Dynamic pricing state
-  const [pricingInfo, setPricingInfo] = useState(null)
-  const [airportQuote, setAirportQuote] = useState(null)
+  const [pricingInfo, setPricingInfo] = useState(() => loadBookingState('pricingInfo', null))
+  const [airportQuote, setAirportQuote] = useState(() => loadBookingState('airportQuote', null))
   const [pricingError, setPricingError] = useState('')
   const [pricingLoading, setPricingLoading] = useState(false)
 
@@ -493,7 +495,8 @@ function Bookings({ isModal = false, onClose }) {
     sessionStorage.setItem('booking_promoCodeValid', JSON.stringify(promoCodeValid))
     sessionStorage.setItem('booking_promoCodeMessage', JSON.stringify(promoCodeMessage))
     sessionStorage.setItem('booking_promoCodeDiscount', JSON.stringify(promoCodeDiscount))
-  }, [promoCode, promoCodeValid, promoCodeMessage, promoCodeDiscount])
+    sessionStorage.setItem('booking_promoCodeType', JSON.stringify(promoCodeType))
+  }, [promoCode, promoCodeValid, promoCodeMessage, promoCodeDiscount, promoCodeType])
 
   useEffect(() => {
     sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
@@ -525,6 +528,14 @@ function Bookings({ isModal = false, onClose }) {
     sessionStorage.setItem('booking_heardAboutUsDetail', JSON.stringify(heardAboutUsDetail))
     sessionStorage.setItem('booking_heardAboutUsAnswered', JSON.stringify(heardAboutUsAnswered))
   }, [heardAboutUsSource, heardAboutUsDetail, heardAboutUsAnswered])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_pricingInfo', JSON.stringify(pricingInfo))
+  }, [pricingInfo])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_airportQuote', JSON.stringify(airportQuote))
+  }, [airportQuote])
 
   // Log funnel event when both dates are selected
   useEffect(() => {
@@ -2182,12 +2193,12 @@ function Bookings({ isModal = false, onClose }) {
     // Error is handled within the StripePayment component
   }
 
-  // Promo code validation
-  const validatePromoCode = async () => {
-    if (!promoCode.trim()) {
+  const validatePromoCodeAgainstBackend = async (code, { logAudit = true } = {}) => {
+    const normalizedCode = code.trim()
+    if (!normalizedCode) {
       setPromoCodeMessage('Please enter a promo code')
       setPromoCodeValid(false)
-      return
+      return null
     }
 
     setPromoCodeValidating(true)
@@ -2197,7 +2208,7 @@ function Bookings({ isModal = false, onClose }) {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/promo/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoCode.trim() }),
+        body: JSON.stringify({ code: normalizedCode }),
       })
 
       const data = await response.json()
@@ -2213,36 +2224,77 @@ function Bookings({ isModal = false, onClose }) {
         // Fallback to 'free_week' for 100% if backend doesn't provide type
         const discountType = data.discount_type || (data.discount_percent === 100 ? 'free_week' : 'percentage')
         setPromoCodeType(discountType)
-        // Log promo code added
-        fetch(`${API_BASE_URL}/api/booking/audit-event`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sessionIdRef.current,
-            event: 'promo_code_added',
-            event_data: {
-              promo_code: promoCode.trim().toUpperCase(),
-              discount_percent: data.discount_percent,
-              discount_type: discountType,
-              customer_email: formData.email,
-              timestamp: new Date().toISOString()
-            }
-          })
-        }).catch(err => console.error('Failed to log promo code added:', err))
+        if (logAudit) {
+          // Log promo code added
+          fetch(`${API_BASE_URL}/api/booking/audit-event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionIdRef.current,
+              event: 'promo_code_added',
+              event_data: {
+                promo_code: normalizedCode.toUpperCase(),
+                discount_percent: data.discount_percent,
+                discount_type: discountType,
+                customer_email: formData.email,
+                timestamp: new Date().toISOString()
+              }
+            })
+          }).catch(err => console.error('Failed to log promo code added:', err))
+        }
+        return data
       } else {
         setPromoCodeValid(false)
         setPromoCodeDiscount(0)
         setPromoCodeType('percentage')
         setPromoCodeMessage(data.message)
+        return data
       }
     } catch (err) {
       setPromoCodeValid(false)
       setPromoCodeDiscount(0)
       setPromoCodeMessage('Failed to validate promo code')
+      return null
     } finally {
       setPromoCodeValidating(false)
     }
   }
+
+  // Promo code validation
+  const validatePromoCode = async () => {
+    await validatePromoCodeAgainstBackend(promoCode)
+  }
+
+  const needsPromoTypeHydration = Boolean(
+    promoCodeValid &&
+    promoCode.trim() &&
+    promoCodeDiscount === 100 &&
+    promoCodeType === 'percentage'
+  )
+
+  useEffect(() => {
+    if (promoTypeHydratedRef.current) return
+    promoTypeHydratedRef.current = true
+
+    // Older sessions only stored discount=100 and the default "percentage"
+    // type. Revalidate once after a hard refresh so FREEWEEK does not become
+    // a full 100% discount on the payment step.
+    if (!needsPromoTypeHydration) {
+      return
+    }
+
+    let cancelled = false
+    setPromoTypeHydrating(true)
+    validatePromoCodeAgainstBackend(promoCode, { logAudit: false })
+      .finally(() => {
+        if (!cancelled) setPromoTypeHydrating(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const clearPromoCode = () => {
     // Log promo code removed (only if there was a valid promo code)
@@ -2939,7 +2991,7 @@ function Bookings({ isModal = false, onClose }) {
                         </p>
                       ) : (
                         <p>
-                          Sorry, bookings placed after 20:00 can't be made for
+                          Sorry, bookings placed after 17:00 can't be made for
                           the next day. Call{' '}
                           <a href="tel:01202 798710" className="contact-link">01202 798710</a>{' '}
                           and we will try our best to help!
@@ -3603,7 +3655,7 @@ function Bookings({ isModal = false, onClose }) {
                       })()}</span>
                       <span className="discount-amount">-£{(() => {
                         const basePrice = pricingInfo ? pricingInfo.price : 0
-                        const durationDays = pricingInfo?.duration_days || 7
+                        const durationDays = pricingInfo?.duration_days ?? Number.POSITIVE_INFINITY
                         // free_100: full discount regardless of duration
                         if (promoCodeType === 'free_100') {
                           return basePrice.toFixed(2)
@@ -3627,7 +3679,7 @@ function Bookings({ isModal = false, onClose }) {
                   <span>
                     £{(() => {
                       const basePrice = pricingInfo ? pricingInfo.price : 0
-                      const durationDays = pricingInfo?.duration_days || 7
+                      const durationDays = pricingInfo?.duration_days ?? Number.POSITIVE_INFINITY
                       let discount = 0
                       if (promoCodeValid && promoCodeDiscount > 0) {
                         // free_100: full discount regardless of duration
@@ -3785,27 +3837,34 @@ function Bookings({ isModal = false, onClose }) {
                   </button>
                 </div>
               ) : isStep4Complete ? (
-                console.log('[Step 4] Rendering StripePayment with manualDepartureData:', manualDepartureData) ||
-                console.log('[Step 4] Rendering StripePayment with manualArrivalData:', manualArrivalData) ||
-                <StripePayment
-                  formData={formData}
-                  selectedFlight={null}
-                  selectedArrivalFlight={null}
-                  customerId={customerId}
-                  vehicleId={vehicleId}
-                  sessionId={sessionIdRef.current}
-                  promoCode={promoCodeValid ? promoCode : null}
-                  promoCodeDiscount={promoCodeValid ? promoCodeDiscount : 0}
-                  promoCodeType={promoCodeValid ? promoCodeType : 'percentage'}
-                  pricingInfo={pricingInfo}
-                  isLeadTimeAllowed={isLeadTimeAllowed}
-                  onPaymentSuccess={handlePaymentSuccess}
-                  onPaymentError={handlePaymentError}
-                  departureTimeOverride={null}
-                  arrivalTimeOverride={null}
-                  manualDepartureData={manualDepartureData}
-                  manualArrivalData={manualArrivalData}
-                />
+                (formData.package === 'airport_quote' && !pricingInfo) || promoTypeHydrating || needsPromoTypeHydration ? (
+                  <div className="stripe-loading">
+                    <div className="spinner"></div>
+                    <p>Loading secure payment...</p>
+                  </div>
+                ) : (
+                  console.log('[Step 4] Rendering StripePayment with manualDepartureData:', manualDepartureData) ||
+                  console.log('[Step 4] Rendering StripePayment with manualArrivalData:', manualArrivalData) ||
+                  <StripePayment
+                    formData={formData}
+                    selectedFlight={null}
+                    selectedArrivalFlight={null}
+                    customerId={customerId}
+                    vehicleId={vehicleId}
+                    sessionId={sessionIdRef.current}
+                    promoCode={promoCodeValid ? promoCode : null}
+                    promoCodeDiscount={promoCodeValid ? promoCodeDiscount : 0}
+                    promoCodeType={promoCodeValid ? promoCodeType : 'percentage'}
+                    pricingInfo={pricingInfo}
+                    isLeadTimeAllowed={isLeadTimeAllowed}
+                    onPaymentSuccess={handlePaymentSuccess}
+                    onPaymentError={handlePaymentError}
+                    departureTimeOverride={null}
+                    arrivalTimeOverride={null}
+                    manualDepartureData={manualDepartureData}
+                    manualArrivalData={manualArrivalData}
+                  />
+                )
               ) : (
                 <div className="terms-required">
                   {!formData.terms && (

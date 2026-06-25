@@ -328,7 +328,7 @@ function StripePayment({
   promoCodeType = 'percentage',
   pricingInfo,
   // True while the customer's chosen dropoff date still clears the lead-time
-  // rule. Flips to false mid-flow if the 20:00 cutoff crosses while the user
+  // rule. Flips to false mid-flow if the 17:00 cutoff crosses while the user
   // is on this screen — we gate createPaymentIntent on it so the backend's
   // 400 never surfaces on the payment UI.
   isLeadTimeAllowed = true,
@@ -359,7 +359,7 @@ function StripePayment({
   const calculateAmounts = () => {
     const pricePounds = pricingInfo ? pricingInfo.price : 0
     const week1Price = pricingInfo?.week1_price || pricePounds
-    const durationDays = pricingInfo?.duration_days || 7
+    const durationDays = pricingInfo?.duration_days ?? Number.POSITIVE_INFINITY
 
     // For free_week type with trips > 7 days, only week1 is free
     if (promoCodeType === 'free_week' && durationDays > 7) {
@@ -382,14 +382,14 @@ function StripePayment({
   // Create payment intent API call - extracted so it can be called on demand
   const createPaymentIntent = async () => {
     // Lead-time gate — short-circuit before any network call. The booking
-    // page polls every minute inside the 19:50→20:10 UK window and flips
-    // isLeadTimeAllowed to false the moment 20:00 crosses, so a customer
-    // who entered the flow at 19:55 and is paying at 20:03 lands here with
+    // page polls every minute inside the 16:50→17:10 UK window and flips
+    // isLeadTimeAllowed to false the moment 17:00 crosses, so a customer
+    // who entered the flow at 16:55 and is paying at 17:03 lands here with
     // the gate closed. Without this guard the backend would 400 with the
     // same copy, but the user would see it under the Stripe error UI
     // instead of as a clean banner.
     if (!isLeadTimeAllowed) {
-      const message = "Sorry, bookings placed after 20:00 can't be made for the next day. Call 01202 798710 and we will try our best to help!"
+      const message = "Sorry, bookings placed after 17:00 can't be made for the next day. Call 01202 798710 and we will try our best to help!"
       if (typeof onPaymentError === 'function') {
         onPaymentError(message)
       }
@@ -507,7 +507,7 @@ function StripePayment({
     console.log('[StripePayment] promoCodeDiscount:', promoCodeDiscount)
     console.log('[StripePayment] previousPromo (ref):', previousPromo)
 
-    const durationDays = pricingInfo?.duration_days || 7
+    const durationDays = pricingInfo?.duration_days ?? Number.POSITIVE_INFINITY
     // Free booking conditions:
     // - 'free_100' type with any trip duration = always free
     // - 'free_week' type with trips <= 7 days = free
@@ -573,7 +573,7 @@ function StripePayment({
         // Handle response
         // For 'free_week' promo type with trips > 7 days, we need payment even if backend says free
         // Because free_week only deducts week1_price, not the full amount
-        const durationDays = pricingInfo?.duration_days || 7
+        const durationDays = pricingInfo?.duration_days ?? Number.POSITIVE_INFINITY
         const actuallyFree = data.is_free_booking &&
           !(promoCodeType === 'free_week' && durationDays > 7)
 

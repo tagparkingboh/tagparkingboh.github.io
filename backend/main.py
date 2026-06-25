@@ -12574,6 +12574,24 @@ def get_free_week_base_pence_for_request(request: "CreatePaymentRequest") -> int
     return int(get_base_price_for_duration(7) * 100)
 
 
+def get_free_week_duration_days_for_request(
+    db: Session,
+    request: "CreatePaymentRequest",
+    fallback_duration_days: int,
+) -> int:
+    if not request.airport_quote_snapshot_id:
+        return fallback_duration_days
+
+    snapshot = (
+        db.query(AirportQuoteSnapshot)
+        .filter(AirportQuoteSnapshot.id == request.airport_quote_snapshot_id)
+        .first()
+    )
+    if snapshot and snapshot.billing_days is not None:
+        return int(snapshot.billing_days)
+    return fallback_duration_days
+
+
 class CreatePaymentResponse(BaseModel):
     """Response with payment intent details for frontend."""
     client_secret: Optional[str] = None  # None for free bookings (100% off)
@@ -12651,12 +12669,12 @@ async def create_payment(
         if not request.billing_postcode or not request.billing_postcode.strip():
             raise HTTPException(status_code=400, detail="Billing postcode is required")
 
-        # Lead-time rule (locked 2026-05-12):
+        # Lead-time rule (locked 2026-06-25):
         #   - Same-day drop-offs are blocked outright (replaces the old
         #     4-hour notice path).
-        #   - Bookings placed past 20:00 UK can't have a drop-off the next
-        #     day. Past 20:00 is defined as now_uk_minutes > 20*60, so the
-        #     last accepted moment is 20:00:59.
+        #   - Bookings placed past 17:00 UK can't have a drop-off the next
+        #     day. Past 17:00 is defined as now_uk_minutes > 17*60, so the
+        #     last accepted moment is 17:00:59.
         # Admin manual booking (/api/admin/bookings) is exempt — this gate
         # only fires in the customer payment flow.
         from datetime import datetime, timedelta
@@ -12672,10 +12690,10 @@ async def create_payment(
                 status_code=400,
                 detail="Sorry, we can't accept same-day bookings. Call 01202 798710 and we will try our best to help!"
             )
-        if request_dropoff_date == tomorrow_uk and (now_uk.hour * 60 + now_uk.minute) > 20 * 60:
+        if request_dropoff_date == tomorrow_uk and (now_uk.hour * 60 + now_uk.minute) > 17 * 60:
             raise HTTPException(
                 status_code=400,
-                detail="Sorry, bookings placed after 20:00 can't be made for the next day. Call 01202 798710 and we will try our best to help!"
+                detail="Sorry, bookings placed after 17:00 can't be made for the next day. Call 01202 798710 and we will try our best to help!"
             )
 
         # Check for blocked dates (UK timezone)
@@ -12843,6 +12861,7 @@ async def create_payment(
                                 dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
                                 pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
                                 duration_days = (pickup_date - dropoff_date).days
+                                promo_duration_days = get_free_week_duration_days_for_request(db, request, duration_days)
                                 quote_exit_date, quote_exit_time = _exit_window_for_quote_request(request, pickup_date)
                                 quote_original_amount = resolve_airport_quote_amount_pence(
                                     db,
@@ -12898,7 +12917,7 @@ async def create_payment(
                                                         is_free_booking = True
                                                     elif discount_type == 'free_week':
                                                         # "1 Week Free Parking" - trips <= 7 days are free, longer trips deduct week1 price
-                                                        if duration_days <= 7:
+                                                        if promo_duration_days <= 7:
                                                             new_discount_amount = new_original_amount
                                                             is_free_booking = True
                                                         else:
@@ -12909,7 +12928,7 @@ async def create_payment(
                                                         # 'percentage' - Standard percentage-based discount
                                                         new_discount_amount = int(new_original_amount * discount_percent / 100)
                                                     new_promo_code_applied = new_promo
-                                                    print(f"[DEDUP] New promo {new_promo}: {discount_type} {discount_percent}% = {new_discount_amount} pence discount, duration: {duration_days} days")
+                                                    print(f"[DEDUP] New promo {new_promo}: {discount_type} {discount_percent}% = {new_discount_amount} pence discount, duration: {promo_duration_days} days")
                                     else:
                                         # Check legacy promotions table
                                         from db_models import Promotion
@@ -12920,7 +12939,7 @@ async def create_payment(
                                         if promo_record and not promo_record.used:
                                             discount_percent = promo_record.discount_percent
                                             if discount_percent == 100:
-                                                if duration_days <= 7:
+                                                if promo_duration_days <= 7:
                                                     new_discount_amount = new_original_amount
                                                     is_free_booking = True
                                                 else:
@@ -13041,11 +13060,13 @@ async def create_payment(
 
         # Calculate duration for flexible pricing using the billing pickup date.
         # Airport quotes are already a standalone dynamic price; promo boundary
-        # checks use raw date days so fresh and dedup create-intent paths agree.
+        # checks use the persisted quote billing days so the payment path stays
+        # aligned with the quoted arrival+30 pickup window.
         if request.airport_quote_snapshot_id:
             duration_days = (pickup_date - dropoff_date).days
         else:
             duration_days = (billing_pickup_date - dropoff_date).days
+        promo_duration_days = get_free_week_duration_days_for_request(db, request, duration_days)
         print(f"[DEBUG] Trip duration: {duration_days} days (billing_pickup={billing_pickup_date}, actual_pickup={pickup_date})")
 
         # Calculate base amount in pence (using flexible duration pricing).
@@ -13120,7 +13141,7 @@ async def create_payment(
                             is_free_booking = True
                         elif discount_type == 'free_week':
                             # "1 Week Free Parking" - trips <= 7 days are free, longer trips deduct week1 price
-                            if duration_days <= 7:
+                            if promo_duration_days <= 7:
                                 discount_amount = original_amount
                                 is_free_booking = True
                             else:
@@ -13139,7 +13160,7 @@ async def create_payment(
                             "final_amount": original_amount - discount_amount,
                             "is_free_booking": is_free_booking,
                             "discount_type": discount_type,
-                            "duration_days": duration_days
+                            "duration_days": promo_duration_days
                         })
             else:
                 # Fallback: Check legacy MarketingSubscriber promo fields
@@ -13169,7 +13190,7 @@ async def create_payment(
                     if not promo_used:
                         if discount_percent == 100:
                             # FREE promo: based on trip duration (not package)
-                            if duration_days <= 7:
+                            if promo_duration_days <= 7:
                                 # Trips up to 7 days: completely free
                                 discount_amount = original_amount
                                 is_free_booking = True
@@ -13184,7 +13205,7 @@ async def create_payment(
                             discount_amount = int(original_amount * discount_percent / 100)
                             is_free_booking = False
                         promo_code_applied = promo_code
-                        print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence, duration: {duration_days} days (free: {is_free_booking})")
+                        print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence, duration: {promo_duration_days} days (free: {is_free_booking})")
                     else:
                         print(f"[PROMO] Code already used!")
                 else:

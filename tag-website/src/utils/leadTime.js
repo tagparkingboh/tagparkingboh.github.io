@@ -5,19 +5,19 @@
  *
  * Rule (locked 2026-05-12):
  *   - Same-day drop-offs are blocked outright.
- *   - Bookings placed past 20:00 UK can't have a drop-off the next day.
- *     "Past 20:00" = minutes-from-midnight > 20*60, so 20:00:00..20:00:59
- *     still allow tomorrow; 20:01:00 onwards blocks it.
+ *   - Bookings placed past 17:00 UK can't have a drop-off the next day.
+ *     "Past 17:00" = minutes-from-midnight > 17*60, so 17:00:00..17:00:59
+ *     still allow tomorrow; 17:01:00 onwards blocks it.
  *
- * Re-check window (19:50..20:10 UK) is when a long-dwelling booking page
+ * Re-check window (16:50..17:10 UK) is when a long-dwelling booking page
  * needs to re-evaluate the gate live, because the cutoff flips during this
  * span. Outside the window the gate's initial value is correct for the rest
  * of the session.
  */
 
-export const LATE_CUTOFF_UK_MINUTES = 20 * 60          // 20:00 (last accepted minute)
-export const RECHECK_WINDOW_START_MINUTES = 19 * 60 + 50  // 19:50
-export const RECHECK_WINDOW_END_MINUTES = 20 * 60 + 10    // 20:10
+export const LATE_CUTOFF_UK_MINUTES = 17 * 60          // 17:00 (last accepted minute)
+export const RECHECK_WINDOW_START_MINUTES = 16 * 60 + 50  // 16:50
+export const RECHECK_WINDOW_END_MINUTES = 17 * 60 + 10    // 17:10
 
 /**
  * Calendar date in Europe/London at `now`, as a local Date at 00:00. Date
@@ -32,7 +32,7 @@ export function ukDateAtMidnight(now) {
 
 /**
  * Minutes from midnight UK at `now`. Truncates seconds (matches the gate's
- * minute-resolution behaviour, e.g. 20:00:59 → 1200, not 1200.98).
+ * minute-resolution behaviour, e.g. 17:00:59 → 1020, not 1020.98).
  */
 export function ukMinutesFromMidnight(now) {
   const ukTimeStr = now.toLocaleTimeString('en-GB', {
@@ -47,8 +47,8 @@ export function ukMinutesFromMidnight(now) {
 
 /**
  * Earliest bookable drop-off Date at `now`:
- *   - At or before 20:00 → tomorrow
- *   - Past 20:00         → day after tomorrow
+ *   - At or before 17:00 → tomorrow
+ *   - Past 17:00         → day after tomorrow
  */
 export function computeEarliestBookableDate(now) {
   const today = ukDateAtMidnight(now)
@@ -69,7 +69,7 @@ export function isLeadTimeAllowedFor(dropoffDate, now) {
 }
 
 /**
- * Is `now` inside the daily 19:50→20:10 re-check window? The booking page
+ * Is `now` inside the daily 16:50→17:10 re-check window? The booking page
  * polls every minute inside this window so the gate flips live without
  * waiting for a user-driven re-render.
  */
