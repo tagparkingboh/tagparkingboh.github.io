@@ -22,12 +22,19 @@ if env_file.exists():
 # Falls back to DATABASE_URL if STAGING_DATABASE_URL not set
 STAGING_DATABASE_URL = os.environ.get("STAGING_DATABASE_URL") or os.environ.get("DATABASE_URL")
 
+# Staging/remote DB access is OPT-IN. Until RUN_STAGING_DB_TESTS=1 is set we
+# create NO engine and the autouse fixtures below stay inert — so a normal
+# `pytest` run (mocked suite + local-Postgres integration) can never open a
+# connection to STAGING_DATABASE_URL. CI's staging-integration job sets the flag
+# explicitly; everything else is isolated by construction.
+RUN_STAGING_DB_TESTS = os.environ.get("RUN_STAGING_DB_TESTS") == "1"
+
 # Track if database is available - don't fail on import
 DATABASE_AVAILABLE = False
 test_engine = None
 TestSessionLocal = None
 
-if STAGING_DATABASE_URL:
+if STAGING_DATABASE_URL and RUN_STAGING_DB_TESTS:
     os.environ["DATABASE_URL"] = STAGING_DATABASE_URL
     try:
         from sqlalchemy import create_engine
@@ -40,6 +47,11 @@ if STAGING_DATABASE_URL:
     except Exception as e:
         print(f"Warning: Could not connect to test database: {e}")
         DATABASE_AVAILABLE = False
+elif STAGING_DATABASE_URL and not RUN_STAGING_DB_TESTS:
+    print(
+        "tests/conftest.py: STAGING_DATABASE_URL present but RUN_STAGING_DB_TESTS!=1 "
+        "— skipping staging DB setup (no connection will be opened)."
+    )
 
 
 def pytest_configure(config):

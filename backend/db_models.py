@@ -2,7 +2,7 @@
 SQLAlchemy database models for TAG booking system.
 """
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Date, Time,
+    Column, Integer, BigInteger, String, DateTime, Date, Time,
     ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint, Index,
     CheckConstraint, JSON
 )
@@ -1301,6 +1301,34 @@ class AirportQuoteSnapshot(Base):
 
     def __repr__(self):
         return f"<AirportQuoteSnapshot {self.airport} {self.billing_days}d {self.status}>"
+
+
+class AirportQuoteConversionLog(Base):
+    """Per-quote airport comparison funnel log."""
+    __tablename__ = "airport_quote_conversion_log"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    lead_days = Column(Integer, nullable=True)
+    billing_days = Column(Integer, nullable=True)
+    discount_band = Column(String, nullable=True)
+    tag_pence = Column(Integer, nullable=True)
+    cheapest_boh_pence = Column(Integer, nullable=True)
+    shown_at = Column(DateTime(timezone=True), nullable=True)
+    converted = Column(Boolean, nullable=True)
+    airport_quote_snapshot_id = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ux_airport_quote_conversion_log_snapshot_id",
+            "airport_quote_snapshot_id",
+            unique=True,
+            postgresql_where=airport_quote_snapshot_id.isnot(None),
+            sqlite_where=airport_quote_snapshot_id.isnot(None),
+        ),
+    )
+
+    def __repr__(self):
+        return f"<AirportQuoteConversionLog {self.id} converted={self.converted}>"
 
 
 class Promotion(Base):

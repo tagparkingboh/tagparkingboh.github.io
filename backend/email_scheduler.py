@@ -170,7 +170,8 @@ def refresh_homepage_airport_quote_snapshots():
         calculate_billing_days,
         calculate_tag_price_pence,
         fetch_live_airport_quote_without_db,
-        get_airport_quote_discount_percent,
+        get_airport_quote_discount_percent_for_quote,
+        get_airport_quote_min_price_pence,
         record_quote_snapshot,
         validate_products,
     )
@@ -186,7 +187,7 @@ def refresh_homepage_airport_quote_snapshots():
     rejected = []
     errors = []
     try:
-        discount_pct = get_airport_quote_discount_percent()
+        min_price_pence = get_airport_quote_min_price_pence()
         for billing_days in HOMEPAGE_AIRPORT_QUOTE_DAYS:
             quote_input = _homepage_airport_quote_input(billing_days)
             try:
@@ -195,6 +196,10 @@ def refresh_homepage_airport_quote_snapshots():
                 calculated_days = calculate_billing_days(
                     datetime.combine(quote_input.entry_date, quote_input.entry_time),
                     datetime.combine(quote_input.exit_date, quote_input.exit_time),
+                )
+                discount_pct = get_airport_quote_discount_percent_for_quote(
+                    quote_input.entry_date,
+                    calculated_days,
                 )
                 valid, reject_reason = validate_products(products, calculated_days)
                 cheapest = min((product.price_pence for product in products), default=None)
@@ -215,7 +220,7 @@ def refresh_homepage_airport_quote_snapshots():
                     rejected.append({"billing_days": calculated_days, "reason": reject_reason})
                     continue
 
-                tag_price_pence = calculate_tag_price_pence(cheapest, discount_pct) if cheapest else None
+                tag_price_pence = calculate_tag_price_pence(cheapest, discount_pct, min_price_pence) if cheapest else None
                 record_quote_snapshot(
                     db,
                     quote_input,

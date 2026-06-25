@@ -25,7 +25,7 @@ the existing test_stripe_service_hueb.py coverage).
 """
 from datetime import date as date_type, datetime, time, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import os
 import pytest
@@ -645,6 +645,128 @@ class TestAirportQuotePromo:
         assert body["discount_amount"] == 1110          # int(11103 * 10/100)
         assert body["amount"] == 9993                    # 11103 - 1110
         assert body["client_secret"] == "cs_test_aq"
+
+    def test_H_airport_quote_paid_intent_does_not_mark_conversion_yet(self, monkeypatch):
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQINTENT", booking_id=808)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_test_aq_intent"
+        fake_intent.client_secret = "cs_test_aq_intent"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        db = _promo_quote_db(
+            promo_code_record=None,
+            promotion=None,
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=11103),
+        )
+        _override_db(db)
+        payload = _free_booking_payload(promo_code=None)
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        assert db.execute.call_count == 0
+
+    def test_H_free_booking_issues_real_converted_update_sql(self, monkeypatch):
+        """#1b: a confirmed £0 / 100%-promo booking (main.py:13474 branch)
+        reaches the shared marking helper and issues the real
+        UPDATE ... SET converted = true for the quote's snapshot id. Driven
+        through the actual create-intent handler — not a direct helper call —
+        and the writer is NOT patched, so this proves the free branch both
+        reaches the helper and flips the row."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQFREECONV", booking_id=820)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        db = _promo_quote_db(
+            promo_code_record=_mk_promo_code_record(),
+            promotion=_mk_free_100_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=11103),
+        )
+        _override_db(db)
+        payload = _free_booking_payload()
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        assert resp.json()["is_free_booking"] is True
+        updates = [
+            call for call in db.execute.call_args_list
+            if "airport_quote_conversion_log" in str(call.args[0]).lower()
+        ]
+        assert updates, "free booking must issue the conversion UPDATE"
+        sql = str(updates[0].args[0]).lower()
+        assert "update airport_quote_conversion_log" in sql
+        assert "set converted = true" in sql
+        assert updates[0].args[1] == {"airport_quote_snapshot_id": 555}
+
+    def test_paid_and_free_converge_on_single_mark_helper(self, monkeypatch):
+        """Both entry points resolve to the SAME helper
+        (airport_quote_service.mark_airport_quote_converted, :623) — there is
+        exactly one marking path. The webhook (paid) entry point is asserted in
+        test_stripe_webhook_hueb_integration; here we pin the identity and the
+        free entry point's call with the snapshot id."""
+        import airport_quote_service
+        assert main.mark_airport_quote_converted is airport_quote_service.mark_airport_quote_converted
+
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQ1PATH", booking_id=821)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        _override_db(_promo_quote_db(
+            promo_code_record=_mk_promo_code_record(),
+            promotion=_mk_free_100_promotion(),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=11103),
+        ))
+        payload = _free_booking_payload()
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"), \
+             patch("main.mark_airport_quote_converted") as mock_mark:
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        mock_mark.assert_called_once_with(ANY, 555)
+
+    def test_H_floored_65_quote_nets_58_50_after_10pct_promo(self, monkeypatch):
+        """Floor is PRE-promo: the BOH £79 cell's TAG is already floored to £65;
+        a 10% promo then applies ON TOP -> £58.50 net, NOT re-floored to £65."""
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQFLOOR", booking_id=830)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        fake_intent = MagicMock()
+        fake_intent.payment_intent_id = "pi_floor65"
+        fake_intent.client_secret = "cs_floor65"
+        monkeypatch.setattr("main.create_payment_intent", lambda *a, **kw: fake_intent)
+        promo = _mk_promo_code_record()
+        promo.code = "SAVE10"
+        _override_db(_promo_quote_db(
+            promo_code_record=promo,
+            promotion=_mk_percentage_promotion(percent=10),
+            booking_row=booking,
+            airport_snapshot=_mk_airport_snapshot(tag_price_pence=6500),  # floored £65
+        ))
+        payload = _free_booking_payload(promo_code="SAVE10")
+        payload["airport_quote_snapshot_id"] = 555
+
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            resp = TestClient(app).post("/api/payments/create-intent", json=payload)
+
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["is_free_booking"] is False
+        assert body["original_amount"] == 6500   # pre-promo TAG, floored to £65
+        assert body["discount_amount"] == 650    # int(6500 * 10/100)
+        assert body["amount"] == 5850            # £58.50 net — NOT re-floored to £65
 
     def test_U_rejects_stale_airport_quote_id_when_times_change(self, monkeypatch):
         """F1: same quote id cannot be reused after the customer changes times."""

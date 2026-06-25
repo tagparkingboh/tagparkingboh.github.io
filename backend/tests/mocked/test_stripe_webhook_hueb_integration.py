@@ -20,7 +20,7 @@ Auth notes:
 import json
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import sys
 from pathlib import Path
@@ -154,6 +154,95 @@ class TestPaymentIntentSucceeded:
         _override_db(_wire_payment_lookup(payment))
         resp = _post({})
         assert resp.status_code == 200
+
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_H_payment_succeeded_marks_airport_quote_converted(self, mock_update, mock_verify, mock_cfg):
+        payment = _mock_payment(intent_id="pi_aq_conv", booking_id=42)
+        payment.status = PaymentStatus.SUCCEEDED
+        mock_update.return_value = (payment, False)
+
+        mock_verify.return_value = _event(
+            "payment_intent.succeeded",
+            _stripe_obj(
+                id="pi_aq_conv",
+                metadata={
+                    "booking_reference": "TAG-AQCONV",
+                    "airport_quote_snapshot_id": "555",
+                },
+            ),
+        )
+        _override_db(_wire_payment_lookup(payment))
+
+        with patch("main.mark_airport_quote_converted") as mock_mark:
+            resp = _post({})
+
+        assert resp.status_code == 200
+        mock_mark.assert_called_once_with(ANY, 555)
+
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_U_duplicate_payment_webhook_does_not_mark_airport_quote_converted(self, mock_update, mock_verify, mock_cfg):
+        payment = _mock_payment(intent_id="pi_aq_dup", booking_id=42)
+        mock_update.return_value = (payment, True)
+
+        mock_verify.return_value = _event(
+            "payment_intent.succeeded",
+            _stripe_obj(
+                id="pi_aq_dup",
+                metadata={
+                    "booking_reference": "TAG-AQDUP",
+                    "airport_quote_snapshot_id": "555",
+                },
+            ),
+        )
+        _override_db(_wire_payment_lookup(payment))
+
+        with patch("main.mark_airport_quote_converted") as mock_mark:
+            resp = _post({})
+
+        assert resp.status_code == 200
+        mock_mark.assert_not_called()
+
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_H_payment_succeeded_issues_real_converted_update_sql(self, mock_update, mock_verify, mock_cfg):
+        """#1 success lifecycle point, proven through the REAL writer (mark is
+        NOT patched): the succeeded webhook issues an UPDATE ... SET converted =
+        true for the snapshot id. The sibling test above proves the call site is
+        reached; this one proves the SQL that actually flips the row."""
+        payment = _mock_payment(intent_id="pi_aq_real", booking_id=42)
+        payment.status = PaymentStatus.SUCCEEDED
+        mock_update.return_value = (payment, False)
+
+        mock_verify.return_value = _event(
+            "payment_intent.succeeded",
+            _stripe_obj(
+                id="pi_aq_real",
+                metadata={
+                    "booking_reference": "TAG-AQREAL",
+                    "airport_quote_snapshot_id": "555",
+                },
+            ),
+        )
+        db = _wire_payment_lookup(payment)
+        _override_db(db)
+
+        resp = _post({})
+
+        assert resp.status_code == 200
+        updates = [
+            call for call in db.execute.call_args_list
+            if "airport_quote_conversion_log" in str(call.args[0]).lower()
+        ]
+        assert updates, "succeeded webhook must issue the conversion UPDATE"
+        sql = str(updates[0].args[0]).lower()
+        assert "update airport_quote_conversion_log" in sql
+        assert "set converted = true" in sql
+        assert updates[0].args[1] == {"airport_quote_snapshot_id": 555}
 
 
 # ============================================================================

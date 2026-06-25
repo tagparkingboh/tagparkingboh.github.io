@@ -50,6 +50,9 @@ class PaymentIntentRequest(BaseModel):
     # Discount amount (in pence) - for email display
     discount_amount: Optional[int] = None
 
+    # Airport quote conversion tracking
+    airport_quote_snapshot_id: Optional[int] = None
+
 
 class PaymentIntentResponse(BaseModel):
     """Response containing payment intent details."""
@@ -110,6 +113,7 @@ def create_payment_intent(request: PaymentIntentRequest) -> PaymentIntentRespons
             "promo_code": request.promo_code or "",
             "original_amount": str(request.original_amount) if request.original_amount else "",
             "discount_amount": str(request.discount_amount) if request.discount_amount else "",
+            "airport_quote_snapshot_id": str(request.airport_quote_snapshot_id) if request.airport_quote_snapshot_id else "",
         },
         receipt_email=request.customer_email,
         description=f"TAG Parking - {request.flight_number} ({request.flight_date})",

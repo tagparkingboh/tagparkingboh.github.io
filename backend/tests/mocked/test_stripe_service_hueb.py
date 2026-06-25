@@ -82,6 +82,16 @@ class TestCreatePaymentIntent:
         assert meta["original_amount"] == "11000"
         assert meta["discount_amount"] == "1100"
 
+    def test_E_with_airport_quote_snapshot_metadata(self, monkeypatch):
+        captured = {}
+        def fake_create(**kw):
+            captured.update(kw)
+            return _fake_intent()
+        monkeypatch.setattr(stripe_service, "is_stripe_configured", lambda: True)
+        monkeypatch.setattr(stripe_service.stripe.PaymentIntent, "create", fake_create)
+        stripe_service.create_payment_intent(_req(airport_quote_snapshot_id=555))
+        assert captured["metadata"]["airport_quote_snapshot_id"] == "555"
+
     def test_E_optional_fields_blank_when_missing(self, monkeypatch):
         captured = {}
         def fake_create(**kw):
@@ -94,6 +104,7 @@ class TestCreatePaymentIntent:
         assert meta["departure_id"] == ""
         assert meta["drop_off_slot"] == ""
         assert meta["promo_code"] == ""
+        assert meta["airport_quote_snapshot_id"] == ""
 
 
 # ============================================================================

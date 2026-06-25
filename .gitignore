@@ -58,17 +58,15 @@ backend/docs/AIRPORT_QUOTE_E2E_SPEC.md
 AUTO_ROSTER_SWEEP_HANDOFF.md
 PROMO_CODES_HANDOFF.md
 REFERRAL_FEATURE_BRIEF.md
+BOH_PRICING_STRATEGY_BRIEF.md
+BOH_PRICING_STRATEGY_ANALYSIS.md
 
 # Migration scripts (contain sensitive patterns)
 backend/migrations/
 
-# One-off operational backfill scripts (refund reconciliation etc.) —
-# contain customer references / Stripe metadata; keep out of public history.
-backend/scripts/backfill_refund_*.py
-backend/scripts/backfill_stripe_refund.py
-backend/scripts/backfill_dvla_compliance.py
-backend/scripts/enrich_dvla_compliance_csv.py
-backend/scripts/apply_dvla_csv_to_db.py
+# Operational / one-off scripts — may contain customer refs, Stripe metadata,
+# or scraping tooling we don't advertise. Keep the whole folder out of the repo.
+backend/scripts/
 
 # PDX exploratory work (separate sub-project) — schema sketches and
 # scratch directory kept local while it's being shaped.

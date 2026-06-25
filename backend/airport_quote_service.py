@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal, ROUND_FLOOR
 from typing import Callable, Iterable, Optional
+from zoneinfo import ZoneInfo
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db_models import AirportQuoteSnapshot
@@ -20,8 +22,12 @@ logger = logging.getLogger(__name__)
 
 AIRPORT_CODE = "BOH"
 DEFAULT_DISCOUNT_PERCENT = Decimal("25")
+DEFAULT_LEAD_BOUNDARY_DAYS = 70
+DEFAULT_DURATION_BOUNDARY_DAYS = 7
+DEFAULT_MIN_PRICE_PENCE = 0
 DEFAULT_WEEK1_PRICE_PENCE = 10500
 DEFAULT_AIRPORT_PRICE_FLOOR_PER_DAY_PENCE = 1000
+LONDON_TZ = ZoneInfo("Europe/London")
 
 BOH_TIME_OPTIONS = (
     ["00:01"]
@@ -96,6 +102,13 @@ class AirportQuoteLiveResult:
     destination_id: str
 
 
+@dataclass(frozen=True)
+class AirportQuoteDiscountDecision:
+    discount_pct: Decimal
+    discount_band: str
+    lead_days: int
+
+
 def _parse_decimal_env(name: str, default: Decimal, min_value: Decimal, max_value: Decimal) -> Decimal:
     raw = os.environ.get(name)
     if raw is None or raw == "":
@@ -121,6 +134,159 @@ def get_airport_quote_discount_percent() -> Decimal:
         Decimal("0"),
         Decimal("60"),
     )
+
+
+def get_airport_quote_matrix_enabled() -> bool:
+    raw = os.environ.get("AIRPORT_QUOTE_MATRIX_ENABLED")
+    if raw is None or raw == "":
+        logger.warning("AIRPORT_QUOTE_MATRIX_ENABLED is unset; using flat discount")
+        return False
+
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    logger.warning("AIRPORT_QUOTE_MATRIX_ENABLED=%r is invalid; using flat discount", raw)
+    return False
+
+
+def _parse_boundary_days_env(name: str, default: int, min_value: int, max_value: int) -> Optional[int]:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("%s=%r is invalid; using AIRPORT_QUOTE_DISCOUNT_PERCENT", name, raw)
+        return None
+    if value < min_value or value > max_value:
+        logger.warning("%s=%r outside %s-%s; using AIRPORT_QUOTE_DISCOUNT_PERCENT", name, raw, min_value, max_value)
+        return None
+    return value
+
+
+def get_airport_quote_min_price_pence() -> int:
+    raw = os.environ.get("AIRPORT_QUOTE_MIN_PRICE_PENCE")
+    if raw is None or raw == "":
+        return DEFAULT_MIN_PRICE_PENCE
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "AIRPORT_QUOTE_MIN_PRICE_PENCE=%r is invalid; using default %s",
+            raw,
+            DEFAULT_MIN_PRICE_PENCE,
+        )
+        return DEFAULT_MIN_PRICE_PENCE
+    if value < 0:
+        logger.warning(
+            "AIRPORT_QUOTE_MIN_PRICE_PENCE=%r is negative; using default %s",
+            raw,
+            DEFAULT_MIN_PRICE_PENCE,
+        )
+        return DEFAULT_MIN_PRICE_PENCE
+    return value
+
+
+def calculate_airport_quote_lead_days(entry_date: date, today: Optional[date] = None) -> int:
+    quote_today = today or datetime.now(LONDON_TZ).date()
+    return (entry_date - quote_today).days
+
+
+def normalise_london_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=LONDON_TZ)
+    return value.astimezone(LONDON_TZ)
+
+
+def _parse_discount_matrix() -> tuple[Decimal, Decimal, Decimal, Decimal] | None:
+    raw = os.environ.get("AIRPORT_QUOTE_DISCOUNT_MATRIX")
+    if raw is None or raw == "":
+        logger.warning("AIRPORT_QUOTE_DISCOUNT_MATRIX is unset; using AIRPORT_QUOTE_DISCOUNT_PERCENT")
+        return None
+
+    parts = [part.strip() for part in raw.split(",")]
+    if len(parts) != 4:
+        logger.warning(
+            "AIRPORT_QUOTE_DISCOUNT_MATRIX has %s values, expected 4; using AIRPORT_QUOTE_DISCOUNT_PERCENT",
+            len(parts),
+        )
+        return None
+
+    try:
+        values = tuple(Decimal(part) for part in parts)
+    except Exception:
+        logger.warning(
+            "AIRPORT_QUOTE_DISCOUNT_MATRIX=%r is invalid; using AIRPORT_QUOTE_DISCOUNT_PERCENT",
+            raw,
+        )
+        return None
+
+    if any(value < Decimal("0") or value > Decimal("60") for value in values):
+        logger.warning(
+            "AIRPORT_QUOTE_DISCOUNT_MATRIX=%r has a value outside 0-60; using AIRPORT_QUOTE_DISCOUNT_PERCENT",
+            raw,
+        )
+        return None
+
+    return values
+
+
+def get_airport_quote_discount_decision(
+    entry_date: date,
+    billing_days: int,
+    *,
+    shown_at: Optional[datetime] = None,
+) -> AirportQuoteDiscountDecision:
+    shown_at_uk = normalise_london_datetime(shown_at or datetime.now(LONDON_TZ))
+    lead_days = calculate_airport_quote_lead_days(entry_date, shown_at_uk.date())
+    if not get_airport_quote_matrix_enabled():
+        return AirportQuoteDiscountDecision(
+            discount_pct=get_airport_quote_discount_percent(),
+            discount_band="flat",
+            lead_days=lead_days,
+        )
+
+    matrix = _parse_discount_matrix()
+    if matrix is None:
+        return AirportQuoteDiscountDecision(
+            discount_pct=get_airport_quote_discount_percent(),
+            discount_band="flat-fallback",
+            lead_days=lead_days,
+        )
+
+    lead_boundary_days = _parse_boundary_days_env(
+        "AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS",
+        DEFAULT_LEAD_BOUNDARY_DAYS,
+        0,
+        3650,
+    )
+    duration_boundary_days = _parse_boundary_days_env(
+        "AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS",
+        DEFAULT_DURATION_BOUNDARY_DAYS,
+        1,
+        3650,
+    )
+    if lead_boundary_days is None or duration_boundary_days is None:
+        return AirportQuoteDiscountDecision(
+            discount_pct=get_airport_quote_discount_percent(),
+            discount_band="flat-fallback",
+            lead_days=lead_days,
+        )
+    near_short, near_long, far_short, far_long = matrix
+    if lead_days <= lead_boundary_days:
+        if billing_days <= duration_boundary_days:
+            return AirportQuoteDiscountDecision(near_short, "near-short", lead_days)
+        return AirportQuoteDiscountDecision(near_long, "near-long", lead_days)
+    if billing_days <= duration_boundary_days:
+        return AirportQuoteDiscountDecision(far_short, "far-short", lead_days)
+    return AirportQuoteDiscountDecision(far_long, "far-long", lead_days)
+
+
+def get_airport_quote_discount_percent_for_quote(entry_date: date, billing_days: int) -> Decimal:
+    return get_airport_quote_discount_decision(entry_date, billing_days).discount_pct
 
 
 def get_airport_quote_week1_price_pence() -> int:
@@ -184,9 +350,10 @@ def normalise_boh_time_slot(value: time | str) -> str:
     return best
 
 
-def calculate_tag_price_pence(cheapest_pence: int, discount_pct: Decimal) -> int:
+def calculate_tag_price_pence(cheapest_pence: int, discount_pct: Decimal, min_price_pence: int = 0) -> int:
     multiplier = Decimal("1") - (discount_pct / Decimal("100"))
-    return int((Decimal(cheapest_pence) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
+    discounted = int((Decimal(cheapest_pence) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
+    return max(min(discounted, cheapest_pence - 1), min_price_pence)
 
 
 def format_price_text(price_pence: int) -> str:
@@ -329,6 +496,7 @@ def fallback_quote_from_snapshots(
     db: Session,
     billing_days: int,
     discount_pct: Decimal,
+    min_price_pence: int = 0,
 ) -> tuple[list[AirportProduct], int, str]:
     snapshot = (
         db.query(AirportQuoteSnapshot)
@@ -353,11 +521,11 @@ def fallback_quote_from_snapshots(
             for item in raw_products
             if int(item.get("pricePence") or item.get("price_pence") or 0) > 0
         ]
-        return products, calculate_tag_price_pence(snapshot.cheapest_pence, discount_pct), "model"
+        return products, calculate_tag_price_pence(snapshot.cheapest_pence, discount_pct, min_price_pence), "model"
 
     airport_price = bootstrap_model_airport_price_pence(billing_days)
     products = [AirportProduct("Bournemouth Airport model", airport_price, format_price_text(airport_price))]
-    return products, calculate_tag_price_pence(airport_price, discount_pct), "model"
+    return products, calculate_tag_price_pence(airport_price, discount_pct, min_price_pence), "model"
 
 
 def record_quote_snapshot(
@@ -394,6 +562,142 @@ def record_quote_snapshot(
     db.commit()
     db.refresh(snapshot)
     return snapshot
+
+
+def record_quote_conversion_log(
+    db: Session,
+    *,
+    airport_quote_snapshot_id: Optional[int],
+    lead_days: Optional[int],
+    billing_days: Optional[int],
+    discount_band: Optional[str],
+    tag_pence: Optional[int],
+    cheapest_boh_pence: Optional[int],
+    shown_at: datetime,
+) -> None:
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO airport_quote_conversion_log (
+                    airport_quote_snapshot_id,
+                    lead_days,
+                    billing_days,
+                    discount_band,
+                    tag_pence,
+                    cheapest_boh_pence,
+                    shown_at,
+                    converted
+                )
+                VALUES (
+                    :airport_quote_snapshot_id,
+                    :lead_days,
+                    :billing_days,
+                    :discount_band,
+                    :tag_pence,
+                    :cheapest_boh_pence,
+                    :shown_at,
+                    false
+                )
+                ON CONFLICT (airport_quote_snapshot_id)
+                WHERE airport_quote_snapshot_id IS NOT NULL
+                DO NOTHING
+                """
+            ),
+            {
+                "airport_quote_snapshot_id": airport_quote_snapshot_id,
+                "lead_days": lead_days,
+                "billing_days": billing_days,
+                "discount_band": discount_band,
+                "tag_pence": tag_pence,
+                "cheapest_boh_pence": cheapest_boh_pence,
+                "shown_at": normalise_london_datetime(shown_at),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.exception(
+            "Failed to write airport quote conversion log for snapshot_id=%s",
+            airport_quote_snapshot_id,
+        )
+
+
+def mark_airport_quote_converted(db: Session, airport_quote_snapshot_id: Optional[int]) -> None:
+    if not airport_quote_snapshot_id:
+        return
+    try:
+        result = db.execute(
+            text(
+                """
+                UPDATE airport_quote_conversion_log
+                SET converted = true
+                WHERE airport_quote_snapshot_id = :airport_quote_snapshot_id
+                """
+            ),
+            {"airport_quote_snapshot_id": airport_quote_snapshot_id},
+        )
+        if result.rowcount == 0:
+            logger.warning(
+                "Airport quote conversion update matched 0 rows for snapshot_id=%s",
+                airport_quote_snapshot_id,
+            )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.exception(
+            "Failed to mark airport quote conversion log converted for snapshot_id=%s",
+            airport_quote_snapshot_id,
+        )
+
+
+def record_airport_quote_conversion_from_response(
+    db: Session,
+    quote_input: AirportQuoteInput,
+    response: dict,
+) -> None:
+    quote_snapshot_id = response.get("quoteId")
+    if not quote_snapshot_id:
+        return
+
+    quoted_at_raw = response.get("quotedAt")
+    try:
+        shown_at = datetime.fromisoformat(quoted_at_raw) if quoted_at_raw else datetime.now(LONDON_TZ)
+    except ValueError:
+        shown_at = datetime.now(LONDON_TZ)
+
+    billing_days = int(response.get("billing_days") or response.get("pricingInfo", {}).get("duration_days") or 0)
+    discount_decision = get_airport_quote_discount_decision(
+        quote_input.entry_date,
+        billing_days,
+        shown_at=shown_at,
+    )
+    airport_prices = response.get("airportPrices") or []
+    cheapest_boh_pence = min(
+        (
+            int(item.get("pricePence") or item.get("price_pence") or 0)
+            for item in airport_prices
+            if int(item.get("pricePence") or item.get("price_pence") or 0) > 0
+        ),
+        default=None,
+    )
+
+    record_quote_conversion_log(
+        db,
+        airport_quote_snapshot_id=quote_snapshot_id,
+        lead_days=discount_decision.lead_days,
+        billing_days=billing_days,
+        discount_band=discount_decision.discount_band,
+        tag_pence=response.get("tagPricePence") or response.get("pricingInfo", {}).get("price_pence"),
+        cheapest_boh_pence=cheapest_boh_pence,
+        shown_at=shown_at,
+    )
 
 
 Scraper = Callable[[AirportQuoteInput], AirportQuoteScrapeResult]
@@ -452,11 +756,23 @@ def build_airport_parking_quote_from_live_or_model(
     entry_dt = datetime.combine(quote_input.entry_date, quote_input.entry_time)
     exit_dt = datetime.combine(quote_input.exit_date, quote_input.exit_time)
     billing_days = calculate_billing_days(entry_dt, exit_dt)
-    discount_pct = get_airport_quote_discount_percent()
+    quoted_at = normalise_london_datetime(quoted_at_factory())
+    discount_decision = get_airport_quote_discount_decision(
+        quote_input.entry_date,
+        billing_days,
+        shown_at=quoted_at,
+    )
+    discount_pct = discount_decision.discount_pct
+    min_price_pence = get_airport_quote_min_price_pence()
     destination_id = live_quote.destination_id if live_quote else BOH_DESTINATION_OTHER_ID
 
     if live_quote is None and not live_error:
-        products, tag_price_pence, source = fallback_quote_from_snapshots(db, billing_days, discount_pct)
+        products, tag_price_pence, source = fallback_quote_from_snapshots(
+            db,
+            billing_days,
+            discount_pct,
+            min_price_pence,
+        )
         snapshot = record_quote_snapshot(
             db,
             quote_input,
@@ -475,7 +791,7 @@ def build_airport_parking_quote_from_live_or_model(
             billing_days=billing_days,
             discount_pct_used=discount_pct,
             source=source,
-            quoted_at=quoted_at_factory(),
+            quoted_at=quoted_at,
             quote_snapshot_id=snapshot.id,
         )
 
@@ -498,7 +814,12 @@ def build_airport_parking_quote_from_live_or_model(
                 status="rejected",
                 reject_reason=reject_reason,
             )
-            products, tag_price_pence, source = fallback_quote_from_snapshots(db, billing_days, discount_pct)
+            products, tag_price_pence, source = fallback_quote_from_snapshots(
+                db,
+                billing_days,
+                discount_pct,
+                min_price_pence,
+            )
             snapshot = record_quote_snapshot(
                 db,
                 quote_input,
@@ -513,7 +834,7 @@ def build_airport_parking_quote_from_live_or_model(
             )
         else:
             cheapest = min(product.price_pence for product in products)
-            tag_price_pence = calculate_tag_price_pence(cheapest, discount_pct)
+            tag_price_pence = calculate_tag_price_pence(cheapest, discount_pct, min_price_pence)
             snapshot = record_quote_snapshot(
                 db,
                 quote_input,
@@ -542,7 +863,12 @@ def build_airport_parking_quote_from_live_or_model(
             status="error",
             reject_reason=(live_error or "live_quote_unavailable")[:500],
         )
-        products, tag_price_pence, source = fallback_quote_from_snapshots(db, billing_days, discount_pct)
+        products, tag_price_pence, source = fallback_quote_from_snapshots(
+            db,
+            billing_days,
+            discount_pct,
+            min_price_pence,
+        )
         snapshot = record_quote_snapshot(
             db,
             quote_input,
@@ -562,7 +888,7 @@ def build_airport_parking_quote_from_live_or_model(
         billing_days=billing_days,
         discount_pct_used=discount_pct,
         source=source,
-        quoted_at=quoted_at_factory(),
+        quoted_at=quoted_at,
         quote_snapshot_id=snapshot.id if snapshot else None,
     )
 

@@ -157,7 +157,11 @@ from booking_service import get_booking_service, BookingService, get_base_price_
 from airport_quote_service import (
     calculate_tag_price_pence,
     get_airport_quote_discount_percent,
+    get_airport_quote_discount_percent_for_quote,
+    get_airport_quote_min_price_pence,
     get_airport_quote_week1_price_pence,
+    mark_airport_quote_converted,
+    record_airport_quote_conversion_from_response,
 )
 from time_slots import get_drop_off_summary, get_pickup_summary
 from config import get_settings, is_stripe_configured
@@ -1331,13 +1335,15 @@ def get_airport_parking_quote_endpoint(
 
         db = get_airport_quote_session_factory()()
         try:
-            return build_airport_parking_quote_from_live_or_model(
+            response = build_airport_parking_quote_from_live_or_model(
                 db,
                 quote_input,
                 live_quote=live_quote,
                 live_error=live_error,
                 quoted_at_factory=get_uk_now,
             )
+            record_airport_quote_conversion_from_response(db, quote_input, response)
+            return response
         finally:
             db.close()
     except ValueError as exc:
@@ -1392,9 +1398,16 @@ def _homepage_comparison_item(snapshot: AirportQuoteSnapshot) -> dict:
     if _homepage_price_mode() == "base_rate":
         tag_price_pence = base_price_pence
     else:
+        entry_date = getattr(snapshot, "entry_date", None)
+        discount_pct = (
+            get_airport_quote_discount_percent_for_quote(entry_date, snapshot.billing_days)
+            if entry_date
+            else get_airport_quote_discount_percent()
+        )
         tag_price_pence = calculate_tag_price_pence(
             cheapest_pence,
-            get_airport_quote_discount_percent(),
+            discount_pct,
+            get_airport_quote_min_price_pence(),
         ) if cheapest_pence else base_price_pence
 
     premium_pence = most_expensive["pricePence"] if most_expensive else None
@@ -12948,6 +12961,7 @@ async def create_payment(
                                                 "promo_code": new_promo_code_applied or "",
                                                 "original_amount": str(new_original_amount) if new_promo_code_applied else "",
                                                 "discount_amount": str(new_discount_amount) if new_promo_code_applied else "",
+                                                "airport_quote_snapshot_id": str(request.airport_quote_snapshot_id) if request.airport_quote_snapshot_id else "",
                                             }
                                         )
                                         print(f"[DEDUP] Modified PaymentIntent {modified_intent.id} - new amount: {new_amount}")
@@ -13454,9 +13468,6 @@ async def create_payment(
             booking_id = booking_data["booking"].id
             customer = booking_data["customer"]
 
-        # Flight slot capacity is legacy metadata from the old booking system.
-        # Parking capacity is controlled by parking_capacity_settings.
-
         settings = get_settings()
 
         # Handle FREE bookings (100% off promo code) - skip Stripe entirely
@@ -13470,6 +13481,7 @@ async def create_payment(
                 booking.updated_at = datetime.utcnow()
                 db.commit()
                 db.refresh(booking)
+                mark_airport_quote_converted(db, request.airport_quote_snapshot_id)
                 # 2026-05-02 live auto-roster takeover (free booking path).
                 # Swallow any import / scheduling error — the customer's
                 # free-booking flow must not 500 because of a planner
@@ -13744,6 +13756,7 @@ async def create_payment(
             promo_code=promo_code_applied,
             original_amount=original_amount if promo_code_applied else None,
             discount_amount=discount_amount if promo_code_applied else None,
+            airport_quote_snapshot_id=request.airport_quote_snapshot_id,
         )
 
         intent = create_payment_intent(intent_request)
@@ -13897,6 +13910,11 @@ async def stripe_webhook(
         promo_code = metadata.get("promo_code") if isinstance(metadata, dict) else getattr(metadata, "promo_code", None)
         meta_original_amount = metadata.get("original_amount") if isinstance(metadata, dict) else getattr(metadata, "original_amount", None)  # pence, as string
         meta_discount_amount = metadata.get("discount_amount") if isinstance(metadata, dict) else getattr(metadata, "discount_amount", None)  # pence, as string
+        meta_airport_quote_snapshot_id = (
+            metadata.get("airport_quote_snapshot_id")
+            if isinstance(metadata, dict)
+            else getattr(metadata, "airport_quote_snapshot_id", None)
+        )
 
         # Capacity race re-check (closes the "checkout passed at 63 confirmed,
         # second customer's webhook flipped them to 64, this customer's
@@ -14018,6 +14036,11 @@ async def stripe_webhook(
             elif was_already_processed:
                 print(f"[WEBHOOK] Duplicate webhook - already processed for {booking_reference}")
             else:
+                try:
+                    airport_quote_snapshot_id = int(meta_airport_quote_snapshot_id) if meta_airport_quote_snapshot_id else None
+                except (TypeError, ValueError):
+                    airport_quote_snapshot_id = None
+                mark_airport_quote_converted(db, airport_quote_snapshot_id)
                 # Real new confirmation — fire shadow-mode planner. Skip on
                 # duplicates and on missing-payment (manual flow handles
                 # its own trigger via mark_booking_paid).

@@ -1,4 +1,5 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -12,8 +13,10 @@ from airport_quote_service import (
     AirportQuoteScrapeResult,
     calculate_billing_days,
     calculate_tag_price_pence,
+    get_airport_quote_discount_decision,
     get_airport_quote_discount_percent,
     get_airport_quote_week1_price_pence,
+    mark_airport_quote_converted,
     normalise_boh_time_slot,
     parse_boh_products,
     fallback_quote_from_snapshots,
@@ -99,6 +102,111 @@ def test_discount_env_valid_and_invalid(monkeypatch, caplog):
 
     monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "99")
     assert get_airport_quote_discount_percent() == 25
+
+
+def test_matrix_discount_boundaries_at_lead_7_8_and_duration_7_8(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "7")
+    monkeypatch.setenv("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", "7")
+    shown_at = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
+
+    cases = [
+        (7, 7, "near-short", 25),
+        (7, 8, "near-long", 20),
+        (8, 7, "far-short", 12),
+        (8, 8, "far-long", 10),
+    ]
+
+    for lead_days, billing_days, band, pct in cases:
+        decision = get_airport_quote_discount_decision(
+            shown_at.date() + timedelta(days=lead_days),
+            billing_days,
+            shown_at=shown_at,
+        )
+        assert decision.lead_days == lead_days
+        assert decision.discount_band == band
+        assert decision.discount_pct == pct
+
+
+def test_matrix_discount_accepts_decimal_percent(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12.5,10")
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "7")
+    monkeypatch.setenv("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", "7")
+    shown_at = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
+
+    decision = get_airport_quote_discount_decision(
+        shown_at.date() + timedelta(days=8),
+        7,
+        shown_at=shown_at,
+    )
+
+    assert decision.discount_band == "far-short"
+    assert decision.discount_pct == Decimal("12.5")
+    assert calculate_tag_price_pence(10000, decision.discount_pct) == 8750
+
+
+def test_matrix_parse_failure_falls_back_to_flat_percent_with_log(monkeypatch, caplog):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,bad,10")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "22")
+
+    decision = get_airport_quote_discount_decision(
+        date(2026, 7, 1),
+        7,
+        shown_at=datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc),
+    )
+
+    assert decision.discount_pct == 22
+    assert decision.discount_band == "flat-fallback"
+    assert "AIRPORT_QUOTE_DISCOUNT_MATRIX" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("env_name", "env_value"),
+    [
+        ("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "bad"),
+        ("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", "0"),
+    ],
+)
+def test_matrix_boundary_parse_failure_falls_back_to_flat_percent_with_log(
+    monkeypatch,
+    caplog,
+    env_name,
+    env_value,
+):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "22")
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "7")
+    monkeypatch.setenv("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", "7")
+    monkeypatch.setenv(env_name, env_value)
+
+    decision = get_airport_quote_discount_decision(
+        date(2026, 7, 2),
+        7,
+        shown_at=datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc),
+    )
+
+    assert decision.discount_pct == 22
+    assert decision.discount_band == "flat-fallback"
+    assert env_name in caplog.text
+    assert "AIRPORT_QUOTE_DISCOUNT_PERCENT" in caplog.text
+
+
+def test_min_price_floor_applies_after_discount():
+    assert calculate_tag_price_pence(5313, 25, 6500) == 6500
+
+
+def test_conversion_update_logs_when_no_row_matches(caplog):
+    db = MagicMock()
+    db.execute.return_value.rowcount = 0
+
+    mark_airport_quote_converted(db, 555)
+
+    assert "matched 0 rows" in caplog.text
+    db.commit.assert_called_once()
 
 
 def test_week1_env_unset_uses_default_with_warning(monkeypatch, caplog):
@@ -357,6 +465,60 @@ def test_quote_endpoint_live_success_records_snapshot(monkeypatch):
     assert snapshot.destination_id == "2182"
     assert snapshot.cheapest_pence == 14805
     assert snapshot.tag_price_pence == 11103
+
+
+def test_quote_endpoint_matrix_records_conversion_log_with_snapshot_id(monkeypatch):
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+
+    def scraper(_quote_input: AirportQuoteInput):
+        return AirportQuoteScrapeResult(
+            products=[
+                AirportProduct("Car Park 3", 10000, "£100.00"),
+                AirportProduct("Car Park 2", 12000, "£120.00"),
+                AirportProduct("Car Park 1", 14000, "£140.00"),
+                AirportProduct("Car Park 1 Premium", 18000, "£180.00"),
+            ]
+        )
+
+    monkeypatch.setattr("main.get_airport_quote_scraper", lambda: scraper)
+    monkeypatch.setattr("main.get_uk_now", lambda: datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc))
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "7")
+    monkeypatch.setenv("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", "7")
+
+    try:
+        response = TestClient(app).post(
+            "/api/airport-parking/quote",
+            json={
+                "entryDate": "2026-07-01",
+                "entryTime": "06:00",
+                "exitDate": "2026-07-09",
+                "exitTime": "06:00",
+                "destination": "Other",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["quoteId"] == 1
+    assert body["billing_days"] == 8
+    assert body["pricingInfo"]["discount_pct_used"] == 20.0
+    assert body["tagPricePence"] == 8000
+
+    assert db.execute.called
+    assert "DO NOTHING" in str(db.execute.call_args.args[0])
+    params = db.execute.call_args.args[1]
+    assert params["airport_quote_snapshot_id"] == 1
+    assert params["lead_days"] == 7
+    assert params["billing_days"] == 8
+    assert params["discount_band"] == "near-long"
+    assert params["tag_pence"] == 8000
+    assert params["cheapest_boh_pence"] == 10000
+    assert params["shown_at"].tzinfo is not None
 
 
 def test_quote_endpoint_scraper_failure_uses_snapshot_model(monkeypatch):
@@ -684,7 +846,7 @@ def test_anomaly_zero_price_rejected_then_model(monkeypatch):
 def test_discount_pct_range_edges(monkeypatch):
     monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "0")   # lower inclusive bound
     assert get_airport_quote_discount_percent() == 0
-    assert calculate_tag_price_pence(14805, get_airport_quote_discount_percent()) == 14805
+    assert calculate_tag_price_pence(14805, get_airport_quote_discount_percent()) == 14804
 
     monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "60")  # upper inclusive bound
     assert get_airport_quote_discount_percent() == 60
@@ -762,3 +924,518 @@ def test_deferred_day_over_day_jump_is_not_yet_a_gate(monkeypatch):
 
     assert body["source"] == "live"  # accepted today; would be "model" once the jump gate lands
     assert db.add.call_args_list[-1].args[0].status == "ok"
+
+
+# ===========================================================================
+# QA brief §3 — matrix additivity + boundary discipline.
+#
+# Two layers:
+#  * Endpoint layer (TestClient + real service over the model path) — proves
+#    additivity and the floor end-to-end. The conversion-log INSERT params
+#    (db.execute.call_args.args[1]) expose the band + lead_days the service
+#    actually decided, so we read the decision back through the real flow.
+#  * Decision layer (get_airport_quote_discount_decision) — pure function,
+#    used as a SUPPLEMENT for t-ε/t/t+ε precision on each boundary and DST.
+#
+# UK-now is pinned everywhere a lead day is asserted so dates don't drift
+# with the wall clock.
+# ===========================================================================
+
+_PINNED_UK_NOW = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
+
+
+def _pin_model_path(monkeypatch, *, uk_now=_PINNED_UK_NOW):
+    """Deterministic model path: no worker, pinned UK now, fresh mock db."""
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    monkeypatch.setattr("main.get_airport_quote_scraper", lambda: None)
+    monkeypatch.setattr("main.get_uk_now", lambda: uk_now)
+    return db
+
+
+def _conversion_params(db):
+    """The params dict the service passed to the conversion-log INSERT."""
+    assert db.execute.called, "expected a conversion-log write"
+    return db.execute.call_args.args[1]
+
+
+# --- additivity: flag off / unset / invalid == flat-percent baseline --------
+
+
+def test_matrix_off_unset_invalid_all_equal_flat_baseline_zero_diff(monkeypatch):
+    """Golden additive proof: with the matrix DISABLED, UNSET, or ENABLED-but-
+    unparseable, the served price and band are byte-identical to the captured
+    flat-percent baseline. The flag adds nothing in the off state."""
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "25")
+    quote = {
+        "entryDate": "2026-07-06", "entryTime": "06:00",
+        "exitDate": "2026-07-13", "exitTime": "06:00",  # billing 7 -> model 14805
+        "destination": "Other",
+    }
+
+    # Baseline: matrix flag entirely unset.
+    monkeypatch.delenv("AIRPORT_QUOTE_MATRIX_ENABLED", raising=False)
+    monkeypatch.delenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", raising=False)
+    db = _pin_model_path(monkeypatch)
+    baseline = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    baseline_band = _conversion_params(db)["discount_band"]
+    assert baseline["tagPricePence"] == 11103  # floor(14805 * 0.75)
+    assert baseline["pricingInfo"]["discount_pct_used"] == 25.0
+    assert baseline_band == "flat"
+
+    # Flag explicitly OFF.
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "false")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    db_off = _pin_model_path(monkeypatch)
+    off = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    assert off["tagPricePence"] == baseline["tagPricePence"]
+    assert _conversion_params(db_off)["discount_band"] == "flat"
+
+    # Flag ON but matrix unparseable -> flat fallback, same number.
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12")  # 3 values
+    db_bad = _pin_model_path(monkeypatch)
+    bad = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    assert bad["tagPricePence"] == baseline["tagPricePence"]
+    assert _conversion_params(db_bad)["discount_band"] == "flat-fallback"
+
+
+def test_matrix_on_diverges_only_when_enabled(monkeypatch):
+    """Counterpart to the additive proof: the SAME trip prices differently once
+    the flag flips on and the band differs from flat — proving the matrix is
+    wired and is the only thing the flag changes."""
+    quote = {
+        "entryDate": "2026-07-06", "entryTime": "06:00",
+        "exitDate": "2026-07-14", "exitTime": "06:00",  # billing 8 -> model 15040
+        "destination": "Other",
+    }
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "25")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "false")
+    db_off = _pin_model_path(monkeypatch)
+    off = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    assert off["tagPricePence"] == 11280  # floor(15040 * 0.75), flat 25%
+    assert _conversion_params(db_off)["discount_band"] == "flat"
+
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    db_on = _pin_model_path(monkeypatch)
+    on = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    # lead 12 (<=70) near, billing 8 (>7) long -> near-long = 20%
+    assert on["tagPricePence"] == 12032  # floor(15040 * 0.80)
+    assert _conversion_params(db_on)["discount_band"] == "near-long"
+    assert on["tagPricePence"] != off["tagPricePence"]
+
+
+# --- lead boundary 69 / 70 / 71 at the real default (70) --------------------
+
+
+def test_lead_boundary_69_70_71_flips_once_at_default(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    monkeypatch.delenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", raising=False)  # default 70
+    monkeypatch.delenv("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", raising=False)  # default 7
+
+    bands = []
+    for lead in (69, 70, 71):
+        decision = get_airport_quote_discount_decision(
+            _PINNED_UK_NOW.date() + timedelta(days=lead),
+            7,  # short
+            shown_at=_PINNED_UK_NOW,
+        )
+        assert decision.lead_days == lead
+        bands.append(decision.discount_band)
+
+    # near up to and including 70; far from 71. Exactly one flip, on the far side.
+    assert bands == ["near-short", "near-short", "far-short"]
+
+
+# --- duration boundary 6 / 7 / 8 at the real default (7) --------------------
+
+
+def test_duration_boundary_6_7_8_flips_once_at_default(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    monkeypatch.delenv("AIRPORT_QUOTE_DURATION_BOUNDARY_DAYS", raising=False)  # default 7
+    monkeypatch.delenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", raising=False)  # default 70
+
+    bands = []
+    for billing in (6, 7, 8):
+        decision = get_airport_quote_discount_decision(
+            _PINNED_UK_NOW.date() + timedelta(days=10),  # near
+            billing,
+            shown_at=_PINNED_UK_NOW,
+        )
+        bands.append(decision.discount_band)
+
+    # short up to and including 7; long from 8. Exactly one flip.
+    assert bands == ["near-short", "near-short", "near-long"]
+
+
+# --- floor t-ε / t / t+ε at £65 (calc precision) ----------------------------
+
+
+def test_floor_just_above_at_below_65_pounds():
+    floor = 6500  # £65.00
+    # Price caps at cheapest-1 before the floor is applied.
+    assert calculate_tag_price_pence(6501, 0, floor) == 6500  # cap to 6500, then floor
+    assert calculate_tag_price_pence(6500, 0, floor) == 6500  # cap to 6499, then floor
+    assert calculate_tag_price_pence(6499, 0, floor) == 6500  # cap to 6498, then floor
+
+
+# --- floor clamps in BOTH modes (flag off and flag on) ----------------------
+
+
+def test_floor_clamps_in_both_modes(monkeypatch):
+    quote = {
+        "entryDate": "2026-07-06", "entryTime": "06:00",
+        "exitDate": "2026-07-13", "exitTime": "06:00",  # billing 7 -> model 14805 -> 11103 @25%
+        "destination": "Other",
+    }
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "25")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")  # near-short=25 == flat
+
+    # Floor ABOVE the discounted price -> clamps in both modes.
+    monkeypatch.setenv("AIRPORT_QUOTE_MIN_PRICE_PENCE", "13000")
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "false")
+    _pin_model_path(monkeypatch)
+    off = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    _pin_model_path(monkeypatch)
+    on = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    assert off["tagPricePence"] == 13000
+    assert on["tagPricePence"] == 13000
+
+    # Floor BELOW the discounted price -> no clamp in either mode.
+    monkeypatch.setenv("AIRPORT_QUOTE_MIN_PRICE_PENCE", "10000")
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "false")
+    _pin_model_path(monkeypatch)
+    off2 = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    _pin_model_path(monkeypatch)
+    on2 = TestClient(app).post("/api/airport-parking/quote", json=quote).json()
+    assert off2["tagPricePence"] == 11103
+    assert on2["tagPricePence"] == 11103
+
+
+# --- malformed matrix set -> flat fallback + log ----------------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",                 # empty
+        "25,20,12",         # too few (3)
+        "a,b,c,d",          # non-numeric
+        "25,20,12,10,9",    # too many (5)
+        "-5,20,12,10",      # negative value
+        "25,20,12,61",      # value over the 0-60 cap
+    ],
+)
+def test_malformed_matrix_falls_back_to_flat_with_log(monkeypatch, caplog, raw):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "22")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", raw)
+
+    decision = get_airport_quote_discount_decision(
+        _PINNED_UK_NOW.date() + timedelta(days=10),
+        7,
+        shown_at=_PINNED_UK_NOW,
+    )
+
+    assert decision.discount_pct == 22          # flat percent, not a matrix band
+    assert decision.discount_band == "flat-fallback"
+    assert "AIRPORT_QUOTE_DISCOUNT_MATRIX" in caplog.text
+
+
+# --- DST-sensitive lead_days computes in Europe/London ----------------------
+
+
+def test_lead_days_uses_london_date_not_utc_across_midnight(monkeypatch):
+    """A quote shown at 23:30 UTC during BST is already the next calendar day in
+    London. lead_days must count from the London date, not the UTC date."""
+    monkeypatch.delenv("AIRPORT_QUOTE_MATRIX_ENABLED", raising=False)
+    shown_at = datetime(2026, 6, 24, 23, 30, tzinfo=timezone.utc)  # London BST -> 2026-06-25 00:30
+    decision = get_airport_quote_discount_decision(
+        date(2026, 7, 5),
+        7,
+        shown_at=shown_at,
+    )
+    # London date 2026-06-25 -> 10 days to 07-05 (UTC date 06-24 would give 11).
+    assert decision.lead_days == 10
+
+
+def test_lead_days_spanning_autumn_clock_change_counts_calendar_days(monkeypatch):
+    """Lead window straddling the BST->GMT switch (2026-10-25) counts whole
+    calendar days with no DST double-count."""
+    monkeypatch.delenv("AIRPORT_QUOTE_MATRIX_ENABLED", raising=False)
+    shown_at = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)  # London 13:00 BST, 10-20
+    decision = get_airport_quote_discount_decision(
+        date(2026, 11, 5),  # after the GMT switch
+        7,
+        shown_at=shown_at,
+    )
+    assert decision.lead_days == 16
+
+
+# --- out-of-grid inputs: duration <3, >15; lead negative / 0 ----------------
+
+
+def test_out_of_grid_short_duration_under_3_prices_and_bands(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    db = _pin_model_path(monkeypatch)
+    body = TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-07-06", "entryTime": "06:00",
+            "exitDate": "2026-07-08", "exitTime": "06:00",  # billing 2 (<3)
+            "destination": "Other",
+        },
+    ).json()
+    assert body["billing_days"] == 2
+    assert body["tagPricePence"] == 6000  # floor(8000 * 0.75) near-short
+    params = _conversion_params(db)
+    assert params["billing_days"] == 2
+    assert params["discount_band"] == "near-short"
+
+
+def test_out_of_grid_long_duration_over_15_prices_and_bands(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+    db = _pin_model_path(monkeypatch)
+    body = TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-07-06", "entryTime": "06:00",
+            "exitDate": "2026-07-22", "exitTime": "06:00",  # billing 16 (>15)
+            "destination": "Other",
+        },
+    ).json()
+    assert body["billing_days"] == 16
+    # bootstrap day14=21888 + (16-14)*1250 = 24388; near-long 20% -> floor(24388*0.8)
+    assert body["tagPricePence"] == 19510
+    params = _conversion_params(db)
+    assert params["billing_days"] == 16
+    assert params["discount_band"] == "near-long"
+
+
+def test_out_of_grid_lead_zero_and_negative_still_price(monkeypatch):
+    monkeypatch.setenv("AIRPORT_QUOTE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_MATRIX", "25,20,12,10")
+
+    # lead 0: entry == pinned UK today.
+    db0 = _pin_model_path(monkeypatch)
+    zero = TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-06-24", "entryTime": "06:00",
+            "exitDate": "2026-07-01", "exitTime": "06:00",  # billing 7
+            "destination": "Other",
+        },
+    ).json()
+    assert zero["tagPricePence"] > 0
+    p0 = _conversion_params(db0)
+    assert p0["lead_days"] == 0
+    assert p0["discount_band"] == "near-short"
+
+    # lead negative: entry already in the past.
+    dbn = _pin_model_path(monkeypatch)
+    neg = TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-06-20", "entryTime": "06:00",
+            "exitDate": "2026-06-27", "exitTime": "06:00",  # billing 7
+            "destination": "Other",
+        },
+    ).json()
+    assert neg["tagPricePence"] > 0
+    pn = _conversion_params(dbn)
+    assert pn["lead_days"] == -4
+    assert pn["discount_band"] == "near-short"
+
+
+# ===========================================================================
+# QA brief — conversion-logging lifecycle (#1 show-state, #2 re-show, #3 batch).
+#
+# Lifecycle of one conversion-log row:
+#   quote shown   -> INSERT ... converted=false   (customer endpoint only)
+#   payment OK    -> UPDATE ... SET converted=true (webhook / free-booking)
+#   re-shown      -> ON CONFLICT DO NOTHING        (no clobber, no re-stamp)
+#   batch refresh -> NO write at all
+#
+# The DB is mocked, so the ON CONFLICT / converted=true SEMANTICS are a
+# Postgres guarantee we assert via the emitted SQL shape; the false->true
+# TIMING is proven by the paired create-intent (no flip) and webhook (flip)
+# handler tests — see test_create_intent_hueb.py::
+# test_H_airport_quote_paid_intent_does_not_mark_conversion_yet and
+# test_stripe_webhook_hueb_integration.py::
+# test_H_payment_succeeded_issues_real_converted_update_sql.
+# ===========================================================================
+
+
+def _execute_sql_calls(db):
+    """(sql_text_lower, params) for every db.execute call."""
+    return [
+        (str(call.args[0]).lower(), call.args[1] if len(call.args) > 1 else None)
+        for call in db.execute.call_args_list
+    ]
+
+
+def _conversion_log_calls(db):
+    return [(sql, params) for sql, params in _execute_sql_calls(db)
+            if "airport_quote_conversion_log" in sql]
+
+
+# --- #1: quote-shown writes converted=false and never flips at show time -----
+
+
+def test_quote_shown_inserts_converted_false_and_does_not_flip(monkeypatch):
+    db = _pin_model_path(monkeypatch)
+    TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-07-06", "entryTime": "06:00",
+            "exitDate": "2026-07-13", "exitTime": "06:00",
+            "destination": "Other",
+        },
+    )
+
+    log_calls = _conversion_log_calls(db)
+    assert len(log_calls) == 1, "exactly one conversion-log write at show time"
+    sql, _ = log_calls[0]
+    assert "insert into airport_quote_conversion_log" in sql
+    assert "false" in sql                       # row is seeded NOT-converted
+    assert "set converted = true" not in sql    # nothing flips at show time
+    # No UPDATE-to-converted issued anywhere in the show lifecycle.
+    assert all("set converted = true" not in sql for sql, _ in _execute_sql_calls(db))
+
+
+# --- #2: re-showing the same quote is ON CONFLICT DO NOTHING -----------------
+
+
+def test_record_conversion_log_emits_do_nothing_not_do_update():
+    """Unit-pin the SQL shape: the writer must NOT clobber an existing row.
+    DO NOTHING (not DO UPDATE) is what preserves converted=true and shown_at
+    when the same snapshot id is shown again."""
+    from airport_quote_service import record_quote_conversion_log
+
+    db = MagicMock()
+    shown = datetime(2026, 6, 24, 9, 0, tzinfo=timezone.utc)
+    record_quote_conversion_log(
+        db,
+        airport_quote_snapshot_id=555,
+        lead_days=12, billing_days=7, discount_band="flat",
+        tag_pence=11103, cheapest_boh_pence=14805, shown_at=shown,
+    )
+    sql = str(db.execute.call_args.args[0]).lower()
+    assert "on conflict" in sql
+    assert "do nothing" in sql
+    assert "do update" not in sql               # must not re-stamp / overwrite
+
+
+def test_reshow_same_quote_only_emits_idempotent_inserts(monkeypatch):
+    """Drive the endpoint twice; every conversion-log write is the same
+    DO-NOTHING INSERT and no UPDATE/re-stamp is ever issued."""
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+    monkeypatch.setattr("main.get_airport_quote_scraper", lambda: None)
+    monkeypatch.setattr("main.get_uk_now", lambda: _PINNED_UK_NOW)
+
+    body = {
+        "entryDate": "2026-07-06", "entryTime": "06:00",
+        "exitDate": "2026-07-13", "exitTime": "06:00",
+        "destination": "Other",
+    }
+    TestClient(app).post("/api/airport-parking/quote", json=body)
+    TestClient(app).post("/api/airport-parking/quote", json=body)
+
+    log_calls = _conversion_log_calls(db)
+    assert len(log_calls) == 2
+    for sql, _ in log_calls:
+        assert "insert into airport_quote_conversion_log" in sql
+        assert "do nothing" in sql
+        assert "set converted = true" not in sql  # re-show never flips/clobbers
+
+
+# --- #3: batch / homepage refresh writes NOTHING to the conversion log ------
+
+
+def test_batch_refresh_writes_snapshots_but_no_conversion_log(monkeypatch):
+    import email_scheduler
+
+    db = _mock_db()
+    monkeypatch.setattr("email_scheduler.get_db", lambda: db)
+
+    def scraper(_quote_input):
+        return AirportQuoteScrapeResult(
+            products=[
+                AirportProduct(p["name"], p["pricePence"], p["priceText"])
+                for p in _STANDARD_BOH_PRODUCTS
+            ]
+        )
+
+    monkeypatch.setattr(
+        "airport_quote_worker_client.get_worker_scraper_from_env", lambda: scraper
+    )
+
+    result = email_scheduler.refresh_homepage_airport_quote_snapshots()
+
+    # The batch path DID run and wrote snapshots (discount math allowed)...
+    assert db.add.called
+    assert {call.args[0].source for call in db.add.call_args_list} == {"batch"}
+    assert not result.get("skipped")
+    # ...but it wrote ZERO conversion-log rows.
+    assert _conversion_log_calls(db) == []
+
+
+def test_homepage_comparison_endpoint_writes_no_conversion_log(monkeypatch):
+    from database import get_db
+
+    db = _mock_db()  # snapshot lookups return None -> empty comparison
+
+    def _gen():
+        yield db
+
+    app.dependency_overrides[get_db] = _gen
+    try:
+        resp = TestClient(app).get("/api/airport-parking/homepage-comparison")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    assert _conversion_log_calls(db) == []
+
+
+def test_boh_79_cell_floors_pre_promo_tag_to_65(monkeypatch):
+    """BOH cheapest £79: 25% off = £59.25, below the £65 floor -> the PRE-promo
+    TAG clamps UP to £65 at quote time (the floor is applied before any promo)."""
+    db = _mock_db()
+    _override_quote_db(monkeypatch, db)
+
+    def scraper(_quote_input):
+        return AirportQuoteScrapeResult(products=[
+            AirportProduct("Car Park 3", 7900, "£79.00"),   # cheapest BOH cell
+            AirportProduct("Car Park 2", 8500, "£85.00"),
+            AirportProduct("Car Park 1", 9500, "£95.00"),
+            AirportProduct("Car Park 1 Premium", 12000, "£120.00"),
+        ])
+
+    monkeypatch.setattr("main.get_airport_quote_scraper", lambda: scraper)
+    monkeypatch.setattr("main.get_uk_now", lambda: _PINNED_UK_NOW)
+    monkeypatch.delenv("AIRPORT_QUOTE_MATRIX_ENABLED", raising=False)  # flat path
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "25")
+    monkeypatch.setenv("AIRPORT_QUOTE_MIN_PRICE_PENCE", "6500")  # £65 floor
+
+    body = TestClient(app).post(
+        "/api/airport-parking/quote",
+        json={
+            "entryDate": "2026-07-06", "entryTime": "06:00",
+            "exitDate": "2026-07-13", "exitTime": "06:00",  # billing 7
+            "destination": "Other",
+        },
+    ).json()
+
+    assert body["source"] == "live"
+    assert min(p["pricePence"] for p in body["airportPrices"]) == 7900  # £79 BOH
+    assert body["tagPricePence"] == 6500  # pre-promo TAG floored to £65
