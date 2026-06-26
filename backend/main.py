@@ -6029,6 +6029,28 @@ async def get_secondary_carpark_report(
     }
 
 
+_OCCUPANCY_SHIFT_CUTOFF = time(2, 0)
+
+
+def _occupancy_shift_span(booking):
+    """Operational shift-day span a car is present at END of shift.
+
+    The operational day runs to ~01:59 the next morning (roster 02:00 cutoff),
+    so a drop-off / pick-up before 02:00 belongs to the PREVIOUS calendar day's
+    shift. A car is present at end of shift-day D from the shift it arrives
+    until the shift BEFORE it is collected (collected during shift D => gone by
+    end of D). Returns (first_shift_day, last_shift_day), inclusive.
+    """
+    def _shift_day(d, t):
+        if t is not None and t < _OCCUPANCY_SHIFT_CUTOFF:
+            return d - timedelta(days=1)
+        return d
+
+    start = _shift_day(booking.dropoff_date, getattr(booking, "dropoff_time", None))
+    end = _shift_day(booking.pickup_date, getattr(booking, "pickup_time", None)) - timedelta(days=1)
+    return start, end
+
+
 @app.get("/api/admin/reports/occupancy")
 async def get_occupancy_report(
     view: str = Query("daily", description="View type: 'daily', 'weekly', or 'monthly'"),
@@ -6047,8 +6069,14 @@ async def get_occupancy_report(
     - available: Number of online spaces left (online capacity - occupied)
     - occupancy_percent: Percentage utilization
 
-    A vehicle is counted as "occupied" on any date between dropoff_date and pickup_date (inclusive).
-    Only confirmed and completed bookings are counted.
+    Occupancy is measured at END of the operational shift (which runs to ~01:59
+    next morning, the roster 02:00 cutoff): a car counts on a shift-day from the
+    shift it arrives until the shift BEFORE collection (a car collected during a
+    shift is gone by that shift's end). Pre-02:00 drop-offs / pick-ups roll to
+    the previous shift-day. Confirmed, completed and refunded bookings are
+    counted — completed is kept so historical occupancy stays accurate; the
+    shift logic, not the status, is what stops a just-collected car inflating
+    "today".
     """
     import pytz
     uk_tz = pytz.timezone('Europe/London')
@@ -6097,8 +6125,10 @@ async def get_occupancy_report(
     # Get all active bookings (confirmed or completed) that overlap with our date range
     bookings = (
         db.query(Booking)
-        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
-        .filter(Booking.dropoff_date <= report_end)
+        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.REFUNDED]))
+        # +1 day buffer: a pre-02:00 drop-off belongs to the previous shift-day,
+        # so a booking dropping the day after report_end can still occupy report_end.
+        .filter(Booking.dropoff_date <= report_end + timedelta(days=1))
         .filter(Booking.pickup_date >= report_start)
         .all()
     )
@@ -6122,8 +6152,9 @@ async def get_occupancy_report(
             qualifies_secondary = db_service.booking_qualifies_for_secondary_carpark(
                 booking, secondary_settings
             )
-            current_date = max(booking.dropoff_date, report_start)
-            end_date_for_booking = min(booking.pickup_date, report_end)
+            occ_start, occ_end = _occupancy_shift_span(booking)
+            current_date = max(occ_start, report_start)
+            end_date_for_booking = min(occ_end, report_end)
             while current_date <= end_date_for_booking:
                 date_key = current_date.isoformat()
                 daily_occupancy[date_key] += 1
@@ -6186,8 +6217,9 @@ async def get_occupancy_report(
             qualifies_secondary = db_service.booking_qualifies_for_secondary_carpark(
                 booking, secondary_settings
             )
-            current_date = max(booking.dropoff_date, report_start)
-            end_date_for_booking = min(booking.pickup_date, report_end)
+            occ_start, occ_end = _occupancy_shift_span(booking)
+            current_date = max(occ_start, report_start)
+            end_date_for_booking = min(occ_end, report_end)
             while current_date <= end_date_for_booking:
                 # ISO week key: YYYY-Www
                 week_key = current_date.strftime("%G-W%V")
@@ -6272,8 +6304,9 @@ async def get_occupancy_report(
             qualifies_secondary = db_service.booking_qualifies_for_secondary_carpark(
                 booking, secondary_settings
             )
-            current_date = max(booking.dropoff_date, report_start)
-            end_date_for_booking = min(booking.pickup_date, report_end)
+            occ_start, occ_end = _occupancy_shift_span(booking)
+            current_date = max(occ_start, report_start)
+            end_date_for_booking = min(occ_end, report_end)
             while current_date <= end_date_for_booking:
                 month_key = current_date.strftime("%Y-%m")
                 monthly_occupancy[month_key]["total_occupied"] += 1

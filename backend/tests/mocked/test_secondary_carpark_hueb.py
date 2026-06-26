@@ -15,7 +15,7 @@ Covers:
     weekly/monthly averages, summary block)
   - roster bookings-for-date carries the qualification flag
 """
-from datetime import date as date_type, datetime, time
+from datetime import date as date_type, datetime, time, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -288,7 +288,7 @@ class TestOccupancyReportSecondarySplit:
             _booking(
                 id=3, reference="TAG-P2QUAL02",
                 dropoff_time=time(9, 30), pickup_time=time(19, 0),
-                dropoff_date=date_type.today(), pickup_date=date_type.today(),
+                dropoff_date=date_type.today(), pickup_date=date_type.today() + timedelta(days=1),
             ),
         ]
         _override(_wire(bookings))

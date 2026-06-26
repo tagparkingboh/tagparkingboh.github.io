@@ -5,7 +5,7 @@ HUEB tests for the larger admin report endpoints.
   GET /api/admin/reports/occupancy          (daily/weekly/monthly)
   GET /api/admin/reports/popular
 """
-from datetime import date as date_type, datetime
+from datetime import date as date_type, datetime, time as time_type, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -204,11 +204,13 @@ class TestOccupancyReport:
         db.query.side_effect = _query
         return db
 
-    def _booking(self, dropoff, pickup):
+    def _booking(self, dropoff, pickup, dropoff_time=time_type(10, 0),
+                 pickup_time=time_type(10, 0), status=None):
         from db_models import BookingStatus
         return SimpleNamespace(
-            id=1, status=BookingStatus.CONFIRMED,
+            id=1, reference="TAG-TEST01", status=status or BookingStatus.CONFIRMED,
             dropoff_date=dropoff, pickup_date=pickup,
+            dropoff_time=dropoff_time, pickup_time=pickup_time,
         )
 
     def test_H_daily_empty(self):
@@ -229,7 +231,72 @@ class TestOccupancyReport:
         # Find the day with occupancy = 1
         data = resp.json()["data"]
         occupied_days = [d for d in data if d["occupied"] > 0]
-        assert len(occupied_days) == 4  # 19, 20, 21, 22
+        # Present at end-of-shift on 19, 20, 21 — collected 22 -> gone by EOD 22.
+        assert len(occupied_days) == 3
+
+    def test_H_pickup_day_excluded(self):
+        b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22))
+        _override(self._wire([b]))
+        occ = {d["date"]: d["occupied"] for d in TestClient(app).get(
+            "/api/admin/reports/occupancy?start_date=2026-05-15&end_date=2026-05-25"
+        ).json()["data"]}
+        assert occ["2026-05-21"] == 1   # last night present
+        assert occ["2026-05-22"] == 0   # collected this shift -> not present at EOD
+
+    def test_H_shift_cutoff_pickup_before_0200(self):
+        # Collected 5/22 01:30 (< 02:00) belongs to 5/21's shift -> gone by EOD 21.
+        b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22),
+                          pickup_time=time_type(1, 30))
+        _override(self._wire([b]))
+        occ = {d["date"]: d["occupied"] for d in TestClient(app).get(
+            "/api/admin/reports/occupancy?start_date=2026-05-15&end_date=2026-05-25"
+        ).json()["data"]}
+        assert occ["2026-05-20"] == 1
+        assert occ["2026-05-21"] == 0
+
+    def test_H_shift_cutoff_pickup_at_0200(self):
+        # Collected 5/22 02:00 (>= cutoff) belongs to 5/22's shift -> present through 21.
+        b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22),
+                          pickup_time=time_type(2, 0))
+        _override(self._wire([b]))
+        occ = {d["date"]: d["occupied"] for d in TestClient(app).get(
+            "/api/admin/reports/occupancy?start_date=2026-05-15&end_date=2026-05-25"
+        ).json()["data"]}
+        assert occ["2026-05-21"] == 1
+        assert occ["2026-05-22"] == 0
+
+    def test_H_shift_cutoff_dropoff_before_0200(self):
+        # Dropped 5/20 01:00 (< 02:00) rolls back to 5/19's shift.
+        b = self._booking(date_type(2026, 5, 20), date_type(2026, 5, 23),
+                          dropoff_time=time_type(1, 0))
+        _override(self._wire([b]))
+        occ = {d["date"]: d["occupied"] for d in TestClient(app).get(
+            "/api/admin/reports/occupancy?start_date=2026-05-15&end_date=2026-05-25"
+        ).json()["data"]}
+        assert occ["2026-05-19"] == 1   # rolled back to previous shift-day
+        assert occ["2026-05-22"] == 1
+        assert occ["2026-05-23"] == 0
+
+    def test_H_late_evening_dropoff_same_day(self):
+        # Dropped 5/19 21:20 (>= 02:00) stays on 5/19's shift (the prod manual-booking case).
+        b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22),
+                          dropoff_time=time_type(21, 20))
+        _override(self._wire([b]))
+        occ = {d["date"]: d["occupied"] for d in TestClient(app).get(
+            "/api/admin/reports/occupancy?start_date=2026-05-15&end_date=2026-05-25"
+        ).json()["data"]}
+        assert occ["2026-05-18"] == 0
+        assert occ["2026-05-19"] == 1
+
+    def test_H_refunded_counted(self):
+        from db_models import BookingStatus
+        b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22),
+                          status=BookingStatus.REFUNDED)
+        _override(self._wire([b]))
+        occ = {d["date"]: d["occupied"] for d in TestClient(app).get(
+            "/api/admin/reports/occupancy?start_date=2026-05-15&end_date=2026-05-25"
+        ).json()["data"]}
+        assert occ["2026-05-20"] == 1   # refunded still occupies
 
     def test_H_weekly(self):
         b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22))
