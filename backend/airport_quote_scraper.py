@@ -107,19 +107,26 @@ def fetch_bournemouth_airport_quote(
             )
             page.locator("#changeExitTime").select_option(normalise_boh_time_slot(quote_input.exit_time))
 
-            page.locator("form").first.evaluate(
-                """(form) => {
-                    if (!(form instanceof HTMLFormElement)) {
-                        throw new Error('Parking search form not found');
-                    }
-                    form.submit();
-                }"""
-            )
+            # BOH runs the search via a JS handler on the "Book now" submit button.
+            # A raw form.submit() bypasses that handler, so results never load and we
+            # time out on the price locator. Click the button so the site's own submit
+            # handler fires (works for both navigation and AJAX-injected results).
+            page.locator("input.btn--submit.btn-desktop").first.click()
             page.wait_for_load_state("domcontentloaded")
-            page.locator(".item__price__val, .item__options-price").first.wait_for(
-                state="attached",
-                timeout=15_000,
-            )
+            try:
+                page.locator(".item__price__val, .item__options-price").first.wait_for(
+                    state="attached",
+                    timeout=15_000,
+                )
+            except PlaywrightTimeoutError:
+                # Capture what BOH actually served so a future flow change is diagnosable
+                # from logs instead of a blind timeout.
+                print(
+                    "[AIRPORT_QUOTE_SCRAPE_TIMEOUT] BOH price element never appeared; "
+                    f"url={page.url}; snippet={_bounded_debug_snippet(page.content())!r}",
+                    flush=True,
+                )
+                raise
             try:
                 page.wait_for_function(
                     "() => /Car Park|Premium/i.test(document.body?.innerText || '')",
