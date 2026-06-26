@@ -157,13 +157,13 @@ function HomePage() {
       live: Boolean(comparisonByDay.get(4)),
     },
     {
-      billingDays: 7,
-      label: '7 DAYS',
+      billingDays: 8,
+      label: '1 WEEK',
       badge: 'Most popular',
-      airportPence: comparisonByDay.get(7)?.cheapestPence || Math.round(prices.week1Max * 100),
-      tagPence: comparisonByDay.get(7)?.tagPricePence || Math.round(prices.week1 * 100),
-      savingPct: comparisonByDay.get(7)?.savingPct || 0,
-      live: Boolean(comparisonByDay.get(7)),
+      airportPence: comparisonByDay.get(8)?.cheapestPence || Math.round(prices.week1Max * 100),
+      tagPence: comparisonByDay.get(8)?.tagPricePence || Math.round(prices.week1 * 100),
+      savingPct: comparisonByDay.get(8)?.savingPct || 0,
+      live: Boolean(comparisonByDay.get(8)),
     },
   ]
   const hasLiveComparison = Boolean(airportComparison?.items?.length)

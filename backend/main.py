@@ -1350,7 +1350,7 @@ def get_airport_parking_quote_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-HOMEPAGE_AIRPORT_COMPARISON_DAYS = (4, 7)
+HOMEPAGE_AIRPORT_COMPARISON_DAYS = (4, 8)  # 8 billing-days = a real week (7 nights round up)
 
 
 def _homepage_price_mode() -> str:

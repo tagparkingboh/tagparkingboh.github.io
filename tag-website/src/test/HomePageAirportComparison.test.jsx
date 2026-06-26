@@ -34,7 +34,7 @@ describe('HomePage airport comparison', () => {
                 source: 'live',
               },
               {
-                billingDays: 7,
+                billingDays: 8,
                 cheapestPence: 18000,
                 premiumPence: 32000,
                 tagPricePence: 13500,
@@ -88,7 +88,7 @@ describe('HomePage airport comparison', () => {
     expect(await screen.findByText(/LIVE BOH prices/i)).toBeInTheDocument()
     expect(screen.getByText(/See how Tag compares with Bournemouth Airport's/i)).toBeInTheDocument()
     expect(screen.getByText('4 DAYS')).toBeInTheDocument()
-    expect(screen.getByText('7 DAYS')).toBeInTheDocument()
+    expect(screen.getByText('1 WEEK')).toBeInTheDocument()
     expect(screen.getByText('Most popular')).toBeInTheDocument()
     expect(screen.getAllByText('Airport parking')).toHaveLength(2)
     expect(screen.getAllByText('Tag Meet & Greet')).toHaveLength(2)

@@ -77,7 +77,7 @@ def test_homepage_airport_comparison_reads_cached_live_snapshots(monkeypatch):
             created_at=datetime(2026, 6, 23, 8, 30, tzinfo=timezone.utc),
         ),
         _snapshot(
-            billing_days=7,
+            billing_days=8,
             cheapest=18000,
             premium=32000,
             tag=13950,
@@ -98,7 +98,7 @@ def test_homepage_airport_comparison_reads_cached_live_snapshots(monkeypatch):
     assert body["checkedAt"] == "2026-06-23T09:30:00+00:00"
     assert body["maxCheapestSavingPct"] == 30
     assert body["maxPremiumSavingPct"] == 61
-    assert [item["billingDays"] for item in body["items"]] == [4, 7]
+    assert [item["billingDays"] for item in body["items"]] == [4, 8]
     assert body["items"][0]["cheapestPence"] == 16800
     assert body["items"][0]["premiumPence"] == 30000
     assert body["items"][0]["tagPricePence"] == 11760
@@ -176,9 +176,9 @@ def test_refresh_homepage_airport_quote_snapshots_writes_batch_rows(monkeypatch)
     result = refresh_homepage_airport_quote_snapshots()
 
     assert result["skipped"] is False
-    assert [item["billing_days"] for item in result["refreshed"]] == [4, 7]
+    assert [item["billing_days"] for item in result["refreshed"]] == [4, 8]
     assert [row.source for row in db.added] == ["batch", "batch"]
     assert [row.status for row in db.added] == ["ok", "ok"]
-    assert [row.billing_days for row in db.added] == [4, 7]
+    assert [row.billing_days for row in db.added] == [4, 8]
     assert all(row.tag_price_pence == 12600 for row in db.added)
     assert db.closed is True
