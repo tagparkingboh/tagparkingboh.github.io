@@ -828,7 +828,7 @@
 .tag-side strong {
   display: inline-block;
   color: #202700;
-  font-size: 2.75rem;
+  font-size: 3.4375rem;
   font-weight: 1000;
   letter-spacing: 0;
   padding: 0.35rem 0.5rem 0.28rem;
@@ -1252,7 +1252,7 @@
   }
 
   .tag-side strong {
-    font-size: 2.45rem;
+    font-size: 3.0625rem;
   }
 
   .live-savings-line {

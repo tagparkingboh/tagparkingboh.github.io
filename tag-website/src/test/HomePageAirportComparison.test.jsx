@@ -90,7 +90,7 @@ describe('HomePage airport comparison', () => {
     expect(screen.getByText('4 DAYS')).toBeInTheDocument()
     expect(screen.getByText('1 WEEK')).toBeInTheDocument()
     expect(screen.getByText('Most popular')).toBeInTheDocument()
-    expect(screen.getAllByText('Airport parking')).toHaveLength(2)
+    expect(screen.getAllByText('BOH Airport parking')).toHaveLength(2)
     expect(screen.getAllByText('Tag Meet & Greet')).toHaveLength(2)
     expect(screen.getByText('£168.00')).toBeInTheDocument()
     expect(screen.getByText('£126.00')).toBeInTheDocument()

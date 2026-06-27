@@ -401,13 +401,13 @@ function HomePage() {
                   {row.badge && <span className="live-row-badge">{row.badge}</span>}
                 </div>
                 <div className="live-price-grid">
-                  <div className="live-price-side airport-side">
-                    <span className="live-price-label">Airport parking</span>
-                    <strong>{formatPounds(row.airportPence)}</strong>
-                  </div>
                   <div className="live-price-side tag-side">
                     <span className="live-price-label">Tag Meet &amp; Greet</span>
                     <strong>{formatPounds(row.tagPence)}</strong>
+                  </div>
+                  <div className="live-price-side airport-side">
+                    <span className="live-price-label">BOH Airport parking</span>
+                    <strong>{formatPounds(row.airportPence)}</strong>
                   </div>
                 </div>
                 <p className="live-save-amount">
