@@ -1304,6 +1304,14 @@
     font-size: 1.65rem;
   }
 
+  .tag-side strong {
+    font-size: 2.4rem;
+  }
+
+  .airport-side strong {
+    font-size: 1.3rem;
+  }
+
   .live-trust-list {
     flex-direction: column;
     align-items: center;
@@ -1377,6 +1385,14 @@
 
   .live-price-side strong {
     font-size: 1.45rem;
+  }
+
+  .tag-side strong {
+    font-size: 2.1rem;
+  }
+
+  .airport-side strong {
+    font-size: 1.15rem;
   }
 
   .live-trust-list {
