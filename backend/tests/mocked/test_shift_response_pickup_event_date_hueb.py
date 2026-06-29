@@ -26,7 +26,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db_models import BookingStatus
-from routers.roster import _booking_vehicle_registration, _pickup_event_date, shift_to_response
+from routers.roster import (
+    _booking_customer_phone,
+    _booking_vehicle_attr,
+    _booking_vehicle_registration,
+    _pickup_event_date,
+    shift_to_response,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +46,7 @@ def _booking(**overrides):
         reference="TAG-PICKUP01",
         customer_first_name="Jo",
         customer_last_name="K",
+        customer=None,
         dropoff_date=date(2026, 6, 1),
         dropoff_time=time(10, 0),
         dropoff_destination="Tenerife",
@@ -243,6 +250,53 @@ class TestBookingVehicleRegistration:
         ignore non-string placeholder attrs so Pydantic gets None, not a mock."""
         b = MagicMock()
         assert _booking_vehicle_registration(b) is None
+
+
+# ===========================================================================
+# customer phone + vehicle make/colour helpers — unit HUEB (shift card fields)
+# ===========================================================================
+
+class TestBookingCustomerPhoneAndVehicleAttrs:
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_customer_phone_normalised_to_e164(self):
+        b = _booking(customer=SimpleNamespace(phone="07700900123"))
+        assert _booking_customer_phone(b) == "+447700900123"
+
+    def test_H_vehicle_make_and_colour_returned(self):
+        b = _booking(vehicle=SimpleNamespace(make="Ford", colour="Red"))
+        assert _booking_vehicle_attr(b, "make") == "Ford"
+        assert _booking_vehicle_attr(b, "colour") == "Red"
+
+    # --- UNHAPPY -------------------------------------------------------------
+
+    def test_U_no_customer_returns_none(self):
+        assert _booking_customer_phone(_booking(customer=None)) is None
+
+    def test_U_no_vehicle_returns_none(self):
+        b = _booking(vehicle=None)
+        assert _booking_vehicle_attr(b, "make") is None
+        assert _booking_vehicle_attr(b, "colour") is None
+
+    # --- EDGE ----------------------------------------------------------------
+
+    def test_E_empty_phone_returns_none(self):
+        assert _booking_customer_phone(_booking(customer=SimpleNamespace(phone=""))) is None
+
+    def test_E_empty_make_returns_none_but_colour_kept(self):
+        b = _booking(vehicle=SimpleNamespace(make="", colour="Red"))
+        assert _booking_vehicle_attr(b, "make") is None
+        assert _booking_vehicle_attr(b, "colour") == "Red"
+
+    # --- BOUNDARY ------------------------------------------------------------
+
+    def test_B_magicmock_attrs_not_serialized(self):
+        """Bare MagicMock booking → helpers must return None, not a mock."""
+        b = MagicMock()
+        assert _booking_customer_phone(b) is None
+        assert _booking_vehicle_attr(b, "make") is None
+        assert _booking_vehicle_attr(b, "colour") is None
 
 
 # ===========================================================================
@@ -489,6 +543,74 @@ class TestShiftToResponseVehicleRegistration:
 
 
 # ===========================================================================
+# shift_to_response — customer phone + vehicle make/colour on each link
+# ===========================================================================
+
+class TestShiftToResponseCustomerVehicleDetails:
+
+    def _db_mock(self):
+        db = MagicMock()
+        chain = MagicMock()
+        chain.filter.return_value = chain
+        chain.first.return_value = None
+        db.query.return_value = chain
+        return db
+
+    # --- HAPPY ---------------------------------------------------------------
+
+    def test_H_dropoff_link_carries_phone_make_colour(self):
+        b = _booking(
+            id=620,
+            reference="TAG-DETAILS",
+            dropoff_date=date(2026, 7, 2),
+            customer=SimpleNamespace(phone="07700900123"),
+            vehicle=SimpleNamespace(registration="HX24TAG", make="Ford", colour="Red"),
+        )
+        s = _shift(date=date(2026, 7, 2), bookings=[b])
+        lb = shift_to_response(s, self._db_mock()).bookings[0]
+        assert lb.customer_phone == "+447700900123"
+        assert lb.vehicle_make == "Ford"
+        assert lb.vehicle_colour == "Red"
+
+    # --- UNHAPPY -------------------------------------------------------------
+
+    def test_U_missing_customer_and_vehicle_leave_fields_none(self):
+        b = _booking(
+            id=621,
+            reference="TAG-NODETAILS",
+            dropoff_date=date(2026, 7, 2),
+            customer=None,
+            vehicle=None,
+        )
+        s = _shift(date=date(2026, 7, 2), bookings=[b])
+        lb = shift_to_response(s, self._db_mock()).bookings[0]
+        assert lb.customer_phone is None
+        assert lb.vehicle_make is None
+        assert lb.vehicle_colour is None
+
+    # --- BOUNDARY ------------------------------------------------------------
+
+    def test_B_pickup_link_also_carries_details(self):
+        b = _booking(
+            id=622,
+            reference="TAG-PICKDETAILS",
+            dropoff_date=date(2026, 7, 1),
+            flight_arrival_date=date(2026, 7, 3),
+            pickup_date=date(2026, 7, 3),
+            flight_arrival_time=time(0, 0),
+            pickup_time=time(0, 30),
+            customer=SimpleNamespace(phone="+447911123456"),
+            vehicle=SimpleNamespace(registration="PX00MID", make="Audi", colour="Black"),
+        )
+        s = _shift(date=date(2026, 7, 3), start_time=time(0, 0), end_time=time(1, 0), bookings=[b])
+        lb = shift_to_response(s, self._db_mock()).bookings[0]
+        assert lb.type == "pickup"
+        assert lb.customer_phone == "+447911123456"
+        assert lb.vehicle_make == "Audi"
+        assert lb.vehicle_colour == "Black"
+
+
+# ===========================================================================
 # GET /api/roster JSON payload — integration HUEB target for this API update
 # ===========================================================================
 
@@ -534,3 +656,44 @@ class TestRosterVehicleRegistrationApi:
         payload = response.json()
         assert payload[0]["bookings"][0]["vehicle_registration"] == "AP24REG"
         assert payload[0]["booking_vehicle_registration"] == "AP24REG"
+
+    def test_H_get_roster_serializes_customer_phone_make_colour(self):
+        """The shift card payload exposes customer_phone + vehicle make/colour
+        so the roster/employee card can render Name/Phone, Reg/Make/Colour."""
+        from fastapi.testclient import TestClient
+        from database import get_db
+        from main import app
+        from routers.roster import require_admin
+
+        b = _booking(
+            id=516,
+            reference="TAG-APIDETAILS",
+            dropoff_date=date(2026, 7, 2),
+            customer=SimpleNamespace(phone="07700900123"),
+            vehicle=SimpleNamespace(registration="AP24REG", make="Ford", colour="Red"),
+        )
+        shift = _shift(id=405, date=date(2026, 7, 2), bookings=[b])
+
+        query = MagicMock()
+        query.filter.return_value = query
+        query.order_by.return_value = query
+        query.all.return_value = [shift]
+        db = MagicMock()
+        db.query.return_value = query
+
+        def db_override():
+            yield db
+
+        admin = SimpleNamespace(id=1, is_admin=True, email="admin@tag.test")
+        app.dependency_overrides[require_admin] = lambda: admin
+        app.dependency_overrides[get_db] = db_override
+        try:
+            response = TestClient(app).get("/api/roster?source=all&date=2026-07-02")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        booking_json = response.json()[0]["bookings"][0]
+        assert booking_json["customer_phone"] == "+447700900123"
+        assert booking_json["vehicle_make"] == "Ford"
+        assert booking_json["vehicle_colour"] == "Red"

@@ -629,7 +629,10 @@ class LinkedBookingInfo(BaseModel):
     reference: str
     type: str  # "dropoff" or "pickup"
     customer_name: str
+    customer_phone: Optional[str] = None
     vehicle_registration: Optional[str] = None
+    vehicle_make: Optional[str] = None
+    vehicle_colour: Optional[str] = None
     time: Optional[str] = None  # The dropoff/pickup time
     flight_number: Optional[str] = None
     destination: Optional[str] = None  # destination for dropoff, origin for pickup

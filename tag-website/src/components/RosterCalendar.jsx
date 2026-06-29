@@ -4375,6 +4375,14 @@ function RosterCalendar({
                                       {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                     </span>
                                     <span className="shift-booking-ref">{booking.reference}</span>
+                                  </div>
+                                  <div className="shift-booking-customer-row">
+                                    <span className="shift-booking-customer">{booking.customer_name}</span>
+                                    {booking.customer_phone && (
+                                      <a href={`tel:${booking.customer_phone}`} className="shift-booking-phone">{booking.customer_phone}</a>
+                                    )}
+                                  </div>
+                                  <div className="shift-booking-vehicle-row">
                                     {getBookingRegistration(booking) ? (
                                       <span className="shift-booking-reg-wrap">
                                         <span className="shift-booking-reg">
@@ -4387,7 +4395,11 @@ function RosterCalendar({
                                     ) : booking.secondary_carpark_qualifies ? (
                                       <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
                                     ) : null}
-                                    <span className="shift-booking-customer">{booking.customer_name}</span>
+                                    {(booking.vehicle_make || booking.vehicle_colour) && (
+                                      <span className="shift-booking-vehicle-desc">
+                                        {[booking.vehicle_make, booking.vehicle_colour].filter(Boolean).join(' ')}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="shift-booking-details">
                                     {booking.time && (
@@ -4502,6 +4514,14 @@ function RosterCalendar({
                                         {booking.type === 'dropoff' ? '🚗' : '🛬'}
                                       </span>
                                       <span className="shift-booking-ref">{booking.reference}</span>
+                                    </div>
+                                    <div className="shift-booking-customer-row">
+                                      <span className="shift-booking-customer">{booking.customer_name}</span>
+                                      {booking.customer_phone && (
+                                        <a href={`tel:${booking.customer_phone}`} className="shift-booking-phone">{booking.customer_phone}</a>
+                                      )}
+                                    </div>
+                                    <div className="shift-booking-vehicle-row">
                                       {getBookingRegistration(booking) ? (
                                         <span className="shift-booking-reg-wrap">
                                           <span className="shift-booking-reg">
@@ -4514,7 +4534,29 @@ function RosterCalendar({
                                       ) : booking.secondary_carpark_qualifies ? (
                                         <span className="shift-booking-carpark" title="Secondary car park (09:00–21:00 rule)">P2</span>
                                       ) : null}
-                                      <span className="shift-booking-customer">{booking.customer_name}</span>
+                                      {(booking.vehicle_make || booking.vehicle_colour) && (
+                                        <span className="shift-booking-vehicle-desc">
+                                          {[booking.vehicle_make, booking.vehicle_colour].filter(Boolean).join(' ')}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="shift-booking-details">
+                                      {booking.time && (
+                                        <span className="shift-booking-time">
+                                          @ {booking.time}
+                                          {booking.type === 'pickup' && (
+                                            <span className="shift-booking-time-label"> arrival</span>
+                                          )}
+                                        </span>
+                                      )}
+                                      {booking.flight_number && (
+                                        <span className="shift-booking-flight">{booking.flight_number}</span>
+                                      )}
+                                      {booking.destination && (
+                                        <span className="shift-booking-dest">
+                                          {booking.type === 'dropoff' ? '→' : '←'} {formatDestination(booking.destination)}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 ))}

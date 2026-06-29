@@ -1312,9 +1312,8 @@
   margin-top: 4px;
 }
 
-/* Two-line stack at every width: icon + booking ref on the first line,
-   reg plate + customer name on the second. Column 1 is shared by the icon
-   and the plate, so the icon pins to its own width. */
+/* Header row: dropoff/pickup icon + booking ref. Customer, vehicle and
+   flight details render as their own rows below (.shift-booking-*-row). */
 .shift-booking-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1385,13 +1384,51 @@
   color: #ccc;
 }
 
+/* Line 1: customer name (left) + tappable phone (right). */
+.shift-booking-customer-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
 .shift-booking-customer {
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 0.95rem;
   min-width: 0;
   overflow-wrap: anywhere;
-  /* Always the second column, even when there's no reg plate before it. */
-  grid-column: 2;
+}
+
+.shift-booking-phone {
+  color: #D9FF00;
+  font-family: monospace;
+  font-size: 0.85rem;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.shift-booking-phone:hover {
+  text-decoration: underline;
+}
+
+/* Line 2: reg plate + make/colour. */
+.shift-booking-vehicle-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.shift-booking-vehicle-desc {
+  color: #ccc;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
 }
 
 .shift-booking-time {

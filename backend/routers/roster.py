@@ -346,6 +346,22 @@ def _booking_vehicle_registration(booking):
     return None
 
 
+def _booking_vehicle_attr(booking, attr: str) -> Optional[str]:
+    """Pull a string attr (make/colour) off the linked vehicle, or None."""
+    vehicle = getattr(booking, "vehicle", None)
+    value = getattr(vehicle, attr, None)
+    return value if isinstance(value, str) and value else None
+
+
+def _booking_customer_phone(booking) -> Optional[str]:
+    """Customer phone for the shift card, normalised for display where possible."""
+    customer = getattr(booking, "customer", None)
+    phone = getattr(customer, "phone", None)
+    if isinstance(phone, str) and phone:
+        return normalise_uk_phone(phone) or phone
+    return None
+
+
 def _shift_int_attr(shift, attr: str) -> Optional[int]:
     value = getattr(shift, attr, None)
     return value if isinstance(value, int) else None
@@ -422,6 +438,9 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 type="dropoff",
                 customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
                 vehicle_registration=_booking_vehicle_registration(booking),
+                customer_phone=_booking_customer_phone(booking),
+                vehicle_make=_booking_vehicle_attr(booking, "make"),
+                vehicle_colour=_booking_vehicle_attr(booking, "colour"),
                 time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
                 flight_number=booking.dropoff_flight_number,
                 destination=booking.dropoff_destination,
@@ -443,6 +462,9 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 type="pickup",
                 customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
                 vehicle_registration=_booking_vehicle_registration(booking),
+                customer_phone=_booking_customer_phone(booking),
+                vehicle_make=_booking_vehicle_attr(booking, "make"),
+                vehicle_colour=_booking_vehicle_attr(booking, "colour"),
                 time=pickup_card_time,
                 flight_number=booking.pickup_flight_number,
                 destination=booking.pickup_origin,
@@ -464,6 +486,9 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     type="dropoff",
                     customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
                     vehicle_registration=_booking_vehicle_registration(booking),
+                    customer_phone=_booking_customer_phone(booking),
+                    vehicle_make=_booking_vehicle_attr(booking, "make"),
+                    vehicle_colour=_booking_vehicle_attr(booking, "colour"),
                     time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
                     flight_number=booking.dropoff_flight_number,
                     destination=booking.dropoff_destination,
@@ -481,6 +506,9 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     type="pickup",
                     customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
                     vehicle_registration=_booking_vehicle_registration(booking),
+                    customer_phone=_booking_customer_phone(booking),
+                    vehicle_make=_booking_vehicle_attr(booking, "make"),
+                    vehicle_colour=_booking_vehicle_attr(booking, "colour"),
                     time=pickup_card_time,
                     flight_number=booking.pickup_flight_number,
                     destination=booking.pickup_origin,
