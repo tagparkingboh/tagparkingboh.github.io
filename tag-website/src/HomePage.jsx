@@ -441,7 +441,8 @@ function HomePage() {
 
       {/* Customer Drop-off Video Section */}
       <section className="dropoff-video" id="dropoff-video">
-        <h2>See a real TAG drop-off</h2>
+        <span className="dropoff-video-badge">Real customer footage</span>
+        <h2>See a real Tag drop-off</h2>
         <p className="dropoff-video-subtitle">A customer filmed their meet &amp; greet drop-off — here&apos;s exactly what to expect when you arrive.</p>
         <div className="video-embed">
           <iframe

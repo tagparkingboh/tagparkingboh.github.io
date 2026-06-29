@@ -1575,35 +1575,61 @@
   line-height: 1.6;
 }
 
-/* Customer drop-off video section */
+/* Customer drop-off video section — dark spotlight */
 .dropoff-video {
   text-align: center;
   padding: 5rem 4rem;
-  background: var(--white);
+  background: var(--black);
+}
+
+.dropoff-video-badge {
+  display: inline-block;
+  background: var(--lime-green);
+  color: var(--black);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 999px;
+  margin-bottom: 1.5rem;
 }
 
 .dropoff-video h2 {
   font-size: 48px;
-  color: #343434;
-  margin-bottom: 1rem;
+  color: var(--white);
+  margin-bottom: 0;
   font-weight: 700;
 }
 
+/* Lime underline accent under the heading. */
+.dropoff-video h2::after {
+  content: "";
+  display: block;
+  width: 64px;
+  height: 4px;
+  background: var(--lime-green);
+  border-radius: 2px;
+  margin: 1rem auto 0;
+}
+
 .dropoff-video-subtitle {
-  color: #343434;
+  color: #cfcfcf;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.6;
   max-width: 640px;
-  margin: 0 auto 3rem;
+  margin: 1.5rem auto 3rem;
 }
 
-/* Responsive 16:9 embed — scales to any width, no padding hacks. */
+/* Responsive 16:9 embed with a soft lime glow — scales to any width. */
 .video-embed {
   aspect-ratio: 16 / 9;
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(204, 255, 0, 0.45), 0 0 44px rgba(204, 255, 0, 0.18);
 }
 
 .video-embed iframe {
