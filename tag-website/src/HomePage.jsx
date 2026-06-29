@@ -439,6 +439,21 @@ function HomePage() {
         <p className="pricing-early-note">*Book early for the best price — leaving it late costs more</p>
       </section>
 
+      {/* Customer Drop-off Video Section */}
+      <section className="dropoff-video" id="dropoff-video">
+        <h2>See a real TAG drop-off</h2>
+        <p className="dropoff-video-subtitle">A customer filmed their meet &amp; greet drop-off — here&apos;s exactly what to expect when you arrive.</p>
+        <div className="video-embed">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/KHotQ0Zqv3c"
+            title="A real TAG Parking meet & greet drop-off"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </div>
+      </section>
+
       {/* Features Banner Section */}
       <section className="features-banner">
         <div className="features-content">

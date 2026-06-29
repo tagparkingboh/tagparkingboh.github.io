@@ -1575,6 +1575,54 @@
   line-height: 1.6;
 }
 
+/* Customer drop-off video section */
+.dropoff-video {
+  text-align: center;
+  padding: 5rem 4rem;
+  background: var(--white);
+}
+
+.dropoff-video h2 {
+  font-size: 48px;
+  color: #343434;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.dropoff-video-subtitle {
+  color: #343434;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.6;
+  max-width: 640px;
+  margin: 0 auto 3rem;
+}
+
+/* Responsive 16:9 embed — scales to any width, no padding hacks. */
+.video-embed {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.video-embed iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 12px;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .dropoff-video {
+    padding: 3rem 1.25rem;
+  }
+  .dropoff-video h2 {
+    font-size: 32px;
+  }
+}
+
 .steps-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
