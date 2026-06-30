@@ -13,19 +13,16 @@ export const PHOTO_SLOTS = [
   { key: 'rear', label: 'Rear', required: true },
   { key: 'driver_side', label: 'Driver Side', required: true },
   { key: 'passenger_side', label: 'Passenger Side', required: true },
-  // Corners — compulsory on BOTH drop-off and return inspections.
-  { key: 'front_left', label: 'Front Left', required: true, bothTypes: true },
-  { key: 'front_right', label: 'Front Right', required: true, bothTypes: true },
-  { key: 'rear_left', label: 'Rear Left', required: true, bothTypes: true },
-  { key: 'rear_right', label: 'Rear Right', required: true, bothTypes: true },
+  { key: 'front_left', label: 'Front Left', required: true },
+  { key: 'front_right', label: 'Front Right', required: true },
+  { key: 'rear_left', label: 'Rear Left', required: true },
+  { key: 'rear_right', label: 'Rear Right', required: true },
   { key: 'additional_1', label: 'Additional 1', required: false },
   { key: 'additional_2', label: 'Additional 2', required: false },
 ]
 
-// Required photo keys for an inspection type. Corners (bothTypes) are required
-// on drop-off AND return; the original four are drop-off only.
-export const requiredPhotoKeysForType = (type) =>
-  PHOTO_SLOTS.filter(s => s.required && (type === 'dropoff' || s.bothTypes)).map(s => s.key)
+// All 8 required photos are compulsory on BOTH drop-off and return inspections.
+export const REQUIRED_PHOTO_KEYS = PHOTO_SLOTS.filter(s => s.required).map(s => s.key)
 
 // Helper to format date as dd/mm/yyyy for display
 const formatDateUK = (isoDate) => {
@@ -621,9 +618,8 @@ function Employee() {
 
   // Save inspection
   const handleSaveInspection = async () => {
-    // Validate required photos. Corners are compulsory on both inspection
-    // types; the original four remain drop-off only.
-    const missingPhotos = requiredPhotoKeysForType(inspectionType).filter(key => !inspectionPhotos[key])
+    // Validate required photos — all 8 are compulsory on both drop-off and return.
+    const missingPhotos = REQUIRED_PHOTO_KEYS.filter(key => !inspectionPhotos[key])
     if (missingPhotos.length > 0) {
       const labels = missingPhotos.map(key => PHOTO_SLOTS.find(s => s.key === key)?.label)
       setError(`Required photos missing: ${labels.join(', ')}`)
@@ -938,8 +934,8 @@ function Employee() {
                     <label>Vehicle Photos {inspectionType === 'pickup' && <span className="optional">(optional)</span>}</label>
                     <div className="photo-slots-grid">
                       {PHOTO_SLOTS.map(slot => {
-                        // Corners are required on both types; the original four are drop-off only.
-                        const isRequired = slot.required && (inspectionType === 'dropoff' || slot.bothTypes)
+                        // All required photos are compulsory on both drop-off and return.
+                        const isRequired = slot.required
                         return (
                         <div key={slot.key} className={`photo-slot ${isRequired && !inspectionPhotos[slot.key] ? 'photo-slot-required' : ''}`}>
                           <span className="photo-slot-label">
