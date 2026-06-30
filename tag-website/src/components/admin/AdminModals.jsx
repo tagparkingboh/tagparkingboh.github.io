@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import DatePicker from 'react-datepicker'
 
 const PHOTO_SLOTS = [
@@ -98,6 +98,36 @@ const AdminModals = ({
   const [photoRotations, setPhotoRotations] = useState({}) // { [key]: degrees }
   const rotatePhoto = (key) => setPhotoRotations(prev => ({ ...prev, [key]: ((prev[key] || 0) + 90) % 360 }))
   const rotationStyle = (key) => ({ transform: `rotate(${photoRotations[key] || 0}deg)` })
+  const imageViewerRef = useRef(null)
+
+  // Request real browser fullscreen for the expanded photo (mirrors /employee)
+  // so the address bar / browser chrome hides too. iPhone Safari doesn't support
+  // fullscreen on non-video elements; the dvh-sized overlay is the fallback.
+  useEffect(() => {
+    if (!expandedPhoto) return
+    const el = imageViewerRef.current
+    if (!el) return
+
+    const req = el.requestFullscreen || el.webkitRequestFullscreen
+    if (req) Promise.resolve(req.call(el)).catch(() => {})
+
+    const onFsChange = () => {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement
+      if (!fsEl) setExpandedPhoto(null)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    document.addEventListener('webkitfullscreenchange', onFsChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener('webkitfullscreenchange', onFsChange)
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement
+      if (fsEl) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen
+        if (exit) Promise.resolve(exit.call(document)).catch(() => {})
+      }
+    }
+  }, [expandedPhoto])
 
   return (
     <>
@@ -889,7 +919,7 @@ const AdminModals = ({
       )}
 
       {expandedPhoto && (
-        <div className="image-viewer-overlay" onClick={() => setExpandedPhoto(null)}>
+        <div className="image-viewer-overlay" ref={imageViewerRef} onClick={() => setExpandedPhoto(null)}>
           <button className="image-viewer-close" onClick={() => setExpandedPhoto(null)}>&times;</button>
           <div className="image-viewer-label">{expandedPhoto.label}</div>
           <img

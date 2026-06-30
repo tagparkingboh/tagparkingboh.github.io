@@ -11321,6 +11321,10 @@
   cursor: pointer;
 }
 
+.image-viewer-overlay:fullscreen {
+  background: rgba(0, 0, 0, 0.95);
+}
+
 .image-viewer-close {
   position: absolute;
   top: 20px;
