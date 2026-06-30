@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import DatePicker from 'react-datepicker'
 
 const PHOTO_SLOTS = [
@@ -92,6 +93,12 @@ const AdminModals = ({
   loadingDropoffInspection,
   dropoffInspectionData,
 }) => {
+  // Expand + rotate for inspection photos (view-only; the stored photo is never modified).
+  const [expandedPhoto, setExpandedPhoto] = useState(null) // { src, label, key }
+  const [photoRotations, setPhotoRotations] = useState({}) // { [key]: degrees }
+  const rotatePhoto = (key) => setPhotoRotations(prev => ({ ...prev, [key]: ((prev[key] || 0) + 90) % 360 }))
+  const rotationStyle = (key) => ({ transform: `rotate(${photoRotations[key] || 0}deg)` })
+
   return (
     <>
       {/* Cancel Confirmation Modal */}
@@ -729,7 +736,15 @@ const AdminModals = ({
                             returnInspectionData.photos[slot.key] && (
                               <div key={slot.key} className="inspection-photo">
                                 <span className="photo-label">{slot.label}</span>
-                                <img src={returnInspectionData.photos[slot.key]} alt={slot.label} />
+                                <img
+                                  src={returnInspectionData.photos[slot.key]}
+                                  alt={slot.label}
+                                  style={rotationStyle(`ret-${slot.key}`)}
+                                />
+                                <div className="inspection-photo-actions">
+                                  <button type="button" className="inspection-photo-btn" onClick={() => rotatePhoto(`ret-${slot.key}`)}>↻ Rotate</button>
+                                  <button type="button" className="inspection-photo-btn" onClick={() => setExpandedPhoto({ src: returnInspectionData.photos[slot.key], label: slot.label, key: `ret-${slot.key}` })}>⤢ Expand</button>
+                                </div>
                               </div>
                             )
                           ))}
@@ -829,7 +844,15 @@ const AdminModals = ({
                         dropoffInspectionData.photos[slot.key] && (
                           <div key={slot.key} className="inspection-photo">
                             <span className="photo-label">{slot.label}</span>
-                            <img src={dropoffInspectionData.photos[slot.key]} alt={slot.label} />
+                            <img
+                              src={dropoffInspectionData.photos[slot.key]}
+                              alt={slot.label}
+                              style={rotationStyle(`drop-${slot.key}`)}
+                            />
+                            <div className="inspection-photo-actions">
+                              <button type="button" className="inspection-photo-btn" onClick={() => rotatePhoto(`drop-${slot.key}`)}>↻ Rotate</button>
+                              <button type="button" className="inspection-photo-btn" onClick={() => setExpandedPhoto({ src: dropoffInspectionData.photos[slot.key], label: slot.label, key: `drop-${slot.key}` })}>⤢ Expand</button>
+                            </div>
                           </div>
                         )
                       ))}
@@ -862,6 +885,27 @@ const AdminModals = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {expandedPhoto && (
+        <div className="image-viewer-overlay" onClick={() => setExpandedPhoto(null)}>
+          <button className="image-viewer-close" onClick={() => setExpandedPhoto(null)}>&times;</button>
+          <div className="image-viewer-label">{expandedPhoto.label}</div>
+          <img
+            src={expandedPhoto.src}
+            alt={expandedPhoto.label}
+            className="image-viewer-img"
+            style={rotationStyle(expandedPhoto.key)}
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="image-viewer-rotate"
+            onClick={(e) => { e.stopPropagation(); rotatePhoto(expandedPhoto.key) }}
+          >
+            ↻ Rotate
+          </button>
         </div>
       )}
     </>
