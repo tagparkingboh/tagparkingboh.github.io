@@ -99,6 +99,15 @@ const AdminModals = ({
   const rotatePhoto = (key) => setPhotoRotations(prev => ({ ...prev, [key]: ((prev[key] || 0) + 90) % 360 }))
   const rotationStyle = (key) => ({ transform: `rotate(${photoRotations[key] || 0}deg)` })
   const imageViewerRef = useRef(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const dragRef = useRef(null)
+  const openPhoto = (photo) => { setZoom(1); setPan({ x: 0, y: 0 }); setExpandedPhoto(photo) }
+  const zoomIn = () => setZoom(z => Math.min(z + 0.5, 5))
+  const zoomOut = () => setZoom(z => { const n = Math.max(z - 0.5, 1); if (n === 1) setPan({ x: 0, y: 0 }); return n })
+  const onImgPointerDown = (e) => { if (zoom <= 1) return; dragRef.current = { x: e.clientX, y: e.clientY, baseX: pan.x, baseY: pan.y } }
+  const onImgPointerMove = (e) => { if (!dragRef.current) return; setPan({ x: dragRef.current.baseX + (e.clientX - dragRef.current.x), y: dragRef.current.baseY + (e.clientY - dragRef.current.y) }) }
+  const onImgPointerUp = () => { dragRef.current = null }
 
   // Request real browser fullscreen for the expanded photo (mirrors /employee)
   // so the address bar / browser chrome hides too. iPhone Safari doesn't support
@@ -773,7 +782,7 @@ const AdminModals = ({
                                 />
                                 <div className="inspection-photo-actions">
                                   <button type="button" className="inspection-photo-btn" onClick={() => rotatePhoto(`ret-${slot.key}`)}>↻ Rotate</button>
-                                  <button type="button" className="inspection-photo-btn" onClick={() => setExpandedPhoto({ src: returnInspectionData.photos[slot.key], label: slot.label, key: `ret-${slot.key}` })}>⤢ Expand</button>
+                                  <button type="button" className="inspection-photo-btn" onClick={() => openPhoto({ src: returnInspectionData.photos[slot.key], label: slot.label, key: `ret-${slot.key}` })}>⤢ Expand</button>
                                 </div>
                               </div>
                             )
@@ -881,7 +890,7 @@ const AdminModals = ({
                             />
                             <div className="inspection-photo-actions">
                               <button type="button" className="inspection-photo-btn" onClick={() => rotatePhoto(`drop-${slot.key}`)}>↻ Rotate</button>
-                              <button type="button" className="inspection-photo-btn" onClick={() => setExpandedPhoto({ src: dropoffInspectionData.photos[slot.key], label: slot.label, key: `drop-${slot.key}` })}>⤢ Expand</button>
+                              <button type="button" className="inspection-photo-btn" onClick={() => openPhoto({ src: dropoffInspectionData.photos[slot.key], label: slot.label, key: `drop-${slot.key}` })}>⤢ Expand</button>
                             </div>
                           </div>
                         )
@@ -926,16 +935,23 @@ const AdminModals = ({
             src={expandedPhoto.src}
             alt={expandedPhoto.label}
             className="image-viewer-img"
-            style={rotationStyle(expandedPhoto.key)}
+            draggable={false}
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${photoRotations[expandedPhoto.key] || 0}deg)`,
+              cursor: zoom > 1 ? 'grab' : 'default',
+              transition: dragRef.current ? 'none' : 'transform 0.15s ease',
+            }}
             onClick={e => e.stopPropagation()}
+            onPointerDown={onImgPointerDown}
+            onPointerMove={onImgPointerMove}
+            onPointerUp={onImgPointerUp}
+            onPointerLeave={onImgPointerUp}
           />
-          <button
-            type="button"
-            className="image-viewer-rotate"
-            onClick={(e) => { e.stopPropagation(); rotatePhoto(expandedPhoto.key) }}
-          >
-            ↻ Rotate
-          </button>
+          <div className="image-viewer-controls" onClick={e => e.stopPropagation()}>
+            <button type="button" className="image-viewer-btn" onClick={zoomOut} aria-label="Zoom out">−</button>
+            <button type="button" className="image-viewer-btn" onClick={zoomIn} aria-label="Zoom in">+</button>
+            <button type="button" className="image-viewer-btn" onClick={() => rotatePhoto(expandedPhoto.key)} aria-label="Rotate">↻</button>
+          </div>
         </div>
       )}
     </>
