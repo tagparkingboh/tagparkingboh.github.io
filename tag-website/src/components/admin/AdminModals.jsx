@@ -6,6 +6,10 @@ const PHOTO_SLOTS = [
   { key: 'rear', label: 'Rear' },
   { key: 'driver_side', label: 'Driver Side' },
   { key: 'passenger_side', label: 'Passenger Side' },
+  { key: 'front_left', label: 'Front Left' },
+  { key: 'front_right', label: 'Front Right' },
+  { key: 'rear_left', label: 'Rear Left' },
+  { key: 'rear_right', label: 'Rear Right' },
   { key: 'additional_1', label: 'Additional 1' },
   { key: 'additional_2', label: 'Additional 2' },
 ]
