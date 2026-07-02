@@ -835,6 +835,138 @@ class TestAirportQuotePromo:
         assert resp.status_code == 400
         assert "Airport quote no longer matches" in resp.json()["detail"]
 
+    # --- entry-time derivation from customer-entered times ---------------------
+    # The quote derives entry time as (customer-entered departure − slot); the
+    # payment path must reconstruct it from the payload alone. Regression fence
+    # for the live "Airport quote no longer matches" 400s (2026-06/07): payloads
+    # that missed the strict dropoff_manual_entry flag fell through to a
+    # FlightDeparture DB lookup that no longer applies — all departure times are
+    # customer-entered now.
+
+    def _quote_payload_without_drop_off_time(self, **fields):
+        payload = _free_booking_payload()
+        payload.pop("drop_off_time", None)
+        payload["airport_quote_snapshot_id"] = 555
+        payload.update(fields)
+        return payload
+
+    def _post_quote_payload(self, monkeypatch, payload, *, snapshot, db_departure_time=None):
+        self._common_patches(monkeypatch)
+        booking = _mk_booking_row(reference="TAG-AQENTRY", booking_id=840)
+        monkeypatch.setattr("db_service.create_booking", lambda **kw: booking)
+        db = _promo_quote_db(
+            promo_code_record=_mk_promo_code_record(),
+            promotion=_mk_free_100_promotion(),
+            booking_row=booking,
+            airport_snapshot=snapshot,
+        )
+        if db_departure_time is not None:
+            from db_models import FlightDeparture as DbFlightDeparture
+            departure_row = MagicMock()
+            departure_row.departure_time = db_departure_time
+            orig_query = db.query.side_effect
+
+            def _query_with_departure(model):
+                chain = orig_query(model)
+                if model is DbFlightDeparture:
+                    chain.first.return_value = departure_row
+                return chain
+
+            db.query.side_effect = _query_with_departure
+        _override_db(db)
+        with patch("auto_roster.auto_create_or_extend_async"), \
+             patch("roster_planner_runner.auto_link_booking_async"):
+            return TestClient(app).post("/api/payments/create-intent", json=payload), db
+
+    def test_H_entry_time_from_manual_flight_time_without_manual_flag(self, monkeypatch):
+        """12:00 manual departure − 120 slot = 10:00 == snapshot entry.
+        dropoff_manual_entry is NOT set (the frontend omits it when the
+        decorative airline/destination codes are missing) — derivation must
+        not depend on the flag. This was the live failure shape."""
+        payload = self._quote_payload_without_drop_off_time(
+            dropoff_flight_time="12:00", drop_off_slot="120",
+        )
+        resp, _ = self._post_quote_payload(
+            monkeypatch, payload, snapshot=_mk_airport_snapshot(tag_price_pence=11103),
+        )
+        assert resp.status_code == 200, resp.json()
+        assert resp.json()["original_amount"] == 11103
+
+    def test_H_entry_time_from_flight_departure_time_override(self, monkeypatch):
+        """Customer-corrected departure 11:00 − 120 slot = 09:00 == snapshot.
+        flight_departure_time carries (override || selected flight time)."""
+        payload = self._quote_payload_without_drop_off_time(
+            flight_departure_time="11:00", drop_off_slot="120",
+        )
+        resp, _ = self._post_quote_payload(
+            monkeypatch, payload, snapshot=_mk_airport_snapshot(entry_time=time(9, 0)),
+        )
+        assert resp.status_code == 200, resp.json()
+
+    def test_H_manual_flight_time_wins_over_flight_departure_time(self, monkeypatch):
+        """Ordering mirrors the quote fetch (manual time first): with both
+        present, 12:00 manual − 120 = 10:00 must be used, not 11:00 − 120."""
+        payload = self._quote_payload_without_drop_off_time(
+            dropoff_flight_time="12:00",
+            flight_departure_time="11:00",
+            drop_off_slot="120",
+        )
+        resp, _ = self._post_quote_payload(
+            monkeypatch, payload, snapshot=_mk_airport_snapshot(entry_time=time(10, 0)),
+        )
+        assert resp.status_code == 200, resp.json()
+
+    def test_H_entry_time_wraps_below_midnight(self, monkeypatch):
+        """t−ε of the midnight seam: 01:00 departure − 90 slot wraps to 23:30,
+        matching the frontend's formatMinutesToTime wrap."""
+        payload = self._quote_payload_without_drop_off_time(
+            dropoff_flight_time="01:00", drop_off_slot="90",
+        )
+        resp, _ = self._post_quote_payload(
+            monkeypatch, payload, snapshot=_mk_airport_snapshot(entry_time=time(23, 30)),
+        )
+        assert resp.status_code == 200, resp.json()
+
+    def test_H_entry_time_lands_exactly_on_midnight(self, monkeypatch):
+        """t of the midnight seam: 02:00 − 120 = 00:00 exactly (no wrap)."""
+        payload = self._quote_payload_without_drop_off_time(
+            dropoff_flight_time="02:00", drop_off_slot="120",
+        )
+        resp, _ = self._post_quote_payload(
+            monkeypatch, payload, snapshot=_mk_airport_snapshot(entry_time=time(0, 0)),
+        )
+        assert resp.status_code == 200, resp.json()
+
+    def test_U_derived_entry_time_one_minute_off_still_rejected(self, monkeypatch):
+        """t+ε: 11:01 − 120 = 09:01 vs snapshot 09:00 → the mismatch gate
+        stays intact for genuinely changed times."""
+        payload = self._quote_payload_without_drop_off_time(
+            flight_departure_time="11:01", drop_off_slot="120",
+        )
+        resp, _ = self._post_quote_payload(
+            monkeypatch, payload, snapshot=_mk_airport_snapshot(entry_time=time(9, 0)),
+        )
+        assert resp.status_code == 400
+        assert "Airport quote no longer matches" in resp.json()["detail"]
+
+    def test_U_db_departure_time_never_feeds_entry_time(self, monkeypatch):
+        """Departure times are customer-entered — the DB schedule is dead for
+        pricing. With departure_id present AND a conflicting FlightDeparture
+        row (14:00 − 120 = 12:00 ≠ snapshot), the payload time (12:00 − 120 =
+        10:00 == snapshot) must win. Pre-fix this exact shape 400'd because
+        the derivation read the DB row instead of the payload."""
+        payload = self._quote_payload_without_drop_off_time(
+            departure_id=123,
+            dropoff_flight_time="12:00",
+            drop_off_slot="120",
+        )
+        resp, db = self._post_quote_payload(
+            monkeypatch, payload,
+            snapshot=_mk_airport_snapshot(entry_time=time(10, 0)),
+            db_departure_time=time(14, 0),
+        )
+        assert resp.status_code == 200, resp.json()
+
     # --- free_week boundary on the 7-day seam (t-eps / t / t+eps) --------------
 
     def _free_week_promo(self):

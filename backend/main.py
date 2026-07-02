@@ -12570,23 +12570,31 @@ def _parse_payment_hhmm(value: Optional[str]) -> Optional[time]:
         return None
 
 
-def _dropoff_time_for_quote_request(request: "CreatePaymentRequest", db: Session) -> Optional[time]:
+def _entry_time_before_departure(departure_time: time, slot_minutes: str) -> time:
+    """Drop-off (entry) time = departure time − slot, wrapping within the
+    day exactly like the frontend's formatMinutesToTime does for the quote."""
+    total_minutes = departure_time.hour * 60 + departure_time.minute - int(slot_minutes)
+    if total_minutes < 0:
+        total_minutes += 24 * 60
+    return time(total_minutes // 60, total_minutes % 60)
+
+
+def _dropoff_time_for_quote_request(request: "CreatePaymentRequest") -> Optional[time]:
+    """Reconstruct the entry time the airport quote was fetched with.
+
+    Departure times are customer-entered — never read from FlightDeparture.
+    Priority mirrors the quote fetch in BookingsNew: the manual flight time
+    first, then flight_departure_time (customer override || selected flight),
+    minus the chosen drop-off slot."""
     if request.drop_off_time:
         return _parse_payment_hhmm(request.drop_off_time)
-    if request.dropoff_manual_entry and request.dropoff_flight_time and request.drop_off_slot:
-        departure_time = _parse_payment_hhmm(request.dropoff_flight_time)
-        if departure_time:
-            total_minutes = departure_time.hour * 60 + departure_time.minute - int(request.drop_off_slot)
-            if total_minutes < 0:
-                total_minutes += 24 * 60
-            return time(total_minutes // 60, total_minutes % 60)
-    if request.departure_id and request.drop_off_slot:
-        departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
-        if departure:
-            total_minutes = departure.departure_time.hour * 60 + departure.departure_time.minute - int(request.drop_off_slot)
-            if total_minutes < 0:
-                total_minutes += 24 * 60
-            return time(total_minutes // 60, total_minutes % 60)
+    if not request.drop_off_slot:
+        return None
+    departure_time = _parse_payment_hhmm(
+        request.dropoff_flight_time or request.flight_departure_time
+    )
+    if departure_time:
+        return _entry_time_before_departure(departure_time, request.drop_off_slot)
     return None
 
 
@@ -12900,7 +12908,7 @@ async def create_payment(
                                     db,
                                     request.airport_quote_snapshot_id,
                                     dropoff_date=dropoff_date,
-                                    entry_time=_dropoff_time_for_quote_request(request, db),
+                                    entry_time=_dropoff_time_for_quote_request(request),
                                     exit_date=quote_exit_date,
                                     exit_time=quote_exit_time,
                                 )
@@ -13110,7 +13118,7 @@ async def create_payment(
             db,
             request.airport_quote_snapshot_id,
             dropoff_date=dropoff_date,
-            entry_time=_dropoff_time_for_quote_request(request, db),
+            entry_time=_dropoff_time_for_quote_request(request),
             exit_date=quote_exit_date,
             exit_time=quote_exit_time,
         )

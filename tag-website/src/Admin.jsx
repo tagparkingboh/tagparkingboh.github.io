@@ -6058,6 +6058,8 @@ function Admin() {
     errorTypes,
     expandedErrorLog,
     setExpandedErrorLog,
+    errorLogsOffset,
+    setErrorLogsOffset,
     sqlSessionToken,
     sqlSessionExpires,
     logoutSqlSession,
