@@ -1355,6 +1355,12 @@ function Bookings({ isModal = false, onClose }) {
   // Lives here (rather than alongside other date useEffects) because it needs
   // selectedArrivalFlight, declared just above.
   useEffect(() => {
+    // Abort superseded runs: rapid time edits fire overlapping quote fetches,
+    // and a slow OLD response landing last would leave pricingInfo holding a
+    // snapshot whose times no longer match the form — payment then 400s with
+    // "Airport quote no longer matches" (live incidents 2026-07-02, sessions
+    // sess_1782986473371 / sess_1782991984701).
+    const abort = new AbortController()
     const fetchPricing = async () => {
       const manualDropoffTime = manualDropoffSlots.find(s => s.id === manualDepartureData.dropoffSlot)?.time || null
       const effectiveDropoffTime = dropoffTime || manualDropoffTime
@@ -1400,10 +1406,12 @@ function Bookings({ isModal = false, onClose }) {
             exitTime: pickupTimeStr,
             destination,
           }),
+          signal: abort.signal,
         })
 
         if (response.ok) {
           const data = await response.json()
+          if (abort.signal.aborted) return
           setAirportQuote(data)
           setPricingInfo(data.pricingInfo)
           setFormData(prev => ({
@@ -1411,20 +1419,25 @@ function Bookings({ isModal = false, onClose }) {
             package: 'airport_quote',
           }))
         } else {
+          if (abort.signal.aborted) return
           setPricingInfo(null)
           setAirportQuote(null)
           setPricingError('Unable to load live comparison pricing. Please check your times and try again.')
         }
       } catch (error) {
+        if (abort.signal.aborted) return
         console.error('Error fetching pricing:', error)
         setPricingInfo(null)
         setAirportQuote(null)
         setPricingError('Unable to load live comparison pricing. Please check your connection and try again.')
       } finally {
-        setPricingLoading(false)
+        if (!abort.signal.aborted) {
+          setPricingLoading(false)
+        }
       }
     }
     fetchPricing()
+    return () => abort.abort()
   }, [
     formData.dropoffDate,
     formData.pickupDate,
