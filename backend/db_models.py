@@ -1303,6 +1303,53 @@ class AirportQuoteSnapshot(Base):
         return f"<AirportQuoteSnapshot {self.airport} {self.billing_days}d {self.status}>"
 
 
+class FlightBoardSnapshot(Base):
+    """Scraped BOH arrivals/departures board — the live view for /employee.
+
+    Full rows including live status text ("Expected 20:00", "Wait In Lounge").
+    Historical demand analysis lives in FlightScheduleHistory; these snapshots
+    are debugging/display state and get pruned after ~30 days.
+    """
+    __tablename__ = "flight_board_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    airport = Column(String(8), nullable=False, default="BOH", server_default="BOH")
+    status = Column(String(10), nullable=False)  # 'ok' | 'error'
+    arrivals_json = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    departures_json = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    source_url = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class FlightScheduleHistory(Base):
+    """One row per flight per date — SCHEDULED times only, no punctuality.
+
+    Upserted from every board scrape; 48 scrapes/day still yield one row per
+    flight. This is the long-term demand signal (flights per day/hour/route by
+    season) for planning booking flows, so rows are never pruned.
+    """
+    __tablename__ = "flight_schedule_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "direction", "flight_date", "flight_number",
+            name="uq_flight_schedule_direction_date_flight",
+        ),
+        Index("idx_flight_schedule_date", "flight_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    airport = Column(String(8), nullable=False, default="BOH", server_default="BOH")
+    direction = Column(String(10), nullable=False)  # 'arrival' | 'departure'
+    flight_date = Column(Date, nullable=False)
+    scheduled_time = Column(Time, nullable=False)
+    flight_number = Column(String(16), nullable=False)
+    airline = Column(String(64), nullable=True)
+    place = Column(String(128), nullable=True)  # origin (arrivals) / destination (departures)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class AirportQuoteConversionLog(Base):
     """Per-quote airport comparison funnel log."""
     __tablename__ = "airport_quote_conversion_log"

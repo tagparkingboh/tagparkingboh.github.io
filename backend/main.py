@@ -15074,6 +15074,51 @@ class UpdateInspectionRequest(BaseModel):
     mileage: Optional[int] = None
 
 
+@app.get("/api/employee/flight-board")
+async def get_employee_flight_board(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Latest scraped BOH arrivals/departures board for the driver view.
+
+    Serves the most recent successful snapshot — a failed scrape never blanks
+    the board, it just ages (the frontend shows staleness from age_minutes).
+    """
+    from db_models import FlightBoardSnapshot
+
+    snapshot = (
+        db.query(FlightBoardSnapshot)
+        .filter(FlightBoardSnapshot.status == "ok")
+        .order_by(FlightBoardSnapshot.created_at.desc())
+        .first()
+    )
+    if not snapshot:
+        return {
+            "available": False,
+            "arrivals": [],
+            "departures": [],
+            "scraped_at": None,
+            "age_minutes": None,
+            "stale": True,
+        }
+
+    age_minutes = None
+    if snapshot.created_at is not None:
+        age_minutes = max(
+            0,
+            int((datetime.now(timezone.utc) - snapshot.created_at).total_seconds() // 60),
+        )
+    return {
+        "available": True,
+        "arrivals": snapshot.arrivals_json or [],
+        "departures": snapshot.departures_json or [],
+        "scraped_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+        # Stale once we've missed at least one 30-min scrape cycle.
+        "age_minutes": age_minutes,
+        "stale": age_minutes is None or age_minutes > 45,
+    }
+
+
 @app.get("/api/employee/bookings")
 async def get_employee_bookings(
     include_cancelled: bool = Query(False, description="Include cancelled bookings"),

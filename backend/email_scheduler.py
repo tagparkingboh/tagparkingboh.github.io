@@ -1147,6 +1147,36 @@ def start_scheduler():
         HOMEPAGE_AIRPORT_QUOTE_REFRESH_MINUTE,
     )
 
+    from flight_board_service import (
+        FLIGHT_BOARD_SCRAPE_INTERVAL_MINUTES,
+        FLIGHT_BOARD_SCRAPE_JITTER_SECONDS,
+        is_flight_board_scrape_enabled,
+        process_flight_board_scrape,
+    )
+
+    if is_flight_board_scrape_enabled():
+        scheduler.add_job(
+            lambda: process_flight_board_scrape(SessionLocal),
+            trigger=IntervalTrigger(
+                minutes=FLIGHT_BOARD_SCRAPE_INTERVAL_MINUTES,
+                jitter=FLIGHT_BOARD_SCRAPE_JITTER_SECONDS,
+            ),
+            id="flight_board_scrape",
+            name="Scrape BOH arrivals/departures board",
+            replace_existing=True,
+            misfire_grace_time=600,
+            # First fire shortly after startup so drivers see fresh data
+            # right after a deploy instead of waiting a full interval.
+            next_run_time=datetime.now() + timedelta(minutes=2),
+        )
+        logger.info(
+            "Flight board scrape scheduled every %s min (jitter %ss)",
+            FLIGHT_BOARD_SCRAPE_INTERVAL_MINUTES,
+            FLIGHT_BOARD_SCRAPE_JITTER_SECONDS,
+        )
+    else:
+        logger.info("Flight board scrape not scheduled; FLIGHT_BOARD_SCRAPE_ENABLED is disabled")
+
     scheduler.start()
     logger.info(f"Email scheduler started - checking every {CHECK_INTERVAL_MINUTES} minutes")
 

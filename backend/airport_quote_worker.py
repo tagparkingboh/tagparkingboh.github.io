@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from airport_quote_scraper import fetch_bournemouth_airport_quote
 from airport_quote_service import AirportQuoteInput
+from flight_board_scraper import fetch_bournemouth_flight_board
 
 app = FastAPI(title="TAG Airport Quote Worker")
 
@@ -73,4 +74,21 @@ def scrape_airport_quote(request: AirportQuoteWorkerRequest):
     return {
         "products": [product.to_api() for product in scrape.products],
         "sourceUrl": scrape.source_url,
+    }
+
+
+@app.post("/internal/flight-board/scrape")
+def scrape_flight_board():
+    """Scrape the public BOH arrivals/departures board (both tables, one load)."""
+    acquired = SCRAPE_SEMAPHORE.acquire(blocking=False)
+    if not acquired:
+        raise HTTPException(status_code=429, detail="Airport quote worker is busy")
+    try:
+        board = fetch_bournemouth_flight_board()
+    finally:
+        SCRAPE_SEMAPHORE.release()
+    return {
+        "arrivals": board["arrivals"],
+        "departures": board["departures"],
+        "sourceUrl": board.get("source_url"),
     }

@@ -67,3 +67,28 @@ def get_worker_scraper_from_env() -> Optional[Scraper]:
     if not worker_url:
         return None
     return build_worker_scraper(worker_url)
+
+
+def _flight_board_timeout_seconds() -> float:
+    # Longer than the quote timeout: this is a background job, not a customer
+    # request, so waiting out a slow page load beats a spurious failure.
+    raw = os.environ.get("FLIGHT_BOARD_WORKER_TIMEOUT_SECONDS", "45")
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return 45.0
+
+
+def fetch_flight_board_via_worker(worker_url: str) -> dict:
+    """Call the worker's flight-board scrape and normalise the payload."""
+    response = httpx.post(
+        f"{worker_url.rstrip('/')}/internal/flight-board/scrape",
+        timeout=_flight_board_timeout_seconds(),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return {
+        "arrivals": payload.get("arrivals") or [],
+        "departures": payload.get("departures") or [],
+        "source_url": payload.get("sourceUrl"),
+    }

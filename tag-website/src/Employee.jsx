@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import RosterCalendar from './components/RosterCalendar'
+import EmployeeFlightBoard from './components/EmployeeFlightBoard'
 import EmployeePayroll from './components/EmployeePayroll'
 import SignaturePad from './components/SignaturePad'
 import './Employee.css'
@@ -800,6 +801,8 @@ function Employee() {
           refreshTrigger={refreshTrigger}
           renderBookingActions={renderBookingActions}
         />
+
+        <EmployeeFlightBoard />
 
         <EmployeePayroll token={token} />
       </main>

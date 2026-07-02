@@ -1381,3 +1381,135 @@ button.photo-slot-capture {
   background: #2a2a2a;
   cursor: pointer;
 }
+
+/* ===== Live flight board (Bournemouth Airport arrivals/departures) ===== */
+
+.flight-board-section {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.flight-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flight-board-header h2 {
+  font-size: 18px;
+  margin: 0;
+  color: #1a1a2e;
+}
+
+.flight-board-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.flight-board-updated {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.flight-board-stale {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.flight-board-refresh {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.flight-board-refresh:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.flight-board-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 12px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.flight-board-tab {
+  padding: 8px 20px;
+  border: none;
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+
+.flight-board-tab.active {
+  color: #0ea5b7;
+  border-bottom-color: #0ea5b7;
+}
+
+.flight-board-error {
+  color: #ef4444;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.flight-board-empty {
+  color: #6b7280;
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.flight-board-table-wrap {
+  overflow-x: auto;
+}
+
+.flight-board-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.flight-board-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.flight-board-table td {
+  padding: 10px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #111827;
+}
+
+.fb-place {
+  font-weight: 600;
+}
+
+.fb-flight,
+.fb-scheduled {
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-status-done { color: #16a34a; font-weight: 600; }
+.fb-status-expected { color: #b45309; font-weight: 600; }
+.fb-status-alert { color: #dc2626; font-weight: 700; }
+.fb-status-active { color: #0369a1; font-weight: 600; }
+.fb-status-scheduled { color: #374151; }
