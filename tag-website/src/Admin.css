@@ -9775,6 +9775,51 @@
   font-weight: 500;
 }
 
+.financial-day-row td {
+  background: #eef2f7;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.financial-day-row:hover td {
+  background: #e2e8f0;
+}
+
+.financial-day-row .expand-icon {
+  font-size: 9px;
+  color: #6b7280;
+  display: inline-block;
+  width: 16px;
+}
+
+.financial-day-row .day-label {
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-right: 16px;
+}
+
+.financial-day-row .day-count {
+  color: #6b7280;
+  margin-right: 16px;
+}
+
+.financial-day-row .day-net {
+  color: #374151;
+  font-weight: 500;
+  margin-right: 16px;
+}
+
+.financial-day-row .day-refunds {
+  color: #ef4444;
+  font-weight: 500;
+  margin-right: 16px;
+}
+
+.financial-day-row .day-revenue {
+  color: #22c55e;
+  font-weight: 600;
+}
+
 .financial-month-header .month-revenue {
   font-size: 14px;
   color: #22c55e;

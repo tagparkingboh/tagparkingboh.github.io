@@ -95,6 +95,11 @@ const ReportsSectionPage = ({
   totalCustomers,
   weeklyPageIndex,
 }) => {
+  // Day-level expansion inside the financial Monthly Breakdown, keyed
+  // "monthKey|paidDateSort". Local state (not lifted to Admin.jsx) as nothing
+  // else needs it. Must be declared before the activeTab early return.
+  const [expandedFinancialDays, setExpandedFinancialDays] = React.useState({})
+
   if (activeTab !== 'reports') {
     return null
   }
@@ -2449,7 +2454,46 @@ const ReportsSectionPage = ({
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {month.bookings.map((booking) => (
+                                        {(() => {
+                                          // Bookings arrive sorted ASC by paidDateSort, so
+                                          // contiguous runs of the same day form the groups.
+                                          const dayGroups = []
+                                          month.bookings.forEach((booking) => {
+                                            const dayKey = booking.paidDateSort || booking.paidDate
+                                            const last = dayGroups[dayGroups.length - 1]
+                                            if (last && last.dayKey === dayKey) {
+                                              last.bookings.push(booking)
+                                            } else {
+                                              dayGroups.push({ dayKey, label: booking.paidDate, bookings: [booking] })
+                                            }
+                                          })
+                                          return dayGroups.map((day) => {
+                                            const dayStateKey = `${month.monthKey}|${day.dayKey}`
+                                            const isDayExpanded = !!expandedFinancialDays[dayStateKey]
+                                            const dayNetPence = day.bookings.reduce((sum, b) => sum + (b.netPence || 0), 0)
+                                            const dayRefundPence = day.bookings.reduce((sum, b) => sum + (b.refundPence || 0), 0)
+                                            const dayRevenuePence = day.bookings.reduce((sum, b) => sum + (b.finalRevenuePence || 0), 0)
+                                            return (
+                                              <React.Fragment key={dayStateKey}>
+                                                <tr
+                                                  className="financial-day-row"
+                                                  onClick={() => setExpandedFinancialDays(prev => ({
+                                                    ...prev,
+                                                    [dayStateKey]: !prev[dayStateKey]
+                                                  }))}
+                                                >
+                                                  <td colSpan={11}>
+                                                    <span className="expand-icon">{isDayExpanded ? '▼' : '▶'}</span>
+                                                    <span className="day-label">{day.label}</span>
+                                                    <span className="day-count">{day.bookings.length} booking{day.bookings.length !== 1 ? 's' : ''}</span>
+                                                    <span className="day-net">Paid: £{(dayNetPence / 100).toFixed(2)}</span>
+                                                    {dayRefundPence > 0 && (
+                                                      <span className="day-refunds">Refunds: £{(dayRefundPence / 100).toFixed(2)}</span>
+                                                    )}
+                                                    <span className="day-revenue">Revenue: £{(dayRevenuePence / 100).toFixed(2)}</span>
+                                                  </td>
+                                                </tr>
+                                                {isDayExpanded && day.bookings.map((booking) => (
                                           <tr key={booking.id} className={booking.needsOverride ? 'needs-override' : ''}>
                                             <td>{booking.paidDate}</td>
                                             <td>{booking.reference}</td>
@@ -2603,7 +2647,11 @@ const ReportsSectionPage = ({
                                               )}
                                             </td>
                                           </tr>
-                                        ))}
+                                                ))}
+                                              </React.Fragment>
+                                            )
+                                          })
+                                        })()}
                                       </tbody>
                                     </table>
                                   </div>
