@@ -1,9 +1,13 @@
 // Customer-facing capacity helpers. Pure functions so they can be unit-tested
 // in isolation and reused across the booking flow + admin tools.
 //
-// `dailyOccupancy` is a map of ISO date string ('YYYY-MM-DD') → count of
-// bookings overlapping that operational day. The customer-form fetches this
-// via `/api/capacity/daily?from=...&to=...` and stores it in component state.
+// `dailyOccupancy` is a map of ISO date string ('YYYY-MM-DD') → booking
+// count for that operational day. The customer-form fetches TWO such maps
+// from `/api/capacity/daily`: `daily_occupancy` (bookings touching the day
+// — advisory tints and busy warnings) and `daily_through_occupancy` (cars
+// parked straight through the day — the hard "we're full" floor). The
+// helpers below don't care which; the caller picks the map that matches
+// the question being asked.
 //
 // `onlineCapacity` is the public online cap. The backend returns a
 // date-effective `daily_capacity` map from `/api/capacity/daily`; when that
@@ -57,8 +61,10 @@ export const isManuallyBlocked = (date, blockedDates) => {
 }
 
 // Walk the stay range (dropoff..pickup, inclusive both ends) and return the
-// first date that's either manually blocked or at the soft cap. Returns
-// { date: Date, reason: 'manual'|'cap' } or null if every day is fine.
+// first date that's either manually blocked or at cap per the supplied
+// occupancy map (the booking flow passes the through-count map so turnover
+// days don't read as full). Returns { date: Date, reason: 'manual'|'cap' }
+// or null if every day is fine.
 //
 // "Straddle" case: dropoff D-2, pickup D+2, day D at cap → fires for day D
 // even though neither boundary date itself is blocked.

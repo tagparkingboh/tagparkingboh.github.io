@@ -418,6 +418,15 @@ function Bookings({ isModal = false, onClose }) {
   // Daily occupancy/capacity maps for the next 90 days drive the date picker
   // tint, stay-span warning, and busy warning.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
+  // Strictly-through stays (cars parked all day): the "definitely full"
+  // floor for hard blocks. dailyOccupancy (touching count) stays advisory.
+  const [dailyThroughOccupancy, setDailyThroughOccupancy] = useState({})
+  // Backend's CAPACITY_GATE_TIME_AWARE flag, echoed by /api/capacity/daily.
+  // Hard blocks may only relax to the through-count while the backend gate
+  // is time-aware; when false (or on an older backend that omits the
+  // field) they stay on the touching count so the banner and the
+  // create-intent 400 agree. Rollback = flip the flag back.
+  const [timeAwareGate, setTimeAwareGate] = useState(false)
   const [dailyCapacity, setDailyCapacity] = useState({})
   const [onlineCapacity, setOnlineCapacity] = useState(DEFAULT_ONLINE_CAPACITY)
   // "We're getting full" early-warning modal. Fires for any date in the
@@ -656,21 +665,34 @@ function Bookings({ isModal = false, onClose }) {
   const isAtCapacity = (date) =>
     isAtCapacityUtil(date, dailyOccupancy, dailyCapacity)
 
-  // Tint helper for react-datepicker `dayClassName` prop.
+  // Hard fullness map. Time-aware backend gate: through-count (cars parked
+  // straight through the day — can't be at cap while a booking could still
+  // physically fit). Flag off: the touching count, mirroring the per-day
+  // create-intent gate so the banner and the 400 agree.
+  const hardFullOccupancy = timeAwareGate ? dailyThroughOccupancy : dailyOccupancy
+
+  // The only signal allowed to say "Sorry, we're full".
+  const isDayFull = (date) =>
+    isAtCapacityUtil(date, hardFullOccupancy, dailyCapacity)
+
+  // Tint helper for react-datepicker `dayClassName` prop. Advisory — keyed
+  // off the touching count so busy turnover days still tint amber.
   const datePickerDayClass = (date) => {
     if (isManuallyBlocked(date)) return 'tag-day-blocked-manual'
     if (isAtCapacity(date)) return 'tag-day-blocked-cap'
     return ''
   }
 
-  // Walk the stay range and return the first date that's blocked or at cap.
+  // Walk the stay range and return the first date that's blocked or full.
   // Catches the "straddle" case where dropoff + pickup themselves are fine
-  // but a day inside the stay is full.
+  // but a day inside the stay is full. Walks the hard-fullness map: with a
+  // time-aware backend a turnover day with departures isn't "full" — the
+  // create-intent gate has the final say once exact times are known.
     const findBlockedDateInStay = useMemo(
       () => findBlockedDateInStayUtil(
-        formData.dropoffDate, formData.pickupDate, dailyOccupancy, blockedDates, dailyCapacity,
+        formData.dropoffDate, formData.pickupDate, hardFullOccupancy, blockedDates, dailyCapacity,
       ),
-    [formData.dropoffDate, formData.pickupDate, blockedDates, dailyOccupancy, dailyCapacity],
+    [formData.dropoffDate, formData.pickupDate, blockedDates, hardFullOccupancy, dailyCapacity],
   )
 
   // Check if a date/time is blocked for drop-offs
@@ -880,6 +902,8 @@ function Bookings({ isModal = false, onClose }) {
         if (response.ok) {
           const data = await response.json()
           setDailyOccupancy(data.daily_occupancy || {})
+          setDailyThroughOccupancy(data.daily_through_occupancy || {})
+          setTimeAwareGate(data.time_aware_gate === true)
           setDailyCapacity(data.daily_capacity || {})
           setOnlineCapacity(data.online_capacity || data.max_capacity || DEFAULT_ONLINE_CAPACITY)
         }
@@ -928,14 +952,21 @@ function Bookings({ isModal = false, onClose }) {
       const iso = isoDateUtil(candidate)
       if (dismissedBusyDatesRef.current.has(iso)) continue
       if (isManuallyBlockedUtil(candidate, blockedDates)) continue
-      if (isAtCapacityUtil(candidate, dailyOccupancy, dailyCapacity)) continue
+      // Skip days the hard "Sorry, we're full" banner owns. With a
+      // time-aware backend that's through-count fullness only — a turnover
+      // day whose touching count is at/over the cap still has room, so it
+      // warns instead. Flag off: touch-at-cap days skip, exactly as before.
+      if (isAtCapacityUtil(candidate, hardFullOccupancy, dailyCapacity)) continue
       const pct = getDayOccupancyPercentUtil(candidate, dailyOccupancy, dailyCapacity)
       if (pct >= 80) {
         const count = dailyOccupancy[iso] || 0
         const cap = getOnlineCapacityForDate(candidate, dailyCapacity, onlineCapacity)
         const spacesLeft = Math.max(0, cap - count)
         setBusyWarning({
-          percent: pct,
+          // Touching count can exceed the cap on turnover days; the day
+          // isn't full (see the through-count skip above), so present it
+          // as 100% busy rather than an impossible ">100% capacity".
+          percent: Math.min(pct, 100),
           level: pct >= 90 ? 'red' : 'amber',
           dateISO: iso,
           formatted: format(candidate, 'EEEE d MMMM yyyy'),
@@ -944,7 +975,7 @@ function Bookings({ isModal = false, onClose }) {
         return
       }
     }
-  }, [formData.dropoffDate, formData.pickupDate, dailyOccupancy, dailyCapacity, onlineCapacity, blockedDates, busyWarning])
+  }, [formData.dropoffDate, formData.pickupDate, dailyOccupancy, hardFullOccupancy, dailyCapacity, onlineCapacity, blockedDates, busyWarning])
 
   const dismissBusyWarning = () => {
     if (busyWarning?.dateISO) {
@@ -2499,10 +2530,15 @@ function Bookings({ isModal = false, onClose }) {
             <p className="busy-warning-body">
               We suggest booking soon to avoid disappointment.
             </p>
-            <p className="busy-warning-spaces">
-              We have <strong>{busyWarning.spacesLeft}</strong>{' '}
-              {busyWarning.spacesLeft === 1 ? 'space' : 'spaces'} left.
-            </p>
+            {/* On a 100%-busy turnover day the touching count leaves no
+                "spaces left" to honestly report even though times can still
+                fit — omit the line rather than claim 0 and offer Continue. */}
+            {busyWarning.spacesLeft > 0 && (
+              <p className="busy-warning-spaces">
+                We have <strong>{busyWarning.spacesLeft}</strong>{' '}
+                {busyWarning.spacesLeft === 1 ? 'space' : 'spaces'} left.
+              </p>
+            )}
             <button
               type="button"
               className="busy-warning-btn"
@@ -3051,7 +3087,7 @@ function Bookings({ isModal = false, onClose }) {
                     and the form let them fill in airline/destination. Once
                     both dates exist, findBlockedDateInStay's stay-span
                     banner takes over (avoids double-rendering). */}
-                {!isDropoffDateBlocked && formData.dropoffDate && isLeadTimeAllowed && !findBlockedDateInStay && isAtCapacity(formData.dropoffDate) && (
+                {!isDropoffDateBlocked && formData.dropoffDate && isLeadTimeAllowed && !findBlockedDateInStay && isDayFull(formData.dropoffDate) && (
                   <div className="blocked-date-message">
                     <p>
                       Sorry, we're full on {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}.
@@ -3070,7 +3106,7 @@ function Bookings({ isModal = false, onClose }) {
                   defined as "ALL potential dropoff times are blocked OR
                   full-day block"). Either way the banner above asks them
                   to call; no point letting them fill in the rest. */}
-              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && !findBlockedDateInStay && !isAtCapacity(formData.dropoffDate) && (
+              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && !findBlockedDateInStay && !isDayFull(formData.dropoffDate) && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
@@ -3321,7 +3357,7 @@ function Bookings({ isModal = false, onClose }) {
                       {findBlockedDateInStay && !isDropoffDateBlocked && !isPickupDateBlocked && (
                         <div className="blocked-date-message">
                           <p>
-                            Sorry, we're full and have no space between {format(formData.dropoffDate, 'EEEE d MMMM yyyy')} and {format(formData.pickupDate, 'EEEE d MMMM yyyy')}.{' '}
+                            Sorry, we're full on {format(findBlockedDateInStay.date, 'EEEE d MMMM yyyy')}, which falls within your selected stay.{' '}
                             Please call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we'll do our best to help.
                           </p>
                         </div>
@@ -3331,7 +3367,7 @@ function Bookings({ isModal = false, onClose }) {
                           standalone "I selected a return date that's full"
                           case which findBlockedDateInStay also catches but
                           phrases as a stay-span warning. */}
-                      {formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && isAtCapacity(formData.pickupDate) && (
+                      {formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && isDayFull(formData.pickupDate) && (
                         <div className="blocked-date-message">
                           <p>
                             Sorry, we're full on {format(formData.pickupDate, 'EEEE d MMMM yyyy')}.
@@ -3370,7 +3406,7 @@ function Bookings({ isModal = false, onClose }) {
               {/* Flight-based arrival lookup removed - using direct entry */}
 
               {/* Return Flight Entry Form */}
-              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && !isAtCapacity(formData.pickupDate) && (
+              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && !isDayFull(formData.pickupDate) && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualArrivalAirline">Airline <span className="required">*</span></label>

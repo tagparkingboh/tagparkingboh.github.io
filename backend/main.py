@@ -976,6 +976,12 @@ async def get_daily_capacity(
     carts that may never convert, and including them inflates the count
     against the online booking cap.
 
+    `daily_through_occupancy` additionally reports strictly-through stays
+    (dropoff < day < pickup, CONFIRMED+COMPLETED+REFUNDED): cars present
+    all day regardless of times. It's the "definitely full" floor the
+    booking flow uses for hard blocks; `daily_occupancy` (touching count)
+    keeps driving advisory tints and busy warnings.
+
     First-come-first-served race protection moved to /api/payments/create-intent:
     if two customers race for the same last slot, only one's create-intent
     succeeds (find_overcapacity_day_in_stay re-checks at confirm time);
@@ -995,6 +1001,7 @@ async def get_daily_capacity(
         .filter(DbBooking.status.in_([
             BookingStatus.CONFIRMED,
             BookingStatus.COMPLETED,
+            BookingStatus.REFUNDED,
         ]))
         .filter(DbBooking.dropoff_date <= date_to)
         .filter(DbBooking.pickup_date >= date_from)
@@ -1002,18 +1009,36 @@ async def get_daily_capacity(
     bookings = db_service.exclude_staging_e2e_capacity_bookings(bookings, DbBooking).all()
 
     occupancy: dict[str, int] = {}
+    through_occupancy: dict[str, int] = {}
     daily_capacity = db_service.get_parking_capacity_for_range(db, date_from, date_to)
     current = date_from
     while current <= date_to:
+        # daily_occupancy keeps its historical meaning: CONFIRMED+COMPLETED
+        # bookings touching the day (REFUNDED rows are fetched only for the
+        # through count below).
         occupancy[current.isoformat()] = sum(
             1 for b in bookings
-            if b.dropoff_date <= current <= b.pickup_date
+            if b.status != BookingStatus.REFUNDED
+            and b.dropoff_date <= current <= b.pickup_date
+        )
+        # Through-stays: cars parked across the whole day whatever their
+        # times — the "this day is definitely full" floor. Includes REFUNDED
+        # (car still on site), matching the time-aware gate's status set.
+        through_occupancy[current.isoformat()] = sum(
+            1 for b in bookings
+            if b.dropoff_date < current < b.pickup_date
         )
         current += timedelta(days=1)
 
     current_capacity = db_service.get_parking_capacity_for_date(db, get_uk_now())
     return {
         "daily_occupancy": occupancy,
+        "daily_through_occupancy": through_occupancy,
+        # Tells the frontend whether the backend's hard gate is running
+        # time-aware. Hard blocks must only relax to the through-count when
+        # this is true — otherwise the customer sails past the banner and
+        # hits the per-day 400 at create-intent (dead-end funnel).
+        "time_aware_gate": db_service.is_capacity_gate_time_aware(),
         "daily_capacity": daily_capacity,
         "online_capacity": current_capacity["online_spaces"],
         "total_capacity": current_capacity["total_spaces"],
@@ -1052,8 +1077,11 @@ async def check_capacity_for_slot(
       peak          int      — peak concurrent OTHER bookings during stay
       max_capacity  int      — date-effective online capacity
 
-    Counts CONFIRMED, COMPLETED, and PENDING bookings (PENDING included
-    so two customers in-payment-flow can't both race for the last spot).
+    Counts CONFIRMED, COMPLETED, and PENDING bookings (PENDING included so
+    two customers in-payment-flow can't both race for the last spot). With
+    CAPACITY_GATE_TIME_AWARE on, additionally counts REFUNDED (car still on
+    site until pickup) and lets a same-instant pickup free the space for a
+    same-instant drop-off, matching the create-intent gate's semantics.
     """
     # Parse HH:MM times. Reject malformed inputs early.
     try:
@@ -1069,44 +1097,21 @@ async def check_capacity_for_slot(
     if (pickup_date - dropoff_date).days > 90:
         raise HTTPException(status_code=400, detail="Stay length too large (max 90 days)")
 
-    # Pull every booking whose date range can overlap the customer's window.
-    # Time-precision filtering happens in the sweep below.
-    bookings = (
-        db.query(DbBooking)
-        .filter(DbBooking.status.in_([
-            BookingStatus.CONFIRMED,
-            BookingStatus.COMPLETED,
-            BookingStatus.PENDING,
-        ]))
-        .filter(DbBooking.dropoff_date <= pickup_date)
-        .filter(DbBooking.pickup_date >= dropoff_date)
+    if db_service.is_capacity_gate_time_aware():
+        statuses = list(db_service.TIME_AWARE_OCCUPYING_STATUSES) + [BookingStatus.PENDING]
+        arrivals_first = False
+    else:
+        # Legacy semantics, byte-for-byte: no REFUNDED, and a back-to-back
+        # swap at the same instant counts as a transient collision.
+        statuses = [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]
+        arrivals_first = True
+    peak = db_service.peak_concurrent_occupancy(
+        db,
+        window_start=customer_drop_dt,
+        window_end=customer_pick_dt,
+        statuses=statuses,
+        arrivals_first_at_ties=arrivals_first,
     )
-    bookings = db_service.exclude_staging_e2e_capacity_bookings(bookings, DbBooking).all()
-
-    # Build a sweep of (+1 at arrival, -1 at departure) events truncated to
-    # the customer's [drop, pick] window. Bookings with missing times use
-    # start-of-day for drop-off and end-of-day for pickup (worst-case).
-    events: list[tuple[datetime, int]] = []
-    for b in bookings:
-        b_drop_dt = datetime.combine(b.dropoff_date, b.dropoff_time or time(0, 0))
-        b_pick_dt = datetime.combine(b.pickup_date, b.pickup_time or time(23, 59))
-        enter = max(b_drop_dt, customer_drop_dt)
-        leave = min(b_pick_dt, customer_pick_dt)
-        if enter < leave:
-            events.append((enter, +1))
-            events.append((leave, -1))
-
-    # Sort with +1 BEFORE -1 at the same instant so a back-to-back swap
-    # (one car arrives the moment another leaves) is counted as a transient
-    # collision rather than silently coexisting.
-    events.sort(key=lambda e: (e[0], -e[1]))
-
-    peak = 0
-    current = 0
-    for _, delta in events:
-        current += delta
-        if current > peak:
-            peak = current
 
     daily_capacity = db_service.get_parking_capacity_for_range(db, dropoff_date, pickup_date)
     cap = min(
@@ -12813,9 +12818,16 @@ async def create_payment(
             # The customer-meet time is arrival + PICKUP_OFFSET_MINUTES (see
             # pickup_time_from_arrival) — only the meet time should be
             # checked against block windows. A 16:59 arrival ⇒ 17:29 meet.
+            # CreatePaymentRequest has no bare pickup_time field — the meet
+            # time derives from the arrival-time fields (same priority as
+            # _exit_window_for_quote_request: canonical flight_arrival_time
+            # first, manual-entry pickup_flight_time second). None when no
+            # arrival time exists — check_time_blocked then applies its
+            # date-level-only semantics for missing times.
             pickup_time_str = (
-                request.pickup_time
-                or pickup_time_from_arrival(request.pickup_flight_time)
+                pickup_time_from_arrival(
+                    request.flight_arrival_time or request.pickup_flight_time
+                )
                 or request.pickup_flight_time
             )
 
@@ -12850,14 +12862,47 @@ async def create_payment(
             request_dropoff_date,
             request_pickup_date,
         )
-        offending = db_service.find_overcapacity_day_in_stay(
-            db,
-            dropoff_date=request_dropoff_date,
-            pickup_date=request_pickup_date,
-            cap_by_date=capacity_by_date,
-            cap_field="online_spaces",
-            exclude_booking_id=existing_pending_id,
-        )
+        if db_service.is_capacity_gate_time_aware():
+            # Peak-concurrency gate (CAPACITY_GATE_TIME_AWARE): a turnover
+            # day where departures free space for this arrival no longer
+            # rejects. Times reuse the same derivations as the quote/blocked
+            # checks above; missing times worst-case inside the helper.
+            gate_dropoff_time = _dropoff_time_for_quote_request(request)
+            gate_pickup_date, gate_pickup_time = _exit_window_for_quote_request(
+                request, request_pickup_date
+            )
+            if gate_pickup_time is None:
+                # No arrival time derivable from the request (the model has
+                # no bare pickup_time field) — keep the customer's pickup
+                # date and let the sweep helper worst-case the exit to
+                # 23:59 rather than blocking checkout.
+                gate_pickup_date = request_pickup_date
+            if gate_pickup_date and gate_pickup_date > request_pickup_date:
+                # Exit rolled past midnight — extend the cap map to cover it.
+                capacity_by_date = db_service.get_parking_capacity_for_range(
+                    db,
+                    request_dropoff_date,
+                    gate_pickup_date,
+                )
+            offending = db_service.find_overcapacity_moment_in_stay(
+                db,
+                dropoff_date=request_dropoff_date,
+                pickup_date=gate_pickup_date or request_pickup_date,
+                dropoff_time=gate_dropoff_time,
+                pickup_time=gate_pickup_time,
+                cap_by_date=capacity_by_date,
+                cap_field="online_spaces",
+                exclude_booking_id=existing_pending_id,
+            )
+        else:
+            offending = db_service.find_overcapacity_day_in_stay(
+                db,
+                dropoff_date=request_dropoff_date,
+                pickup_date=request_pickup_date,
+                cap_by_date=capacity_by_date,
+                cap_field="online_spaces",
+                exclude_booking_id=existing_pending_id,
+            )
         if offending:
             day, _, cap = unpack_capacity_offending(offending, capacity_by_date[request_dropoff_date.isoformat()]["online_spaces"])
             raise HTTPException(
@@ -14009,14 +14054,29 @@ async def stripe_webhook(
                     race_booking.dropoff_date,
                     race_booking.pickup_date,
                 )
-                race_offending = db_service.find_overcapacity_day_in_stay_locked(
-                    db,
-                    dropoff_date=race_booking.dropoff_date,
-                    pickup_date=race_booking.pickup_date,
-                    cap_by_date=capacity_by_date,
-                    cap_field="online_spaces",
-                    exclude_booking_id=race_booking.id,
-                )
+                if db_service.is_capacity_gate_time_aware():
+                    # Same locks/keys as the per-day variant; only the
+                    # counting rule changes (peak concurrent cars, using
+                    # the booking's stored drop-off/pick-up times).
+                    race_offending = db_service.find_overcapacity_moment_in_stay_locked(
+                        db,
+                        dropoff_date=race_booking.dropoff_date,
+                        pickup_date=race_booking.pickup_date,
+                        dropoff_time=race_booking.dropoff_time,
+                        pickup_time=race_booking.pickup_time,
+                        cap_by_date=capacity_by_date,
+                        cap_field="online_spaces",
+                        exclude_booking_id=race_booking.id,
+                    )
+                else:
+                    race_offending = db_service.find_overcapacity_day_in_stay_locked(
+                        db,
+                        dropoff_date=race_booking.dropoff_date,
+                        pickup_date=race_booking.pickup_date,
+                        cap_by_date=capacity_by_date,
+                        cap_field="online_spaces",
+                        exclude_booking_id=race_booking.id,
+                    )
                 # Lock is now held. Refresh the booking + payment objects:
                 # a concurrent duplicate webhook may have committed between
                 # our initial load and the lock acquisition. Without this,

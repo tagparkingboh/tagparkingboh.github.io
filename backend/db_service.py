@@ -1313,3 +1313,212 @@ def find_overcapacity_day_in_stay_locked(
         cap_field=cap_field,
         exclude_booking_id=exclude_booking_id,
     )
+
+
+# ---- Time-aware capacity (peak concurrency) --------------------------------
+#
+# The per-day gates above count any booking TOUCHING a date as +1, which
+# overcounts on turnover days: on 2026-07-04 prod had 80 bookings touching
+# the day but only 68 cars present at once (10 picked up / 9 dropped off
+# that day). The helpers below sweep event boundaries inside the customer's
+# stay window and gate on peak CONCURRENT cars instead.
+
+CAPACITY_GATE_TIME_AWARE_ENV = "CAPACITY_GATE_TIME_AWARE"
+
+# A refunded booking's car is still on site until its pickup date, so it
+# occupies a space even though the money came back.
+TIME_AWARE_OCCUPYING_STATUSES = (
+    BookingStatus.CONFIRMED,
+    BookingStatus.COMPLETED,
+    BookingStatus.REFUNDED,
+)
+
+
+def is_capacity_gate_time_aware() -> bool:
+    raw = os.environ.get(CAPACITY_GATE_TIME_AWARE_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _stay_sweep_events(
+    db: Session,
+    window_start: datetime,
+    window_end: datetime,
+    statuses,
+    exclude_booking_id: Optional[int] = None,
+    arrivals_first_at_ties: bool = False,
+) -> list:
+    """(datetime, delta) events for bookings overlapping [window_start,
+    window_end], truncated to the window. Bookings missing a time are
+    worst-cased: drop-off at 00:00, pickup at 23:59.
+
+    Default sort: departures (-1) before probes (0) before arrivals (+1)
+    at the same instant — a pickup at T frees the space for a drop-off at
+    T. `arrivals_first_at_ties=True` restores the legacy check-slot order
+    (a back-to-back swap counts as a transient collision), kept for the
+    flag-off path only.
+    """
+    q = db.query(Booking).filter(
+        Booking.status.in_(list(statuses)),
+        Booking.dropoff_date <= window_end.date(),
+        Booking.pickup_date >= window_start.date(),
+    )
+    if exclude_booking_id is not None:
+        q = q.filter(Booking.id != exclude_booking_id)
+    q = exclude_staging_e2e_capacity_bookings(q)
+
+    events = []
+    for b in q.all():
+        b_drop = datetime.combine(b.dropoff_date, b.dropoff_time or time(0, 0))
+        b_pick = datetime.combine(b.pickup_date, b.pickup_time or time(23, 59))
+        enter = max(b_drop, window_start)
+        leave = min(b_pick, window_end)
+        if enter < leave:
+            events.append((enter, +1))
+            events.append((leave, -1))
+    tie = (lambda d: -d) if arrivals_first_at_ties else (lambda d: d)
+    events.sort(key=lambda e: (e[0], tie(e[1])))
+    return events
+
+
+def peak_concurrent_occupancy(
+    db: Session,
+    window_start: datetime,
+    window_end: datetime,
+    statuses=TIME_AWARE_OCCUPYING_STATUSES,
+    exclude_booking_id: Optional[int] = None,
+    arrivals_first_at_ties: bool = False,
+) -> int:
+    """Peak concurrent car count over [window_start, window_end]."""
+    peak = 0
+    current = 0
+    for _, delta in _stay_sweep_events(
+        db, window_start, window_end, statuses, exclude_booking_id,
+        arrivals_first_at_ties=arrivals_first_at_ties,
+    ):
+        current += delta
+        if current > peak:
+            peak = current
+    return peak
+
+
+def _cap_for_day(day: date, cap, cap_by_date, cap_field: str):
+    if cap_by_date is not None:
+        date_cap = cap_by_date.get(day.isoformat(), {}).get(cap_field)
+        if date_cap is not None:
+            return date_cap
+    if cap is not None:
+        return cap
+    return CURRENT_ONLINE_SPACES if cap_field == "online_spaces" else CURRENT_TOTAL_SPACES
+
+
+def find_overcapacity_moment_in_stay(
+    db: Session,
+    dropoff_date: date,
+    pickup_date: date,
+    dropoff_time: Optional[time] = None,
+    pickup_time: Optional[time] = None,
+    cap: int = None,
+    cap_by_date: Optional[dict] = None,
+    cap_field: str = "online_spaces",
+    exclude_booking_id: Optional[int] = None,
+) -> Optional[tuple]:
+    """Time-aware twin of find_overcapacity_day_in_stay: gate on peak
+    CONCURRENT cars during the customer's stay window instead of bookings
+    touching each day. Same return contract — (day, count) for legacy `cap`
+    callers, (day, count, cap) with `cap_by_date` — so
+    unpack_capacity_offending works on either gate's result.
+
+    Missing times are worst-cased (drop 00:00 / pick 23:59), so a
+    dates-only call degrades to the conservative per-day behaviour rather
+    than under-counting. Counts CONFIRMED + COMPLETED + REFUNDED — PENDING
+    stays excluded exactly as in the per-day gate (2026-05-21 review), and
+    REFUNDED is added because the car is still physically on site.
+    """
+    window_start = datetime.combine(dropoff_date, dropoff_time or time(0, 0))
+    window_end = datetime.combine(pickup_date, pickup_time or time(23, 59))
+    if window_end <= window_start:
+        # Inverted/zero-length window: never treat as "fits". A booking
+        # confirmed with exit <= entry would also be invisible to every
+        # future sweep (its own enter < leave never holds), so fail CLOSED
+        # with the same offending contract as an over-cap day.
+        if cap_by_date is None:
+            return (dropoff_date, 0)
+        return (dropoff_date, 0, int(_cap_for_day(dropoff_date, cap, cap_by_date, cap_field)))
+
+    def cap_for(day: date):
+        return _cap_for_day(day, cap, cap_by_date, cap_field)
+
+    events = _stay_sweep_events(
+        db, window_start, window_end,
+        TIME_AWARE_OCCUPYING_STATUSES, exclude_booking_id,
+    )
+    # Zero-delta probes at the window start and at each midnight inside the
+    # window: concurrency is constant between events, but the date-effective
+    # cap can change at a day boundary with no event on it.
+    probes = [(window_start, 0)]
+    cursor = dropoff_date + timedelta(days=1)
+    while cursor <= pickup_date:
+        probe = datetime.combine(cursor, time(0, 0))
+        if window_start < probe < window_end:
+            probes.append((probe, 0))
+        cursor = cursor + timedelta(days=1)
+    events = sorted(events + probes, key=lambda e: (e[0], e[1]))
+
+    current = 0
+    for moment, delta in events:
+        current += delta
+        date_cap = cap_for(moment.date())
+        if current + 1 > date_cap:
+            if cap_by_date is None:
+                return (moment.date(), current)
+            return (moment.date(), current, int(date_cap))
+    return None
+
+
+def find_overcapacity_moment_in_stay_locked(
+    db: Session,
+    dropoff_date: date,
+    pickup_date: date,
+    dropoff_time: Optional[time] = None,
+    pickup_time: Optional[time] = None,
+    cap: int = None,
+    cap_by_date: Optional[dict] = None,
+    cap_field: str = "online_spaces",
+    exclude_booking_id: Optional[int] = None,
+) -> Optional[tuple]:
+    """find_overcapacity_moment_in_stay() behind the same per-date advisory
+    locks as find_overcapacity_day_in_stay_locked — identical key space and
+    ascending-date order, so time-aware and per-day writers queue on the
+    same locks during a flag rollout window.
+
+    Inverted/zero-length windows are rejected up front (fail closed, same
+    contract as the bare function) without acquiring any locks.
+    """
+    from sqlalchemy import text as _sql_text
+
+    window_start = datetime.combine(dropoff_date, dropoff_time or time(0, 0))
+    window_end = datetime.combine(pickup_date, pickup_time or time(23, 59))
+    if window_end <= window_start:
+        if cap_by_date is None:
+            return (dropoff_date, 0)
+        return (dropoff_date, 0, int(_cap_for_day(dropoff_date, cap, cap_by_date, cap_field)))
+
+    cursor = dropoff_date
+    while cursor <= pickup_date:
+        db.execute(
+            _sql_text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+            {"k": f"booking_capacity:{cursor.isoformat()}"},
+        )
+        cursor = cursor + timedelta(days=1)
+
+    return find_overcapacity_moment_in_stay(
+        db,
+        dropoff_date=dropoff_date,
+        pickup_date=pickup_date,
+        dropoff_time=dropoff_time,
+        pickup_time=pickup_time,
+        cap=cap,
+        cap_by_date=cap_by_date,
+        cap_field=cap_field,
+        exclude_booking_id=exclude_booking_id,
+    )
