@@ -1339,17 +1339,36 @@ def is_capacity_gate_time_aware() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _stay_sweep_events(
+def fetch_bookings_overlapping_window(
     db: Session,
-    window_start: datetime,
-    window_end: datetime,
+    start_date: date,
+    end_date: date,
     statuses,
     exclude_booking_id: Optional[int] = None,
+) -> list:
+    """Booking rows whose stay touches [start_date, end_date]. Split out of
+    _stay_sweep_events so batched callers (check-slots) can fetch once and
+    sweep several candidate windows over the same rows."""
+    q = db.query(Booking).filter(
+        Booking.status.in_(list(statuses)),
+        Booking.dropoff_date <= end_date,
+        Booking.pickup_date >= start_date,
+    )
+    if exclude_booking_id is not None:
+        q = q.filter(Booking.id != exclude_booking_id)
+    q = exclude_staging_e2e_capacity_bookings(q)
+    return q.all()
+
+
+def _events_from_bookings(
+    bookings,
+    window_start: datetime,
+    window_end: datetime,
     arrivals_first_at_ties: bool = False,
 ) -> list:
-    """(datetime, delta) events for bookings overlapping [window_start,
-    window_end], truncated to the window. Bookings missing a time are
-    worst-cased: drop-off at 00:00, pickup at 23:59.
+    """(datetime, delta) events for pre-fetched bookings, truncated to the
+    window. Bookings missing a time are worst-cased: drop-off at 00:00,
+    pickup at 23:59.
 
     Default sort: departures (-1) before probes (0) before arrivals (+1)
     at the same instant — a pickup at T frees the space for a drop-off at
@@ -1357,17 +1376,8 @@ def _stay_sweep_events(
     (a back-to-back swap counts as a transient collision), kept for the
     flag-off path only.
     """
-    q = db.query(Booking).filter(
-        Booking.status.in_(list(statuses)),
-        Booking.dropoff_date <= window_end.date(),
-        Booking.pickup_date >= window_start.date(),
-    )
-    if exclude_booking_id is not None:
-        q = q.filter(Booking.id != exclude_booking_id)
-    q = exclude_staging_e2e_capacity_bookings(q)
-
     events = []
-    for b in q.all():
+    for b in bookings:
         b_drop = datetime.combine(b.dropoff_date, b.dropoff_time or time(0, 0))
         b_pick = datetime.combine(b.pickup_date, b.pickup_time or time(23, 59))
         enter = max(b_drop, window_start)
@@ -1380,6 +1390,23 @@ def _stay_sweep_events(
     return events
 
 
+def _stay_sweep_events(
+    db: Session,
+    window_start: datetime,
+    window_end: datetime,
+    statuses,
+    exclude_booking_id: Optional[int] = None,
+    arrivals_first_at_ties: bool = False,
+) -> list:
+    """Fetch + build in one step; see the two helpers above."""
+    rows = fetch_bookings_overlapping_window(
+        db, window_start.date(), window_end.date(), statuses, exclude_booking_id,
+    )
+    return _events_from_bookings(
+        rows, window_start, window_end, arrivals_first_at_ties=arrivals_first_at_ties,
+    )
+
+
 def peak_concurrent_occupancy(
     db: Session,
     window_start: datetime,
@@ -1389,10 +1416,27 @@ def peak_concurrent_occupancy(
     arrivals_first_at_ties: bool = False,
 ) -> int:
     """Peak concurrent car count over [window_start, window_end]."""
+    rows = fetch_bookings_overlapping_window(
+        db, window_start.date(), window_end.date(), statuses, exclude_booking_id,
+    )
+    return peak_concurrent_from_bookings(
+        rows, window_start, window_end, arrivals_first_at_ties=arrivals_first_at_ties,
+    )
+
+
+def peak_concurrent_from_bookings(
+    bookings,
+    window_start: datetime,
+    window_end: datetime,
+    arrivals_first_at_ties: bool = False,
+) -> int:
+    """Peak concurrent car count over the window, from pre-fetched rows —
+    lets the batched check-slots endpoint sweep each candidate drop-off
+    time without re-querying."""
     peak = 0
     current = 0
-    for _, delta in _stay_sweep_events(
-        db, window_start, window_end, statuses, exclude_booking_id,
+    for _, delta in _events_from_bookings(
+        bookings, window_start, window_end,
         arrivals_first_at_ties=arrivals_first_at_ties,
     ):
         current += delta

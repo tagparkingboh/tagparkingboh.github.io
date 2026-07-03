@@ -228,7 +228,7 @@ describe('BookingsNew — busy warning modal stays on the touching count', () =>
     expect(screen.queryByText("We're getting full")).not.toBeInTheDocument()
   })
 
-  it('touch over cap clamps the percent at 100 and hides the spaces-left line', async () => {
+  it('touch at/over cap reads "almost full" — no percent claim, no spaces-left line', async () => {
     installFetch({
       occupancy: { [iso(DROPOFF)]: CAP + 4 },  // 84 touching → 105% raw
       through: { [iso(DROPOFF)]: 60 },         // but not actually full
@@ -239,9 +239,18 @@ describe('BookingsNew — busy warning modal stays on the touching count', () =>
     await waitFor(() => {
       expect(screen.getByText("We're getting full")).toBeInTheDocument()
     })
-    expect(screen.getByText('100%')).toBeInTheDocument()
+    // Owner copy (2026-07-02): a touch-full turnover day is "almost full";
+    // a definite percent would claim a fullness the times don't support.
+    expect(screen.getByText('almost full')).toBeInTheDocument()
     expect(screen.queryByText('105%')).not.toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
     expect(screen.queryByText(/spaces left/)).not.toBeInTheDocument()
+    // The journey-times explanation replaces the bare urgency line — owner
+    // copy with the (data-backed) stable day shape: early-morning drop-off
+    // crunch, spaces freeing later.
+    expect(screen.getByText(/Availability depends on your journey times/)).toBeInTheDocument()
+    expect(screen.getByText(/early mornings are our busiest for drop-offs/)).toBeInTheDocument()
+    expect(screen.getByText(/spaces free up later in the day/)).toBeInTheDocument()
     // Still dismissible — it's advisory, not a block.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
   })
@@ -257,6 +266,9 @@ describe('BookingsNew — busy warning modal stays on the touching count', () =>
       expect(screen.getByText("We're getting full")).toBeInTheDocument()
     })
     expect(document.querySelector('.busy-warning-modal--amber')).not.toBeNull()
+    // Below 100% the percent claim is honest and stays.
+    expect(screen.getByText('80%')).toBeInTheDocument()
+    expect(screen.queryByText('almost full')).not.toBeInTheDocument()
     unmount()
 
     installFetch({
@@ -268,6 +280,24 @@ describe('BookingsNew — busy warning modal stays on the touching count', () =>
     await waitFor(() => {
       expect(screen.getByText("We're getting full")).toBeInTheDocument()
     })
+    expect(document.querySelector('.busy-warning-modal--red')).not.toBeNull()
+    expect(screen.getByText('90%')).toBeInTheDocument()
+    expect(screen.queryByText('almost full')).not.toBeInTheDocument()
+  })
+
+  it('boundary: exactly 100% (touch == cap) flips to the "almost full" copy', async () => {
+    installFetch({
+      occupancy: { [iso(DROPOFF)]: CAP },   // exactly 80/80 → raw pct 100
+      through: { [iso(DROPOFF)]: 60 },      // not genuinely full
+    })
+    seedDates({ withPickup: false })
+    mount()
+
+    await waitFor(() => {
+      expect(screen.getByText("We're getting full")).toBeInTheDocument()
+    })
+    expect(screen.getByText('almost full')).toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
     expect(document.querySelector('.busy-warning-modal--red')).not.toBeNull()
   })
 })

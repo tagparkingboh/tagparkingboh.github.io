@@ -445,6 +445,13 @@ function Bookings({ isModal = false, onClose }) {
   // four inputs (dates + times) are set; null while we're still waiting.
     const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
 
+  // Per-slot availability from the batched /api/capacity/check-slots call.
+  // { key, timeAwareGate, byTime: { 'HH:MM': bool } } — key ties the answer
+  // to the inputs it was computed for, so a stale response never filters a
+  // fresher slot list. Only filters when the backend echoes its gate as
+  // time-aware; otherwise slots we show could still 400 at create-intent.
+  const [slotAvailability, setSlotAvailability] = useState(null)
+
   // Lead-time gate. Pure logic lives in utils/leadTime.js so it's testable
   // with vi.setSystemTime(). leadTimeTick is bumped once a minute inside the
   // 19:50→20:10 UK window so the gate flips live mid-flow — a customer who
@@ -965,8 +972,9 @@ function Bookings({ isModal = false, onClose }) {
         setBusyWarning({
           // Touching count can exceed the cap on turnover days; the day
           // isn't full (see the through-count skip above), so present it
-          // as 100% busy rather than an impossible ">100% capacity".
+          // as "almost full" rather than an impossible ">100% capacity".
           percent: Math.min(pct, 100),
+          almostFull: pct >= 100,
           level: pct >= 90 ? 'red' : 'amber',
           dateISO: iso,
           formatted: format(candidate, 'EEEE d MMMM yyyy'),
@@ -1381,6 +1389,105 @@ function Bookings({ isModal = false, onClose }) {
 
     return slots
   }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, blockedDates])
+
+  // RAW landing time for the batched slot check — same priority chain as
+  // the pricing fetch (override || manual entry || selected flight) so the
+  // slot verdicts and the quote always agree on the return leg. Sent as-is:
+  // the BACKEND derives the meet time (+30) and rolls the date past
+  // midnight (_exit_window_from_arrival), so a 23:50 landing can't produce
+  // a window that ends before the flight lands. The old pickupTime memo
+  // only reads the removed flight-picker field and would leave manual
+  // customers permanently worst-cased at 23:59.
+  const slotCheckArrivalTime = useMemo(() => {
+    const arrivalHHMM = arrivalTimeOverride || manualArrivalData.flightTime || selectedArrivalFlight?.time || null
+    if (!arrivalHHMM || !isValidTimeFormat(arrivalHHMM)) return null
+    return arrivalHHMM
+  }, [arrivalTimeOverride, manualArrivalData.flightTime, selectedArrivalFlight])
+
+  // Request key for the batched slot check — inputs that change the answer.
+  const slotCheckKey = useMemo(() => {
+    if (!formData.dropoffDate || !formData.pickupDate || manualDropoffSlots.length === 0) return null
+    if (formData.pickupDate < formData.dropoffDate) return null
+    return JSON.stringify({
+      d: format(formData.dropoffDate, 'yyyy-MM-dd'),
+      p: format(formData.pickupDate, 'yyyy-MM-dd'),
+      at: slotCheckArrivalTime || null,
+      ts: manualDropoffSlots.map((s) => s.time),
+    })
+  }, [formData.dropoffDate, formData.pickupDate, slotCheckArrivalTime, manualDropoffSlots])
+
+  // Batched per-slot availability. Re-fires whenever journey details move
+  // (return date / arrival time entered later can bring a hidden slot back).
+  useEffect(() => {
+    if (!slotCheckKey) {
+      setSlotAvailability(null)
+      return
+    }
+    const { d, p, at, ts } = JSON.parse(slotCheckKey)
+    let cancelled = false
+    fetch(`${API_BASE_URL}/api/capacity/check-slots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dropoff_date: d,
+        pickup_date: p,
+        ...(at ? { arrival_time: at } : {}),
+        dropoff_times: ts,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        const byTime = {}
+        for (const slot of data.slots || []) {
+          byTime[slot.dropoff_time] = slot.available !== false
+        }
+        setSlotAvailability({
+          key: slotCheckKey,
+          timeAwareGate: data.time_aware_gate === true,
+          // Whether this verdict used a real landing time or the 23:59
+          // worst-case — decides how definitive the full-stop copy can be.
+          hadArrivalTime: !!at,
+          byTime,
+        })
+      })
+      .catch(() => {
+        // Network hiccup → keep whatever we had; the create-intent gate is
+        // the backstop, and hiding nothing is the safe display direction.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slotCheckKey, API_BASE_URL])
+
+  // Owner decision (2026-07-02): HIDE unavailable slots rather than show
+  // them disabled — 86% of customers are first-time, so a missing option
+  // carries no "it was there last time" confusion. Filtering only applies
+  // when the answer matches the current inputs AND the backend gate is
+  // live; otherwise show everything and let the existing gates decide.
+  const visibleManualDropoffSlots = useMemo(() => {
+    if (
+      !slotAvailability
+      || slotAvailability.key !== slotCheckKey
+      || slotAvailability.timeAwareGate !== true
+    ) {
+      return manualDropoffSlots
+    }
+    return manualDropoffSlots.filter((s) => slotAvailability.byTime[s.time] !== false)
+  }, [manualDropoffSlots, slotAvailability, slotCheckKey])
+
+  // All candidate slots checked and none has room — the honest page-1 full
+  // stop (replaces discovering it at checkout).
+  const allDropoffSlotsFull =
+    manualDropoffSlots.length > 0 && visibleManualDropoffSlots.length === 0
+
+  // If the selected slot just got hidden (journey details changed), clear
+  // the selection so the flow can't progress on an unavailable time.
+  useEffect(() => {
+    if (!manualDepartureData.dropoffSlot) return
+    if (visibleManualDropoffSlots.some((s) => s.id === manualDepartureData.dropoffSlot)) return
+    setManualDepartureData((prev) => ({ ...prev, dropoffSlot: '' }))
+  }, [visibleManualDropoffSlots, manualDepartureData.dropoffSlot])
 
   // Fetch BOH comparison quote when dates and customer handover times change.
   // Lives here (rather than alongside other date useEffects) because it needs
@@ -2524,10 +2631,26 @@ function Bookings({ isModal = false, onClose }) {
               </svg>
             </div>
             <h2 id="busy-warning-title">We're getting full</h2>
-            <p className="busy-warning-percent">
-              {busyWarning.formatted} is at <strong>{busyWarning.percent}%</strong> capacity.
-            </p>
+            {/* Owner copy direction (2026-07-02): a touching count at/over
+                the cap reads "almost full" — availability there genuinely
+                depends on times, so a definite "100%" would be a lie. The
+                time-of-day hint stays generic: which hours are tight moves
+                day to day. */}
+            {busyWarning.almostFull ? (
+              <p className="busy-warning-percent">
+                {busyWarning.formatted} is <strong>almost full</strong>.
+              </p>
+            ) : (
+              <p className="busy-warning-percent">
+                {busyWarning.formatted} is at <strong>{busyWarning.percent}%</strong> capacity.
+              </p>
+            )}
+            {/* Day-shape wording is safe here: owner's booking-time data
+                shows a stable pattern — drop-offs cluster 04:00-07:00,
+                pickups drain from noon with the peak wave 23:00-00:00. */}
             <p className="busy-warning-body">
+              Availability depends on your journey times — early mornings are
+              our busiest for drop-offs, and spaces free up later in the day.
               We suggest booking soon to avoid disappointment.
             </p>
             {/* On a 100%-busy turnover day the touching count leaves no
@@ -3283,11 +3406,37 @@ function Bookings({ isModal = false, onClose }) {
                     </div>
                   </div>
 
-                  {manualDropoffSlots.length > 0 && (
+                  {/* Owner decision: unavailable slots are HIDDEN, not disabled.
+                      All three full → honest page-1 full stop instead of a
+                      dead-end at checkout. Definitive wording only when the
+                      verdict used a real landing time — the 23:59 worst-case
+                      can reopen slots once the arrival time is entered (the
+                      arrival form below stays visible: it's gated on the
+                      pickup date, not on a selected slot). */}
+                  {allDropoffSlotsFull && (
+                    <div className="blocked-date-message">
+                      {slotAvailability?.hadArrivalTime ? (
+                        <p>
+                          Sorry, we have no space for this trip. Please call{' '}
+                          <a href="tel:01202 798710" className="contact-link">01202 798710</a>{' '}
+                          and we'll do our best to help.
+                        </p>
+                      ) : (
+                        <p>
+                          We can't see space for these dates yet — add your
+                          return flight time below and we'll check your exact
+                          times. Or call{' '}
+                          <a href="tel:01202 798710" className="contact-link">01202 798710</a>{' '}
+                          and we'll do our best to help.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {visibleManualDropoffSlots.length > 0 && (
                     <div className="form-group">
                       <label>Select Drop-off Time <span className="required">*</span></label>
                       <div className="dropoff-slots">
-                        {manualDropoffSlots.map(slot => (
+                        {visibleManualDropoffSlots.map(slot => (
                           <label key={slot.id} className="dropoff-slot">
                             <input
                               type="radio"

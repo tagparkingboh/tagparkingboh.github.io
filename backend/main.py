@@ -1127,6 +1127,114 @@ async def check_capacity_for_slot(
     }
 
 
+class CheckSlotsRequest(BaseModel):
+    """Batched slot-availability check for the booking flow's 90/120/165
+    drop-off candidates. The return leg is the LANDING leg, exactly like
+    create-intent: pickup_date is the landing date (pre-rollover) and
+    arrival_time the raw landing HH:MM — the backend derives the customer
+    meet time (+30, next-day carry) so rollover arithmetic lives in one
+    place (_exit_window_from_arrival)."""
+    dropoff_date: date
+    pickup_date: date
+    # Raw landing HH:MM; absent = worst-case 23:59 on pickup_date.
+    arrival_time: Optional[str] = None
+    # Candidate drop-off times (HH:MM). The flow sends its three slots.
+    dropoff_times: List[str]
+
+
+@app.post("/api/capacity/check-slots")
+async def check_capacity_for_slots(
+    request: CheckSlotsRequest,
+    db: Session = Depends(get_db),
+):
+    """Batched variant of /api/capacity/check-slot: one bookings fetch,
+    one verdict per candidate drop-off time. Lets the booking flow show
+    only the slots that actually have room instead of bouncing the
+    customer at checkout.
+
+    Semantics mirror check-slot's flag routing exactly: with
+    CAPACITY_GATE_TIME_AWARE on, counts CONFIRMED+COMPLETED+REFUNDED+PENDING
+    with departures freeing space at same-instant ties; off, the legacy
+    set/tie order. A candidate whose window is inverted (pickup at/before
+    drop-off) is reported unavailable — fail closed, matching the gates.
+
+    Public like check-slot: aggregate verdicts only, no PII.
+    """
+    if not request.dropoff_times:
+        raise HTTPException(status_code=400, detail="dropoff_times must not be empty")
+    if len(request.dropoff_times) > 8:
+        raise HTTPException(status_code=400, detail="Too many candidate times (max 8)")
+    if request.pickup_date < request.dropoff_date:
+        raise HTTPException(status_code=400, detail="pickup_date must be on or after dropoff_date")
+    if (request.pickup_date - request.dropoff_date).days > 90:
+        raise HTTPException(status_code=400, detail="Stay length too large (max 90 days)")
+
+    def _parse_hhmm(raw: str) -> time:
+        h, m = (int(x) for x in raw.split(":"))
+        return time(h, m)
+
+    try:
+        candidate_times = [_parse_hhmm(t) for t in request.dropoff_times]
+        arrival_t = _parse_hhmm(request.arrival_time) if request.arrival_time else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Times must be HH:MM")
+
+    # Landing → meet-time derivation happens HERE, not in the client: a
+    # 23:50 arrival meets at 00:20 the NEXT day. Without the date carry the
+    # window would end before the flight lands, blinding the sweep to the
+    # whole stay (and reading short stays as inverted).
+    if arrival_t is not None:
+        exit_date, meet_t = _exit_window_from_arrival(arrival_t, request.pickup_date)
+    else:
+        exit_date, meet_t = request.pickup_date, time(23, 59)
+    customer_pick_dt = datetime.combine(exit_date, meet_t)
+
+    time_aware = db_service.is_capacity_gate_time_aware()
+    if time_aware:
+        statuses = list(db_service.TIME_AWARE_OCCUPYING_STATUSES) + [BookingStatus.PENDING]
+        arrivals_first = False
+    else:
+        statuses = [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]
+        arrivals_first = True
+
+    # One fetch over the widest candidate window; each candidate sweeps the
+    # same rows with its own start truncation. exit_date (not pickup_date)
+    # bounds both the fetch and the cap map so a rolled post-midnight meet
+    # still sees the next day's bookings and its cap.
+    rows = db_service.fetch_bookings_overlapping_window(
+        db, request.dropoff_date, exit_date, statuses,
+    )
+    daily_capacity = db_service.get_parking_capacity_for_range(
+        db, request.dropoff_date, exit_date,
+    )
+    cap = min(capacity["online_spaces"] for capacity in daily_capacity.values())
+
+    slots = []
+    for raw, candidate in zip(request.dropoff_times, candidate_times):
+        window_start = datetime.combine(request.dropoff_date, candidate)
+        if customer_pick_dt <= window_start:
+            slots.append({"dropoff_time": raw, "available": False, "peak": None})
+            continue
+        peak = db_service.peak_concurrent_from_bookings(
+            rows, window_start, customer_pick_dt,
+            arrivals_first_at_ties=arrivals_first,
+        )
+        slots.append({
+            "dropoff_time": raw,
+            "available": peak + 1 <= cap,
+            "peak": peak,
+        })
+
+    return {
+        "slots": slots,
+        "online_capacity": cap,
+        "max_capacity": cap,
+        # Frontend coupling: only hide slots when the backend gate really is
+        # time-aware; otherwise per-day create-intent would 400 what we show.
+        "time_aware_gate": time_aware,
+    }
+
+
 # ==================== PRICING ====================
 
 class PriceCalculationRequest(BaseModel):
@@ -12603,15 +12711,23 @@ def _dropoff_time_for_quote_request(request: "CreatePaymentRequest") -> Optional
     return None
 
 
-def _exit_window_for_quote_request(request: "CreatePaymentRequest", pickup_date: date) -> tuple[Optional[date], Optional[time]]:
-    arrival_time = _parse_payment_hhmm(request.flight_arrival_time or request.pickup_flight_time)
-    if not arrival_time:
-        return None, None
+def _exit_window_from_arrival(arrival_time: time, pickup_date: date) -> tuple[date, time]:
+    """Customer-meet moment from a landing: arrival + 30 min (gate,
+    immigration, baggage), rolling to the next day when the sum passes
+    midnight. THE one place this arithmetic lives — create-intent and the
+    batched check-slots endpoint must always agree on it."""
     total_minutes = arrival_time.hour * 60 + arrival_time.minute + 30
     exit_date = pickup_date
     if total_minutes >= 24 * 60:
         exit_date = exit_date + timedelta(days=1)
     return exit_date, time((total_minutes // 60) % 24, total_minutes % 60)
+
+
+def _exit_window_for_quote_request(request: "CreatePaymentRequest", pickup_date: date) -> tuple[Optional[date], Optional[time]]:
+    arrival_time = _parse_payment_hhmm(request.flight_arrival_time or request.pickup_flight_time)
+    if not arrival_time:
+        return None, None
+    return _exit_window_from_arrival(arrival_time, pickup_date)
 
 
 def get_free_week_base_pence_for_request(request: "CreatePaymentRequest") -> int:

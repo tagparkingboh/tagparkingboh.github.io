@@ -843,6 +843,11 @@ function RosterCalendar({
   // Drives the "Full" bar on at-cap days using the date-effective online cap.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
   const [dailyCapacity, setDailyCapacity] = useState({})
+  // Through-stays (cars there ALL day) + whether the backend's capacity
+  // gate is time-aware. Together they decide whether a touch-at-cap day
+  // is honestly "Full" or just "Busy" (turnover day that still sells).
+  const [dailyThroughOccupancy, setDailyThroughOccupancy] = useState({})
+  const [capacityTimeAwareGate, setCapacityTimeAwareGate] = useState(false)
   const [showBlockedDateModal, setShowBlockedDateModal] = useState(false)
   const [editingBlockedDate, setEditingBlockedDate] = useState(null)
   const [blockedDateForm, setBlockedDateForm] = useState({
@@ -1145,6 +1150,8 @@ function RosterCalendar({
         const data = await response.json()
         setDailyOccupancy(data.daily_occupancy || {})
         setDailyCapacity(data.daily_capacity || {})
+        setDailyThroughOccupancy(data.daily_through_occupancy || {})
+        setCapacityTimeAwareGate(data.time_aware_gate === true)
       }
     } catch (err) {
       console.error('Failed to load daily occupancy:', err)
@@ -1759,6 +1766,14 @@ function RosterCalendar({
   const getOnlineCapacityForDay = (day) => (
     getOnlineCapacityForDate(day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day) : null, dailyCapacity, DEFAULT_ONLINE_CAPACITY)
   )
+
+  // Through-stay count (cars present all day regardless of times) — the
+  // honest "this day cannot take another car" measure when the backend
+  // gate is time-aware.
+  const getThroughOccupancyForDay = (day) => {
+    if (!day) return 0
+    return dailyThroughOccupancy[getDateKey(day)] || 0
+  }
 
   // Is today?
   const isToday = (day) => {
@@ -3528,6 +3543,14 @@ function RosterCalendar({
                 const dayOccupancy = getOccupancyForDay(day)
                 const dayOnlineCapacity = getOnlineCapacityForDay(day)
                 const isAtCap = dayOccupancy >= dayOnlineCapacity
+                // With a time-aware backend gate, "Full" requires the
+                // through-stays at cap; a touch-at-cap turnover day still
+                // sells at some times, so it downgrades to "Busy". Gate
+                // off/absent → touch-count fullness, exactly as before.
+                const isHonestlyFull = capacityTimeAwareGate
+                  ? getThroughOccupancyForDay(day) >= dayOnlineCapacity
+                  : isAtCap
+                const isBusyNotFull = isAtCap && !isHonestlyFull
                 const dayHolidays = dateKey ? getHolidaysForDate(dateKey) : []
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
@@ -3542,7 +3565,7 @@ function RosterCalendar({
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''} ${isPastDay ? 'past-day' : ''} ${shouldCompactPastDay ? 'past-day-compact' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''} ${hasShiftExceptions ? 'has-shift-exceptions' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${isPastDay ? 'past-day' : ''} ${shouldCompactPastDay ? 'past-day-compact' : ''} ${blockedInfo ? 'blocked' : ''} ${isHonestlyFull && !blockedInfo ? 'at-cap' : ''} ${hasShiftExceptions ? 'has-shift-exceptions' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
@@ -3564,11 +3587,20 @@ function RosterCalendar({
                                     blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
                             </div>
                           )}
-                          {/* At-capacity indicator (auto — driven by daily occupancy >= online cap). */}
+                          {/* At-capacity indicator (auto — through-count when the
+                              backend gate is time-aware, touch-count otherwise). */}
                           {/* Shown only when not already manually blocked, since manual block trumps cap visually. */}
-                          {!blockedInfo && isAtCap && (
+                          {!blockedInfo && isHonestlyFull && (
                             <div className="day-badge badge-at-cap" title={`Full: ${dayOccupancy}/${dayOnlineCapacity} online spaces parked`}>
                               ⛔ Full ({dayOccupancy})
+                            </div>
+                          )}
+                          {/* Turnover day: bookings touching the day are at/over
+                              cap (workload!) but cars staying through are not —
+                              the booking flow still sells the gaps. */}
+                          {!blockedInfo && isBusyNotFull && (
+                            <div className="day-badge badge-busy-cap" title={`Busy: ${dayOccupancy} bookings touch this day (cap ${dayOnlineCapacity}); turnover leaves space at some times`}>
+                              🚗 Busy ({dayOccupancy})
                             </div>
                           )}
                           {hasShiftExceptions && (

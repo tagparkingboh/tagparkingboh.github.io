@@ -908,3 +908,396 @@ class TestBlockedPickupDerivation:
         resp = self._post(self._slot_pickup_block())
         if resp.status_code == 400:
             assert "pick-ups are not available" not in resp.json()["detail"].lower()
+
+
+# =============================================================================
+# 6. Batched slot availability — POST /api/capacity/check-slots
+# =============================================================================
+
+def _slots_payload(**overrides):
+    # arrival_time is the RAW landing HH:MM (the backend derives the +30
+    # meet time and any midnight roll via _exit_window_from_arrival).
+    payload = {
+        "dropoff_date": "2026-08-15",
+        "pickup_date": "2026-08-16",
+        "arrival_time": "12:00",
+        "dropoff_times": ["11:15", "12:00", "12:30"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _post_slots(db, payload):
+    return _client(db).post("/api/capacity/check-slots", json=payload)
+
+
+class TestCheckSlotsValidation:
+    def test_U_empty_candidate_list_400(self, mock_db):
+        r = _post_slots(mock_db, _slots_payload(dropoff_times=[]))
+        assert r.status_code == 400
+        assert "must not be empty" in r.json()["detail"]
+
+    def test_B_eight_candidates_ok_nine_400(self, mock_db):
+        eight = [f"{h:02d}:00" for h in range(8, 16)]
+        assert _post_slots(mock_db, _slots_payload(dropoff_times=eight)).status_code == 200
+        nine = eight + ["16:00"]
+        r = _post_slots(mock_db, _slots_payload(dropoff_times=nine))
+        assert r.status_code == 400
+        assert "max 8" in r.json()["detail"]
+
+    def test_U_pickup_before_dropoff_400(self, mock_db):
+        r = _post_slots(mock_db, _slots_payload(
+            dropoff_date="2026-08-16", pickup_date="2026-08-15"))
+        assert r.status_code == 400
+
+    def test_B_ninety_day_stay_ok_ninety_one_400(self, mock_db):
+        assert _post_slots(mock_db, _slots_payload(
+            dropoff_date="2026-06-01", pickup_date="2026-08-30",
+        )).status_code == 200
+        r = _post_slots(mock_db, _slots_payload(
+            dropoff_date="2026-06-01", pickup_date="2026-08-31"))
+        assert r.status_code == 400
+        assert "90" in r.json()["detail"]
+
+    @pytest.mark.parametrize("bad", ["24:00", "", "banana", "10:99"])
+    def test_U_malformed_candidate_time_400(self, mock_db, bad):
+        r = _post_slots(mock_db, _slots_payload(dropoff_times=["10:00", bad]))
+        assert r.status_code == 400
+        assert "HH:MM" in r.json()["detail"]
+
+    def test_U_malformed_arrival_time_400(self, mock_db):
+        r = _post_slots(mock_db, _slots_payload(arrival_time="25:61"))
+        assert r.status_code == 400
+
+    def test_B_lenient_single_digit_minutes_accepted(self, mock_db):
+        """'9:5' parses as 09:05 — same int-based leniency as check-slot's
+        parser. Pinned as documentation: a stricter regex would be a
+        behaviour change for both endpoints."""
+        r = _post_slots(mock_db, _slots_payload(dropoff_times=["9:5"]))
+        assert r.status_code == 200
+        assert r.json()["slots"][0]["dropoff_time"] == "9:5"
+
+
+class TestCheckSlotsFlagRouting:
+    """Status set + tie order must mirror check-slot's flag routing."""
+
+    def _capture_statuses(self, env_value, monkeypatch):
+        if env_value is None:
+            monkeypatch.delenv("CAPACITY_GATE_TIME_AWARE", raising=False)
+        else:
+            monkeypatch.setenv("CAPACITY_GATE_TIME_AWARE", env_value)
+        sink = {}
+        db = MagicMock()
+
+        def _query(model):
+            if model is Booking:
+                return _StatusSpyQuery(sink)
+            return FakeQuery([])
+
+        db.query.side_effect = _query
+        r = _post_slots(db, _slots_payload())
+        assert r.status_code == 200
+        return set(sink["statuses"])
+
+    def test_H_flag_off_original_status_set_no_refunded(self, monkeypatch):
+        assert self._capture_statuses(None, monkeypatch) == {
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.PENDING,
+        }
+
+    def test_H_flag_on_adds_refunded(self, monkeypatch):
+        assert self._capture_statuses("true", monkeypatch) == {
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.REFUNDED,
+            BookingStatus.PENDING,
+        }
+
+    def _same_instant_peak(self, mock_db, monkeypatch, flag):
+        if flag:
+            monkeypatch.setenv("CAPACITY_GATE_TIME_AWARE", "true")
+        else:
+            monkeypatch.delenv("CAPACITY_GATE_TIME_AWARE", raising=False)
+        d = date(2026, 8, 15)
+        mock_db._tables[Booking] = [
+            mk_booking(dropoff_date=d, dropoff_time=time(9, 0),
+                       pickup_date=d, pickup_time=time(16, 0)),
+            mk_booking(dropoff_date=d, dropoff_time=time(16, 0),
+                       pickup_date=d + timedelta(days=1), pickup_time=time(10, 0)),
+        ]
+        r = _post_slots(mock_db, _slots_payload(
+            pickup_date="2026-08-16", arrival_time="12:00",
+            dropoff_times=["08:00"],
+        ))
+        assert r.status_code == 200
+        return r.json()["slots"][0]["peak"]
+
+    def test_B_flag_on_departures_first_swap_peak_1(self, mock_db, monkeypatch):
+        assert self._same_instant_peak(mock_db, monkeypatch, flag=True) == 1
+
+    def test_B_flag_off_arrivals_first_swap_peak_2(self, mock_db, monkeypatch):
+        assert self._same_instant_peak(mock_db, monkeypatch, flag=False) == 2
+
+    def test_H_time_aware_gate_echo_tracks_env(self, mock_db, monkeypatch):
+        monkeypatch.setenv("CAPACITY_GATE_TIME_AWARE", "true")
+        assert _post_slots(mock_db, _slots_payload()).json()["time_aware_gate"] is True
+        monkeypatch.delenv("CAPACITY_GATE_TIME_AWARE", raising=False)
+        assert _post_slots(mock_db, _slots_payload()).json()["time_aware_gate"] is False
+
+
+class TestCheckSlotsVerdicts:
+    @pytest.fixture(autouse=True)
+    def _flag_on(self, monkeypatch):
+        monkeypatch.setenv("CAPACITY_GATE_TIME_AWARE", "true")
+
+    def test_H_mixed_verdicts_in_one_response(self, mock_db):
+        """73 cars (default cap 73) all leave at 12:00: the 10:00 candidate
+        collides with all of them (unavailable), the 12:05 candidate starts
+        after every pickup (available) — same response."""
+        d = date(2026, 8, 15)
+        mock_db._tables[Booking] = [
+            mk_booking(dropoff_date=d, dropoff_time=time(8, 0),
+                       pickup_date=d, pickup_time=time(12, 0))
+            for _ in range(73)
+        ]
+        r = _post_slots(mock_db, _slots_payload(
+            pickup_date="2026-08-16", pickup_time="10:00",
+            dropoff_times=["10:00", "12:05"],
+        ))
+        body = r.json()
+        by_time = {s["dropoff_time"]: s for s in body["slots"]}
+        assert by_time["10:00"]["available"] is False
+        assert by_time["10:00"]["peak"] == 73
+        assert by_time["12:05"]["available"] is True
+        assert by_time["12:05"]["peak"] == 0
+
+    def test_H_one_bookings_fetch_for_many_candidates(self, mock_db):
+        """Batching: 8 candidates must not issue 8 Booking queries."""
+        r = _post_slots(mock_db, _slots_payload(
+            dropoff_times=[f"{h:02d}:00" for h in range(8, 16)],
+        ))
+        assert r.status_code == 200
+        booking_queries = [
+            c for c in mock_db.query.call_args_list if c.args and c.args[0] is Booking
+        ]
+        assert len(booking_queries) == 1
+
+    def test_U_inverted_candidate_fails_closed(self, mock_db):
+        """Candidates at/after the derived meet time (09:30 landing + 30 =
+        10:00) are unavailable with peak None — never silently 'fits'."""
+        r = _post_slots(mock_db, _slots_payload(
+            dropoff_date="2026-08-15", pickup_date="2026-08-15",
+            arrival_time="09:30",
+            dropoff_times=["09:00", "10:00", "11:00"],
+        ))
+        body = r.json()
+        by_time = {s["dropoff_time"]: s for s in body["slots"]}
+        assert by_time["09:00"]["available"] is True   # real 1h window
+        assert by_time["10:00"]["available"] is False  # zero-length
+        assert by_time["10:00"]["peak"] is None
+        assert by_time["11:00"]["available"] is False  # inverted
+        assert by_time["11:00"]["peak"] is None
+
+    def test_B_absent_arrival_time_worst_cases_to_end_of_day(self, mock_db):
+        """73 cars arrive 18:00 and stay overnight. With a real 14:30
+        landing (meet 15:00) the 10:00 slot never meets them (available);
+        with arrival_time absent the window worst-cases to 23:59 and
+        collides (unavailable)."""
+        d = date(2026, 8, 15)
+        mock_db._tables[Booking] = [
+            mk_booking(dropoff_date=d, dropoff_time=time(18, 0),
+                       pickup_date=d + timedelta(days=1), pickup_time=time(10, 0))
+            for _ in range(73)
+        ]
+        with_time = _post_slots(mock_db, _slots_payload(
+            pickup_date="2026-08-15", arrival_time="14:30",
+            dropoff_times=["10:00"],
+        )).json()["slots"][0]
+        assert with_time["available"] is True
+
+        without_time = _post_slots(mock_db, _slots_payload(
+            pickup_date="2026-08-15", arrival_time=None,
+            dropoff_times=["10:00"],
+        )).json()["slots"][0]
+        assert without_time["available"] is False
+        assert without_time["peak"] == 73
+
+
+# =============================================================================
+# 7. Final round (2026-07-02): rollover derivation + short-stay verdicts
+# =============================================================================
+
+from main import _exit_window_from_arrival, _exit_window_for_quote_request
+
+
+class TestExitWindowFromArrival:
+    """The one shared implementation of landing → customer-meet (+30 with
+    next-day carry). Boundary triplet around the 23:30 carry point, plus
+    the midnight landing."""
+
+    D = date_type(2026, 8, 15)
+
+    def test_B_2329_meets_2359_same_day(self):
+        assert _exit_window_from_arrival(time(23, 29), self.D) == (self.D, time(23, 59))
+
+    def test_B_2330_meets_0000_next_day(self):
+        assert _exit_window_from_arrival(time(23, 30), self.D) == (
+            self.D + timedelta(days=1), time(0, 0))
+
+    def test_B_2359_meets_0029_next_day(self):
+        assert _exit_window_from_arrival(time(23, 59), self.D) == (
+            self.D + timedelta(days=1), time(0, 29))
+
+    def test_B_midnight_landing_meets_0030_same_day(self):
+        assert _exit_window_from_arrival(time(0, 0), self.D) == (self.D, time(0, 30))
+
+    def test_H_quote_request_delegates_to_shared_helper(self):
+        """create-intent's derivation must be the same implementation the
+        batched endpoint calls — same landing, same meet, both sides of
+        the carry point."""
+        for landing in (time(23, 29), time(23, 30), time(14, 30)):
+            req = SimpleNamespace(
+                flight_arrival_time=landing.strftime("%H:%M"),
+                pickup_flight_time=None,
+            )
+            assert _exit_window_for_quote_request(req, self.D) == (
+                _exit_window_from_arrival(landing, self.D))
+
+
+class TestCheckSlotsRollover:
+    """A rolled meet must extend BOTH the bookings fetch and the cap map to
+    the exit date."""
+
+    @pytest.fixture(autouse=True)
+    def _flag_on(self, monkeypatch):
+        monkeypatch.setenv("CAPACITY_GATE_TIME_AWARE", "true")
+
+    D = date(2026, 8, 15)
+
+    def _spy_rows(self, monkeypatch, rows):
+        calls = []
+
+        def _fake_fetch(db, start_date, end_date, statuses, exclude_booking_id=None):
+            calls.append((start_date, end_date))
+            return rows
+
+        monkeypatch.setattr(db_service, "fetch_bookings_overlapping_window", _fake_fetch)
+        return calls
+
+    def test_B_rolled_meet_sees_next_day_only_bookings(self, mock_db, monkeypatch):
+        """73 cars occupy ONLY the small hours of the next day. A 23:50
+        landing (meet 00:20 next day) must collide with them; a 23:00
+        landing (meet 23:30 same day) must not."""
+        next_day = self.D + timedelta(days=1)
+        rows = [
+            mk_booking(dropoff_date=next_day, dropoff_time=time(0, 0),
+                       pickup_date=next_day, pickup_time=time(6, 0))
+            for _ in range(73)
+        ]
+        calls = self._spy_rows(monkeypatch, rows)
+
+        rolled = _post_slots(mock_db, _slots_payload(
+            pickup_date=self.D.isoformat(), arrival_time="23:50",
+            dropoff_times=["20:00"],
+        )).json()["slots"][0]
+        assert rolled["available"] is False
+        assert rolled["peak"] == 73
+        assert calls[-1] == (self.D, next_day)  # fetch extended to exit date
+
+        same_day = _post_slots(mock_db, _slots_payload(
+            pickup_date=self.D.isoformat(), arrival_time="23:00",
+            dropoff_times=["20:00"],
+        )).json()["slots"][0]
+        assert same_day["available"] is True
+        assert same_day["peak"] == 0
+        assert calls[-1] == (self.D, self.D)  # no roll, no extension
+
+    def test_B_cap_drop_on_rolled_day_enforced(self, mock_db, monkeypatch):
+        """Cap map must cover the exit date: online cap 0 on the rolled day
+        rejects even an empty lot (min() over the extended range)."""
+        next_day = self.D + timedelta(days=1)
+        self._spy_rows(monkeypatch, [])
+        cap_calls = []
+
+        def _fake_caps(db, start_date, end_date):
+            cap_calls.append((start_date, end_date))
+            caps = {}
+            cursor = start_date
+            while cursor <= end_date:
+                caps[cursor.isoformat()] = {
+                    "online_spaces": 0 if cursor == next_day else 73,
+                    "total_spaces": 75,
+                    "manual_spaces": 2,
+                }
+                cursor += timedelta(days=1)
+            return caps
+
+        monkeypatch.setattr(db_service, "get_parking_capacity_for_range", _fake_caps)
+
+        body = _post_slots(mock_db, _slots_payload(
+            pickup_date=self.D.isoformat(), arrival_time="23:50",
+            dropoff_times=["20:00"],
+        )).json()
+        assert cap_calls[-1] == (self.D, next_day)  # map extended
+        assert body["online_capacity"] == 0
+        assert body["slots"][0]["available"] is False
+
+    def test_H_absent_arrival_no_extension(self, mock_db, monkeypatch):
+        calls = self._spy_rows(monkeypatch, [])
+        _post_slots(mock_db, _slots_payload(
+            pickup_date=self.D.isoformat(), arrival_time=None,
+            dropoff_times=["20:00"],
+        ))
+        assert calls[-1] == (self.D, self.D)  # worst-case 23:59 on pickup_date
+
+
+class TestCheckSlotsShortStayInversion:
+    """Same-day 20:00 candidate: the meet time decides inversion. Before
+    the rollover fix a 23:50 landing produced meet 00:20 SAME day and the
+    whole stay read as inverted."""
+
+    @pytest.fixture(autouse=True)
+    def _flag_on(self, monkeypatch):
+        monkeypatch.setenv("CAPACITY_GATE_TIME_AWARE", "true")
+
+    def _verdict(self, mock_db, arrival):
+        return _post_slots(mock_db, _slots_payload(
+            dropoff_date="2026-08-15", pickup_date="2026-08-15",
+            arrival_time=arrival, dropoff_times=["20:00"],
+        )).json()["slots"][0]
+
+    def test_H_2350_landing_rolls_and_gets_a_real_verdict(self, mock_db):
+        v = self._verdict(mock_db, "23:50")  # meet 00:20 next day
+        assert v["available"] is True
+        assert v["peak"] == 0
+
+    def test_B_1931_landing_meet_2001_barely_valid(self, mock_db):
+        v = self._verdict(mock_db, "19:31")  # meet 20:01 — 1-minute window
+        assert v["available"] is True
+        assert v["peak"] == 0
+
+    def test_B_1930_landing_meet_exactly_at_slot_inverted(self, mock_db):
+        v = self._verdict(mock_db, "19:30")  # meet 20:00 == slot: zero-length
+        assert v["available"] is False
+        assert v["peak"] is None
+
+    def test_B_1929_landing_meet_1959_inverted(self, mock_db):
+        v = self._verdict(mock_db, "19:29")  # meet 19:59 < slot
+        assert v["available"] is False
+        assert v["peak"] is None
+
+
+class TestCheckSlotsArrivalTimeShape:
+    @pytest.mark.parametrize("bad", ["24:00", "banana", "10:99", "7pm"])
+    def test_U_malformed_arrival_values_400(self, mock_db, bad):
+        r = _post_slots(mock_db, _slots_payload(arrival_time=bad))
+        assert r.status_code == 400
+        assert "HH:MM" in r.json()["detail"]
+
+    def test_B_empty_string_arrival_treated_as_absent(self, mock_db):
+        """'' is falsy → worst-case path, not a 400. Pinned as
+        documentation: the frontend omits the field rather than sending
+        an empty string, so this is the lenient-but-safe direction."""
+        r = _post_slots(mock_db, _slots_payload(arrival_time=""))
+        assert r.status_code == 200
