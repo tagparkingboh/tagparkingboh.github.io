@@ -204,7 +204,10 @@ def check_shift_overlap(
 
     query = db.query(RosterShift).filter(
         RosterShift.staff_id == staff_id,
-        RosterShift.date == date
+        RosterShift.date == date,
+        # Deleted auto shifts are soft-deleted as CANCELLED and hidden from
+        # the roster UI; they must not block new/edited shifts either.
+        RosterShift.status != ShiftStatus.CANCELLED,
     )
 
     if exclude_shift_id:
