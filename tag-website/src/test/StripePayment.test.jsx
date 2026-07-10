@@ -6,12 +6,17 @@
  * because the useEffect was re-running on every formData change.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import StripePayment from '../components/StripePayment'
 
 // Capture the latest PaymentElement props so tests can fire onReady / onChange.
 // Reset in beforeEach.
 let paymentElementProps = null
+
+// Value returned by the mocked useStripe hook. Tests that drive handleSubmit
+// (clicking Pay) overwrite this with their own confirmPayment /
+// retrievePaymentIntent mocks; read lazily so per-test assignment works.
+let mockStripeHook = { confirmPayment: vi.fn() }
 
 // Mock Stripe
 vi.mock('@stripe/stripe-js', () => ({
@@ -27,9 +32,7 @@ vi.mock('@stripe/react-stripe-js', () => ({
     paymentElementProps = props
     return <div data-testid="payment-element">Payment Element</div>
   },
-  useStripe: () => ({
-    confirmPayment: vi.fn(),
-  }),
+  useStripe: () => mockStripeHook,
   useElements: () => ({}),
 }))
 
@@ -1527,5 +1530,281 @@ describe('StripePayment - Pay Button Gating', () => {
     expect(button.textContent).toMatch(/^Pay /)
     expect(button.textContent).not.toMatch(/Processing/)
     expect(button.textContent).not.toMatch(/Complete/)
+  })
+})
+
+// =============================================================================
+// Payment Recovery After Confirm Error
+// Regression: Martin Richards (TAG-ANI91299 / TAG-FMT95042, 10 Jul 2026) was
+// double charged. His first charge SUCCEEDED but the confirm response was lost
+// to a network drop (api_connection_error); every retry then failed with
+// payment_intent_unexpected_state because the intent had already succeeded.
+// The UI showed all of it as failure, so he re-booked and paid again.
+// The fix: on a confirm error, verify the intent's real status with Stripe
+// before reporting failure.
+// =============================================================================
+
+describe('StripePayment - Payment Recovery After Confirm Error', () => {
+  const SUCCEEDED_INTENT = { id: 'pi_recovered_123', status: 'succeeded', amount: 9123 }
+
+  let auditCalls
+  let onPaymentSuccess
+  let onPaymentError
+
+  const setupAuditCapturingFetch = () => {
+    auditCalls = []
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ publishable_key: 'pk_test_123' }) })
+      }
+      if (url.includes('/api/payments/create-intent')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_recovery_secret',
+            booking_reference: 'TAG-RECOVER',
+            amount_display: '£91.23',
+            is_free_booking: false,
+          }),
+        })
+      }
+      if (url.includes('/api/booking/audit-event')) {
+        auditCalls.push(JSON.parse(options.body))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+  }
+
+  beforeEach(() => {
+    setupAuditCapturingFetch()
+    paymentElementProps = null
+    onPaymentSuccess = vi.fn()
+    onPaymentError = vi.fn()
+  })
+
+  afterEach(() => {
+    mockStripeHook = { confirmPayment: vi.fn() }
+    vi.clearAllMocks()
+  })
+
+  const renderReadyCheckout = async () => {
+    const result = render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-recovery"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={onPaymentSuccess}
+        onPaymentError={onPaymentError}
+      />
+    )
+    await waitFor(() => {
+      expect(paymentElementProps).not.toBeNull()
+    }, { timeout: 3000 })
+    act(() => paymentElementProps.onReady())
+    act(() => paymentElementProps.onChange({ complete: true }))
+    const button = result.container.querySelector('button.stripe-pay-btn')
+    expect(button).not.toBeDisabled()
+    return { ...result, button }
+  }
+
+  const clickPayAndSettle = async (button) => {
+    await act(async () => {
+      fireEvent.click(button)
+    })
+  }
+
+  it('Martin case A: network drop after successful charge — retrieves intent and reports success', async () => {
+    // confirmPayment loses the response (api_connection_error) but the intent
+    // actually succeeded; retrievePaymentIntent reveals it.
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        error: {
+          type: 'api_connection_error',
+          message: 'We are experiencing issues connecting to our payments provider.',
+        },
+      }),
+      retrievePaymentIntent: vi.fn().mockResolvedValue({ paymentIntent: SUCCEEDED_INTENT }),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(mockStripeHook.retrievePaymentIntent).toHaveBeenCalledWith('pi_recovery_secret')
+    expect(onPaymentSuccess).toHaveBeenCalledTimes(1)
+    expect(onPaymentSuccess.mock.calls[0][0]).toMatchObject({
+      paymentIntentId: 'pi_recovered_123',
+      bookingReference: 'TAG-RECOVER',
+    })
+    expect(onPaymentError).not.toHaveBeenCalled()
+
+    // No payment_failed audit; payment_succeeded logged with recovery marker
+    await waitFor(() => {
+      const succeeded = auditCalls.filter(c => c.event === 'payment_succeeded')
+      expect(succeeded.length).toBe(1)
+      expect(succeeded[0].event_data.recovered_from_error).toBe('api_connection_error')
+    })
+    expect(auditCalls.filter(c => c.event === 'payment_failed').length).toBe(0)
+
+    // Button locks into the success state so the customer cannot pay again
+    expect(button.textContent).toBe('Payment Complete')
+    expect(button).toBeDisabled()
+  })
+
+  it('Martin case B: retry against already-succeeded intent — recovers from the error payload without a round-trip', async () => {
+    // payment_intent_unexpected_state errors carry the intent inline.
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        error: {
+          type: 'invalid_request_error',
+          code: 'payment_intent_unexpected_state',
+          message: 'A processing error occurred.',
+          payment_intent: SUCCEEDED_INTENT,
+        },
+      }),
+      retrievePaymentIntent: vi.fn(),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(mockStripeHook.retrievePaymentIntent).not.toHaveBeenCalled()
+    expect(onPaymentSuccess).toHaveBeenCalledTimes(1)
+    expect(onPaymentError).not.toHaveBeenCalled()
+    expect(button.textContent).toBe('Payment Complete')
+  })
+
+  it('Martin case B fallback: unexpected_state without inline intent — verifies via retrievePaymentIntent', async () => {
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        error: {
+          type: 'invalid_request_error',
+          code: 'payment_intent_unexpected_state',
+          message: 'A processing error occurred.',
+        },
+      }),
+      retrievePaymentIntent: vi.fn().mockResolvedValue({ paymentIntent: SUCCEEDED_INTENT }),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(mockStripeHook.retrievePaymentIntent).toHaveBeenCalledWith('pi_recovery_secret')
+    expect(onPaymentSuccess).toHaveBeenCalledTimes(1)
+    expect(onPaymentError).not.toHaveBeenCalled()
+  })
+
+  it('Card decline: no status round-trip, failure surfaces as before', async () => {
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        error: {
+          type: 'card_error',
+          code: 'card_declined',
+          message: 'Your card was declined.',
+        },
+      }),
+      retrievePaymentIntent: vi.fn(),
+    }
+
+    const { button, container } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    // Declines genuinely mean no charge — must not query intent status
+    expect(mockStripeHook.retrievePaymentIntent).not.toHaveBeenCalled()
+    expect(onPaymentSuccess).not.toHaveBeenCalled()
+    expect(onPaymentError).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.stripe-error').textContent).toBe('Your card was declined.')
+
+    await waitFor(() => {
+      expect(auditCalls.filter(c => c.event === 'payment_failed').length).toBe(1)
+    })
+
+    // Retry stays possible after a real failure
+    expect(button).not.toBeDisabled()
+  })
+
+  it('Connection error with genuinely unpaid intent: still reports failure', async () => {
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        error: {
+          type: 'api_connection_error',
+          message: 'We are experiencing issues connecting to our payments provider.',
+        },
+      }),
+      retrievePaymentIntent: vi.fn().mockResolvedValue({
+        paymentIntent: { id: 'pi_unpaid', status: 'requires_payment_method' },
+      }),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(mockStripeHook.retrievePaymentIntent).toHaveBeenCalled()
+    expect(onPaymentSuccess).not.toHaveBeenCalled()
+    expect(onPaymentError).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(auditCalls.filter(c => c.event === 'payment_failed').length).toBe(1)
+    })
+  })
+
+  it('Verification itself failing (still offline): falls through to the normal failure path', async () => {
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        error: {
+          type: 'api_connection_error',
+          message: 'We are experiencing issues connecting to our payments provider.',
+        },
+      }),
+      retrievePaymentIntent: vi.fn().mockRejectedValue(new Error('network down')),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(onPaymentSuccess).not.toHaveBeenCalled()
+    expect(onPaymentError).toHaveBeenCalledTimes(1)
+    // Customer can retry once connectivity returns
+    expect(button).not.toBeDisabled()
+  })
+
+  it('Thrown exception hiding a completed charge: recovered via retrievePaymentIntent', async () => {
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+      retrievePaymentIntent: vi.fn().mockResolvedValue({ paymentIntent: SUCCEEDED_INTENT }),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(mockStripeHook.retrievePaymentIntent).toHaveBeenCalledWith('pi_recovery_secret')
+    expect(onPaymentSuccess).toHaveBeenCalledTimes(1)
+    expect(onPaymentError).not.toHaveBeenCalled()
+    await waitFor(() => {
+      const succeeded = auditCalls.filter(c => c.event === 'payment_succeeded')
+      expect(succeeded.length).toBe(1)
+      expect(succeeded[0].event_data.recovered_from_error).toBe('exception')
+    })
+  })
+
+  it('Normal success path unchanged: confirmPayment succeeds directly', async () => {
+    mockStripeHook = {
+      confirmPayment: vi.fn().mockResolvedValue({
+        paymentIntent: { id: 'pi_direct', status: 'succeeded', amount: 9123 },
+      }),
+      retrievePaymentIntent: vi.fn(),
+    }
+
+    const { button } = await renderReadyCheckout()
+    await clickPayAndSettle(button)
+
+    expect(mockStripeHook.retrievePaymentIntent).not.toHaveBeenCalled()
+    expect(onPaymentSuccess).toHaveBeenCalledTimes(1)
+    expect(onPaymentError).not.toHaveBeenCalled()
+    expect(button.textContent).toBe('Payment Complete')
   })
 })

@@ -95,7 +95,7 @@ const logAuditEvent = (sessionId, event, eventData = {}) => {
 }
 
 // The checkout form component (inside Elements provider)
-function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDetails, sessionId }) {
+function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDetails, sessionId, clientSecret }) {
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
@@ -103,6 +103,48 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
   const [errorMessage, setErrorMessage] = useState('')
   const [elementReady, setElementReady] = useState(false)
   const [elementComplete, setElementComplete] = useState(false)
+
+  // A confirmPayment error does not always mean the charge failed: the success
+  // response can be lost to a network drop after Stripe has taken the money
+  // (api_connection_error), and every retry after that fails with
+  // payment_intent_unexpected_state because the intent has already succeeded.
+  // Both read as failure to the customer, who then re-books and pays twice
+  // (TAG-ANI91299 / TAG-FMT95042, 10 Jul 2026). Card declines and validation
+  // errors genuinely mean no charge, so skip the round-trip for those; for
+  // anything else ask Stripe for the intent's real status before reporting
+  // failure. Returns the succeeded PaymentIntent, or null if it really failed.
+  const recoverSucceededIntent = async (error) => {
+    if (error?.payment_intent?.status === 'succeeded') return error.payment_intent
+    if (error?.type === 'card_error' || error?.type === 'validation_error') return null
+    if (!clientSecret) return null
+    try {
+      const { paymentIntent } = await stripe.retrievePaymentIntent(clientSecret)
+      return paymentIntent?.status === 'succeeded' ? paymentIntent : null
+    } catch (retrieveErr) {
+      console.error('Failed to verify payment intent status:', retrieveErr)
+      return null
+    }
+  }
+
+  const reportRecoveredSuccess = (paymentIntent, originalError) => {
+    console.log('Payment actually succeeded despite confirm error:', originalError?.code || originalError?.type)
+    logAuditEvent(sessionId, 'payment_succeeded', {
+      customer_email: billingDetails.email,
+      booking_reference: bookingReference,
+      payment_intent_id: paymentIntent.id,
+      amount: paymentIntent.amount,
+      recovered_from_error: originalError?.code || originalError?.type || 'exception'
+    })
+    setPaymentSucceeded(true) // Keep button disabled permanently
+    if (window.gtag) {
+      window.gtag('event', 'pay', {
+        event_category: 'booking_flow',
+        event_label: 'payment_success_recovered',
+        value: paymentIntent.amount / 100
+      })
+    }
+    onSuccess?.(paymentIntent, bookingReference)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -178,6 +220,11 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       console.log('Payment result:', { error, paymentIntent })
 
       if (error) {
+        const recoveredIntent = await recoverSucceededIntent(error)
+        if (recoveredIntent) {
+          reportRecoveredSuccess(recoveredIntent, error)
+          return
+        }
         console.error('Payment error:', error)
         // Log payment failed with full error details
         logAuditEvent(sessionId, 'payment_failed', {
@@ -232,6 +279,13 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
         setIsProcessing(false)
       }
     } catch (err) {
+      // A thrown exception can also hide a completed charge (e.g. the network
+      // died while awaiting the confirm response) — verify before failing.
+      const recoveredIntent = await recoverSucceededIntent(err)
+      if (recoveredIntent) {
+        reportRecoveredSuccess(recoveredIntent, err)
+        return
+      }
       console.error('Unexpected error:', err)
       // Log unexpected errors
       logAuditEvent(sessionId, 'payment_failed', {
@@ -801,6 +855,7 @@ function StripePayment({
           bookingReference={bookingReference}
           amount={amount}
           sessionId={sessionId}
+          clientSecret={clientSecret}
           billingDetails={{
             name: `${formData.firstName} ${formData.lastName}`,
             email: formData.email,
