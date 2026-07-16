@@ -158,6 +158,7 @@ from airport_quote_service import (
     calculate_tag_price_pence,
     get_airport_quote_discount_percent,
     get_airport_quote_discount_percent_for_quote,
+    get_airport_quote_lead_boundary_days,
     get_airport_quote_min_price_pence,
     get_airport_quote_week1_price_pence,
     mark_airport_quote_converted,
@@ -1542,7 +1543,15 @@ def get_homepage_airport_comparison(db: Session = Depends(get_db)):
     """Cached homepage airport comparison.
 
     DB-only by design: never scrape BOH from homepage traffic.
+
+    Only near-band snapshots qualify (entry_date within the lead boundary,
+    default 70 days): a customer quoting a far-out trip must not become the
+    homepage's "latest" price, or the card would show the shallower far-band
+    discount.
     """
+    near_entry_cutoff = get_uk_now().date() + timedelta(
+        days=get_airport_quote_lead_boundary_days()
+    )
     items = []
     for billing_days in HOMEPAGE_AIRPORT_COMPARISON_DAYS:
         snapshot = (
@@ -1553,6 +1562,7 @@ def get_homepage_airport_comparison(db: Session = Depends(get_db)):
                 AirportQuoteSnapshot.status == "ok",
                 AirportQuoteSnapshot.source.in_(("live", "batch")),
                 AirportQuoteSnapshot.cheapest_pence.isnot(None),
+                AirportQuoteSnapshot.entry_date <= near_entry_cutoff,
             )
             .order_by(AirportQuoteSnapshot.created_at.desc())
             .first()

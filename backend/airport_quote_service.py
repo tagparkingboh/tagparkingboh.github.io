@@ -167,6 +167,22 @@ def _parse_boundary_days_env(name: str, default: int, min_value: int, max_value:
     return value
 
 
+def get_airport_quote_lead_boundary_days() -> int:
+    """Near/far lead boundary in days (env-overridable, default 70).
+
+    Unlike the matrix decision path (which falls back to the flat discount on
+    an invalid env value), callers of this helper just need the boundary
+    itself, so invalid values fall back to the default.
+    """
+    value = _parse_boundary_days_env(
+        "AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS",
+        DEFAULT_LEAD_BOUNDARY_DAYS,
+        0,
+        3650,
+    )
+    return DEFAULT_LEAD_BOUNDARY_DAYS if value is None else value
+
+
 def get_airport_quote_min_price_pence() -> int:
     raw = os.environ.get("AIRPORT_QUOTE_MIN_PRICE_PENCE")
     if raw is None or raw == "":

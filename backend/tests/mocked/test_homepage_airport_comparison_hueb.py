@@ -1,10 +1,15 @@
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 import main
-from airport_quote_service import AirportProduct, AirportQuoteScrapeResult
+from airport_quote_service import (
+    AirportProduct,
+    AirportQuoteScrapeResult,
+    get_airport_quote_lead_boundary_days,
+)
+from db_models import AirportQuoteSnapshot
 from email_scheduler import refresh_homepage_airport_quote_snapshots
 from main import app
 
@@ -153,6 +158,116 @@ def test_homepage_airport_comparison_empty_when_no_live_cache(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["items"] == []
+
+
+def _db_snapshot(*, billing_days, entry_date, cheapest, created_at, source="live"):
+    return AirportQuoteSnapshot(
+        airport="BOH",
+        entry_date=entry_date,
+        entry_time=time(10, 0),
+        exit_date=entry_date + timedelta(days=billing_days),
+        exit_time=time(10, 0),
+        billing_days=billing_days,
+        products_json=[
+            {"name": "Car Park 2", "pricePence": cheapest, "priceText": f"£{cheapest / 100:.2f}"},
+            {"name": "Car Park 1 Premium", "pricePence": cheapest + 8000, "priceText": f"£{(cheapest + 8000) / 100:.2f}"},
+        ],
+        cheapest_pence=cheapest,
+        tag_price_pence=None,
+        source=source,
+        status="ok",
+        created_at=created_at,
+    )
+
+
+def _uk_today():
+    return main.get_uk_now().date()
+
+
+def test_homepage_airport_comparison_skips_far_lead_snapshots(db_session, monkeypatch):
+    """A newer far-band snapshot must not out-rank an older near-band one."""
+    monkeypatch.setenv("HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE", "live")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "30")
+    today = _uk_today()
+    db_session.add(_db_snapshot(
+        billing_days=8,
+        entry_date=today + timedelta(days=100),  # far band
+        cheapest=11000,
+        created_at=datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc),
+    ))
+    db_session.add(_db_snapshot(
+        billing_days=8,
+        entry_date=today + timedelta(days=30),  # near band, older
+        cheapest=12411,
+        created_at=datetime(2026, 7, 15, 9, 0, tzinfo=timezone.utc),
+    ))
+    db_session.commit()
+
+    body = TestClient(app).get("/api/airport-parking/homepage-comparison").json()
+
+    assert [item["billingDays"] for item in body["items"]] == [8]
+    assert body["items"][0]["cheapestPence"] == 12411
+
+
+def test_homepage_airport_comparison_lead_boundary_is_inclusive(db_session, monkeypatch):
+    """entry_date == today+70 qualifies; today+71 does not (duration omitted)."""
+    monkeypatch.setenv("HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE", "live")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "30")
+    today = _uk_today()
+    db_session.add(_db_snapshot(
+        billing_days=4,
+        entry_date=today + timedelta(days=70),  # exactly on the boundary
+        cheapest=8778,
+        created_at=datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc),
+    ))
+    db_session.add(_db_snapshot(
+        billing_days=8,
+        entry_date=today + timedelta(days=71),  # one past the boundary
+        cheapest=12411,
+        created_at=datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc),
+    ))
+    db_session.commit()
+
+    body = TestClient(app).get("/api/airport-parking/homepage-comparison").json()
+
+    assert [item["billingDays"] for item in body["items"]] == [4]
+    assert body["items"][0]["cheapestPence"] == 8778
+
+
+def test_homepage_airport_comparison_honours_lead_boundary_env(db_session, monkeypatch):
+    """The cutoff follows AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS, not a hardcoded 70."""
+    monkeypatch.setenv("HOMEPAGE_AIRPORT_COMPARISON_PRICE_MODE", "live")
+    monkeypatch.setenv("AIRPORT_QUOTE_DISCOUNT_PERCENT", "30")
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "10")
+    today = _uk_today()
+    db_session.add(_db_snapshot(
+        billing_days=4,
+        entry_date=today + timedelta(days=10),
+        cheapest=8778,
+        created_at=datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc),
+    ))
+    db_session.add(_db_snapshot(
+        billing_days=8,
+        entry_date=today + timedelta(days=11),
+        cheapest=12411,
+        created_at=datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc),
+    ))
+    db_session.commit()
+
+    body = TestClient(app).get("/api/airport-parking/homepage-comparison").json()
+
+    assert [item["billingDays"] for item in body["items"]] == [4]
+
+
+def test_get_airport_quote_lead_boundary_days_parsing(monkeypatch):
+    monkeypatch.delenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", raising=False)
+    assert get_airport_quote_lead_boundary_days() == 70
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "45")
+    assert get_airport_quote_lead_boundary_days() == 45
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "not-a-number")
+    assert get_airport_quote_lead_boundary_days() == 70
+    monkeypatch.setenv("AIRPORT_QUOTE_LEAD_BOUNDARY_DAYS", "-1")
+    assert get_airport_quote_lead_boundary_days() == 70
 
 
 def test_refresh_homepage_airport_quote_snapshots_writes_batch_rows(monkeypatch):
