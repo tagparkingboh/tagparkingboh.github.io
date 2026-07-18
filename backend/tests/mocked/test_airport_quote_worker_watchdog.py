@@ -106,15 +106,45 @@ class TestHealthyScrapes:
         assert payload["products"] == [{"name": "Car Park 1", "pricePence": 15376}]
         assert payload["sourceUrl"] == "https://example.test/quote"
 
-    def test_H_scrape_exception_still_surfaces_as_500(self, monkeypatch):
+    def test_H_scrape_exception_returns_clean_502(self, monkeypatch):
+        """A failed (not hung) scrape answers 502, not a raw traceback 500."""
         def _boom():
-            raise RuntimeError("scrape blew up")
+            raise RuntimeError("Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator")
 
         monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", _boom)
 
         response = _client().post("/internal/flight-board/scrape")
 
-        assert response.status_code == 500
+        assert response.status_code == 502
+        assert response.json()["detail"] == "flight-board scrape failed"
+
+    def test_H_airport_quote_scrape_exception_returns_clean_502(self, monkeypatch):
+        def _boom(_input):
+            raise RuntimeError("BOH bounced to the landing page")
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_airport_quote", _boom)
+
+        response = _client().post("/internal/airport-parking/scrape", json=QUOTE_PAYLOAD)
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "airport-parking scrape failed"
+
+    def test_H_failed_scrape_does_not_count_as_stuck_and_frees_slot(self, monkeypatch):
+        """Clean failure ≠ hang: no stuck increment, and the very next scrape runs."""
+        def _boom():
+            raise RuntimeError("scrape blew up")
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", _boom)
+
+        client = _client()
+        assert client.post("/internal/flight-board/scrape").status_code == 502
+        assert client.get("/").json()["stuck_scrapes"] == 0
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", lambda: BOARD)
+        response = client.post("/internal/flight-board/scrape")
+
+        assert response.status_code == 200
+        assert response.json()["arrivals"] == BOARD["arrivals"]
 
     def test_H_healthcheck_reports_stuck_count(self):
         response = _client().get("/")

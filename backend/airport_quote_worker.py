@@ -95,6 +95,8 @@ def _run_scrape_with_deadline(label: str, fn):
     future = _SCRAPE_EXECUTOR.submit(fn)
     try:
         return future.result(timeout=_scrape_timeout_seconds())
+    except HTTPException:
+        raise
     except FutureTimeoutError:
         with _stuck_lock:
             _stuck_scrapes += 1
@@ -124,6 +126,19 @@ def _run_scrape_with_deadline(label: str, fn):
             stuck_now,
         )
         raise HTTPException(status_code=504, detail=f"{label} scrape timed out")
+    except Exception as exc:
+        # Scrape failed on its own (Playwright timeout, BOH flow bounce, …).
+        # The thread finished cleanly — nothing is stuck — so answer with a
+        # tidy 502 instead of letting the raw traceback 500 through ASGI.
+        # The scraper's own debug capture already logged what BOH served.
+        summary = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+        logger.error(
+            "%s scrape failed: %s%s",
+            label,
+            type(exc).__name__,
+            f": {summary}" if summary else "",
+        )
+        raise HTTPException(status_code=502, detail=f"{label} scrape failed") from exc
 
 
 class AirportQuoteWorkerRequest(BaseModel):
