@@ -7,6 +7,7 @@ snapshot with a short-lived DB session after the worker returns.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import threading
@@ -84,6 +85,11 @@ def _terminate_process() -> None:
     os._exit(1)
 
 
+def _is_fork_exhaustion(exc: BaseException) -> bool:
+    """True when the OS refused to create a process/thread (EAGAIN/ENOMEM)."""
+    return isinstance(exc, OSError) and exc.errno in (errno.EAGAIN, errno.ENOMEM)
+
+
 def _run_scrape_with_deadline(label: str, fn):
     """Run fn on a watchdog thread; abandon it if it outlives the deadline.
 
@@ -131,6 +137,19 @@ def _run_scrape_with_deadline(label: str, fn):
         # The thread finished cleanly — nothing is stuck — so answer with a
         # tidy 502 instead of letting the raw traceback 500 through ASGI.
         # The scraper's own debug capture already logged what BOH served.
+        if _is_fork_exhaustion(exc):
+            # fork() failing means the container's process table is spent
+            # (zombie Chromium/driver children accumulate — the worker runs
+            # as PID 1 and never reaps orphans). Every future scrape fails
+            # instantly, so the stuck-scrape backstop never trips
+            # (2026-07-20 incident: 4h of fallback-only pricing). Dead
+            # container — exit non-zero for Railway's clean restart.
+            logger.critical(
+                "%s scrape cannot fork (%s); process table exhausted — exiting for a clean restart",
+                label,
+                exc,
+            )
+            _terminate_process()
         summary = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
         logger.error(
             "%s scrape failed: %s%s",

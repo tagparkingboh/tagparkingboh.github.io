@@ -10,6 +10,7 @@ accumulate the worker exits non-zero for Railway's ON_FAILURE clean restart.
 
 All scrapes are monkeypatched — no Chromium, no network.
 """
+import errno
 import threading
 import time as time_module
 from types import SimpleNamespace
@@ -128,6 +129,68 @@ class TestHealthyScrapes:
 
         assert response.status_code == 502
         assert response.json()["detail"] == "airport-parking scrape failed"
+
+    def test_U_fork_exhaustion_terminates_for_clean_restart(self, monkeypatch):
+        """EAGAIN from fork = dead container (2026-07-20 incident): exit for
+        Railway restart instead of 502ing forever below the stuck backstop."""
+        terminated = []
+        monkeypatch.setattr(worker, "_terminate_process", lambda: terminated.append(True))
+
+        def _cant_fork():
+            raise BlockingIOError(errno.EAGAIN, "Resource temporarily unavailable")
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", _cant_fork)
+
+        response = _client().post("/internal/flight-board/scrape")
+
+        assert terminated == [True]
+        # Test double returns instead of exiting, so the request falls through
+        # to the 502 (the real process is gone before this point).
+        assert response.status_code == 502
+
+    def test_U_enomem_also_terminates(self, monkeypatch):
+        terminated = []
+        monkeypatch.setattr(worker, "_terminate_process", lambda: terminated.append(True))
+
+        def _no_memory():
+            raise OSError(12, "Cannot allocate memory")
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", _no_memory)
+
+        response = _client().post("/internal/flight-board/scrape")
+
+        assert terminated == [True]
+        assert response.status_code == 502
+
+    def test_B_ordinary_scrape_failure_does_not_terminate(self, monkeypatch):
+        terminated = []
+        monkeypatch.setattr(worker, "_terminate_process", lambda: terminated.append(True))
+
+        def _boom():
+            raise RuntimeError("BOH bounced")
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", _boom)
+
+        response = _client().post("/internal/flight-board/scrape")
+
+        assert response.status_code == 502
+        assert terminated == []
+
+    def test_B_oserror_with_other_errno_does_not_terminate(self, monkeypatch):
+        """A plain OSError (e.g. ENOENT from a missing binary) is a normal
+        failure, not resource exhaustion — must not restart the worker."""
+        terminated = []
+        monkeypatch.setattr(worker, "_terminate_process", lambda: terminated.append(True))
+
+        def _missing():
+            raise OSError(2, "No such file or directory")
+
+        monkeypatch.setattr(worker, "fetch_bournemouth_flight_board", _missing)
+
+        response = _client().post("/internal/flight-board/scrape")
+
+        assert response.status_code == 502
+        assert terminated == []
 
     def test_H_failed_scrape_does_not_count_as_stuck_and_frees_slot(self, monkeypatch):
         """Clean failure ≠ hang: no stuck increment, and the very next scrape runs."""
