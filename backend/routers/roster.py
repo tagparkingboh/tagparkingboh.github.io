@@ -1513,11 +1513,13 @@ async def get_employee_monthly_hours(
             })
         week_start = week_start + timedelta(days=7)
 
-    # Get shifts for the current user only
+    # Get shifts for the current user only. Cancelled rows are admin-deleted
+    # auto shifts kept as suppression markers — never worked, never paid.
     shifts = db.query(RosterShift).filter(
         RosterShift.date >= month_start,
         RosterShift.date <= month_end,
-        RosterShift.staff_id == current_user.id
+        RosterShift.staff_id == current_user.id,
+        RosterShift.status != ShiftStatus.CANCELLED,
     ).all()
 
     # Calculate total hours
@@ -3424,11 +3426,14 @@ async def get_monthly_payroll(
     first_day = date_type(year, month, 1)
     last_day = date_type(year, month, monthrange(year, month)[1])
 
-    # Get all shifts for the month with staff info
+    # Get all shifts for the month with staff info. Cancelled rows are
+    # admin-deleted auto shifts kept as suppression markers — excluding them
+    # keeps payroll equal to hours actually worked (2026-07-21).
     shifts = db.query(RosterShift).filter(
         RosterShift.date >= first_day,
         RosterShift.date <= last_day,
-        RosterShift.staff_id.isnot(None)  # Only assigned shifts
+        RosterShift.staff_id.isnot(None),  # Only assigned shifts
+        RosterShift.status != ShiftStatus.CANCELLED,
     ).order_by(RosterShift.date, RosterShift.start_time).all()
 
     # Get all active staff for the summary (even if they have no shifts)
@@ -3533,11 +3538,13 @@ async def get_employee_monthly_payroll(
     first_day = date_type(year, month, 1)
     last_day = date_type(year, month, monthrange(year, month)[1])
 
-    # Get shifts for the current user only
+    # Get shifts for the current user only. Cancelled = suppression markers
+    # for admin-deleted auto shifts — never worked, never paid.
     shifts = db.query(RosterShift).filter(
         RosterShift.date >= first_day,
         RosterShift.date <= last_day,
-        RosterShift.staff_id == current_user.id
+        RosterShift.staff_id == current_user.id,
+        RosterShift.status != ShiftStatus.CANCELLED,
     ).order_by(RosterShift.date, RosterShift.start_time).all()
 
     # Calculate totals and group by date
