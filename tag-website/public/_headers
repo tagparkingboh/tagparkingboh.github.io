@@ -1,3 +1,12 @@
+# SPA routes (/, /employee, /admin/...) serve the index shell but do NOT
+# match the *.html globs below — with no Cache-Control, mobile browsers
+# heuristically cache the shell for days and keep loading old JS bundles
+# (stale /employee views). no-cache still allows ETag revalidation, so
+# the ~1KB shell is refetched only when it actually changed. Later, more
+# specific rules override this for the same header.
+/*
+  Cache-Control: no-cache
+
 # Force no-cache on HTML to always get latest JS bundle references
 /*.html
   Cache-Control: no-cache, no-store, must-revalidate
