@@ -196,6 +196,37 @@ class TestAdminPayrollHUEB:
         assert by_id[7]["total_hours"] == 0.0
         assert by_id[7]["total_shifts"] == 0
 
+    def test_H_admin_weekly_hours_excludes_cancelled(self, client, db_session):
+        """The roster staff-hours cards (43.6h incident, 2026-07-21): weekly
+        view must not count suppressed shifts either."""
+        _add_staff_user(db_session, STAFF_ID, "Simon", "Bartlett")
+        _add_shift(db_session, staff_id=STAFF_ID, date_=date(2026, 7, 20),
+                   end_date=date(2026, 7, 21), start=time(21, 30), end=time(1, 30),
+                   status=ShiftStatus.SCHEDULED)
+        _add_shift(db_session, staff_id=STAFF_ID, date_=date(2026, 7, 21),
+                   end_date=date(2026, 7, 22), start=time(20, 0), end=time(2, 0),
+                   status=ShiftStatus.CANCELLED)
+
+        body = client.get("/api/roster/weekly-hours?week_start=2026-07-20&source=all").json()
+
+        simon = next(e for e in body["employees"] if e["employee_id"] == STAFF_ID)
+        assert simon["total_hours"] == 4.0
+        assert simon["shift_count"] == 1
+        assert body["shift_count"] == 1
+
+    def test_H_admin_monthly_hours_excludes_cancelled(self, client, db_session):
+        _add_staff_user(db_session, STAFF_ID, "Simon", "Bartlett")
+        _add_shift(db_session, staff_id=STAFF_ID, date_=date(2026, 7, 6),
+                   start=time(9, 0), end=time(13, 0), status=ShiftStatus.SCHEDULED)
+        _add_shift(db_session, staff_id=STAFF_ID, date_=date(2026, 7, 7),
+                   start=time(9, 0), end=time(19, 0), status=ShiftStatus.CANCELLED)
+
+        body = client.get("/api/roster/monthly-hours?year=2026&month=7&source=all").json()
+
+        simon = next(e for e in body["employees"] if e["employee_id"] == STAFF_ID)
+        assert simon["total_hours"] == 4.0
+        assert simon["shift_count"] == 1
+
     def test_B_month_totals_exclude_cancelled(self, client, db_session):
         _add_staff_user(db_session, STAFF_ID, "Steve", "Cooper")
         _add_shift(db_session, staff_id=STAFF_ID, date_=date(2026, 7, 1),

@@ -1213,10 +1213,12 @@ async def get_weekly_hours(
     """
     week_end = week_start + timedelta(days=6)
 
-    # Get all shifts for the week
+    # Get all shifts for the week. Cancelled = suppression markers for
+    # admin-deleted auto shifts — never worked, never counted as hours.
     query = db.query(RosterShift).filter(
         RosterShift.date >= week_start,
         RosterShift.date <= week_end,
+        RosterShift.status != ShiftStatus.CANCELLED,
     )
 
     if source == "all":
@@ -1346,10 +1348,12 @@ async def get_monthly_hours(
             })
         week_start = week_start + timedelta(days=7)
 
-    # Get all shifts for the month
+    # Get all shifts for the month. Cancelled = suppression markers for
+    # admin-deleted auto shifts — never worked, never counted as hours.
     query = db.query(RosterShift).filter(
         RosterShift.date >= month_start,
         RosterShift.date <= month_end,
+        RosterShift.status != ShiftStatus.CANCELLED,
     )
 
     # Source filter — keeps the regular admin payroll view exclusive of
