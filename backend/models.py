@@ -69,7 +69,7 @@ class Flight(BaseModel):
     @field_validator('date', mode='before')
     @classmethod
     def parse_date(cls, v):
-        if isinstance(v, date):
+        if isinstance(v, date_type):
             return v
         if isinstance(v, str):
             return datetime.strptime(v, '%Y-%m-%d').date()
