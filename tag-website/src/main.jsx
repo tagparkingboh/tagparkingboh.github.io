@@ -16,9 +16,12 @@ import Login from './Login.jsx'
 import Admin from './Admin.jsx'
 import Employee from './Employee.jsx'
 import { AuthProvider } from './AuthContext.jsx'
+import { installFreshShellGuard } from './freshShell.js'
 
 // Toggle this to switch between Landing Page (pre-launch) and Home Page (post-launch)
 const IS_LAUNCHED = true
+
+installFreshShellGuard()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
