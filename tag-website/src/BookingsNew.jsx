@@ -6,6 +6,7 @@ import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
 import MobileTimePicker from './components/MobileTimePicker'
+import { buildDropoffSlots } from './utils/dropoffSlots'
 import {
   computeEarliestBookableDate,
   inLeadTimeRecheckWindow,
@@ -725,30 +726,18 @@ function Bookings({ isModal = false, onClose }) {
         return false
       }
 
-      // Calculate both potential dropoff times
+      // Calculate the potential drop-off times (same builder as the slot
+      // picker, so the 04:00 floor applies here too). Previous-evening
+      // times (negative minutes) are excluded, matching the old behaviour.
       const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
       const departureMinutes = hours * 60 + minutes
 
-      const potentialTimes = []
-      // Early slot: 2¾ hours (165 min), Standard slot: 2 hours (120 min), Late slot: 1½ hours (90 min)
-      const earlyMinutes = departureMinutes - 165
-      if (earlyMinutes >= 0) {
-        const earlyHours = Math.floor(earlyMinutes / 60)
-        const earlyMins = earlyMinutes % 60
-        potentialTimes.push(`${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`)
-      }
-      const standardMinutes = departureMinutes - 120
-      if (standardMinutes >= 0) {
-        const standardHours = Math.floor(standardMinutes / 60)
-        const standardMins = standardMinutes % 60
-        potentialTimes.push(`${String(standardHours).padStart(2, '0')}:${String(standardMins).padStart(2, '0')}`)
-      }
-      const lateMinutes = departureMinutes - 90
-      if (lateMinutes >= 0) {
-        const lateHours = Math.floor(lateMinutes / 60)
-        const lateMins = lateMinutes % 60
-        potentialTimes.push(`${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')}`)
-      }
+      const potentialTimes = buildDropoffSlots(departureMinutes)
+        .filter((slot, idx) => {
+          const offsets = { '165': 165, '120': 120, '90': 90 }
+          return departureMinutes - offsets[slot.id] >= 0
+        })
+        .map(slot => slot.time)
 
       if (potentialTimes.length === 0) return false
 
@@ -1079,30 +1068,9 @@ function Bookings({ isModal = false, onClose }) {
     // Same-day filtering was removed 2026-05-12 — the new lead-time rule
     // (earliestBookableDate) gates the DATE picker itself, so by the time
     // we get here the drop-off is at least tomorrow and every slot is
-    // valid by definition.
-    return [
-      {
-        id: '165',
-        label: '2¾ hours before',
-        time: formatMinutesToTime(departureMinutes - 165),
-        available: 1,
-        isLastSlot: false,
-      },
-      {
-        id: '120',
-        label: '2 hours before',
-        time: formatMinutesToTime(departureMinutes - 120),
-        available: 1,
-        isLastSlot: false,
-      },
-      {
-        id: '90',
-        label: '1½ hours before',
-        time: formatMinutesToTime(departureMinutes - 90),
-        available: 1,
-        isLastSlot: false,
-      },
-    ]
+    // valid by definition. Slots earlier than the 04:00 floor are clamped
+    // up to 04:00 inside buildDropoffSlots.
+    return buildDropoffSlots(departureMinutes)
   }, [selectedDropoffFlight, departureTimeOverride])
 
   // Customer's selected drop-off TIME (HH:MM) — derived from the dropoffSlot

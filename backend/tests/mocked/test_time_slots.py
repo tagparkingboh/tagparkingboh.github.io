@@ -691,3 +691,60 @@ class TestGetPickupSummary:
         assert summary["pickup_date"] == FUTURE_DATE.isoformat()
         assert summary["pickup_time"] == "21:30"
         assert summary["is_overnight"] is False
+
+
+class TestDropOffFloorHUEB:
+    """04:00 floor (2026-07-22): same-day small-hours slots clamp up to 04:00.
+
+    Boundary coverage per convention: t-1min / t / t+1min around both the
+    floor line (06:45 departure = exact 04:00 for the EARLY slot) and the
+    90-minute clamp guard (05:30 departure).
+    """
+
+    # --- HAPPY -------------------------------------------------------------
+
+    def test_H_0620_departure_early_slot_clamps_to_0400(self):
+        """The motivating case: 06:20 flight, 165-min slot = 03:35 -> 04:00."""
+        d, t = calculate_drop_off_datetime(FUTURE_DATE, time(6, 20), SlotType.EARLY)
+        assert d == FUTURE_DATE
+        assert t == time(4, 0)
+
+    def test_H_0620_departure_other_slots_untouched(self):
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(6, 20), SlotType.STANDARD)[1] == time(4, 20)
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(6, 20), SlotType.LATE)[1] == time(4, 50)
+
+    # --- BOUNDARIES around the floor (EARLY slot: dep - 165) ----------------
+
+    def test_B_0644_departure_early_slot_0359_clamps(self):
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(6, 44), SlotType.EARLY)[1] == time(4, 0)
+
+    def test_B_0645_departure_early_slot_exactly_0400(self):
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(6, 45), SlotType.EARLY)[1] == time(4, 0)
+
+    def test_B_0646_departure_early_slot_0401_unclamped(self):
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(6, 46), SlotType.EARLY)[1] == time(4, 1)
+
+    # --- BOUNDARIES around the 90-min clamp guard ---------------------------
+
+    def test_B_0530_departure_clamp_lands_exactly_90min_before(self):
+        """05:30 - 165 = 02:45 -> 04:00, which is exactly dep - 90: allowed."""
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(5, 30), SlotType.EARLY)[1] == time(4, 0)
+
+    def test_B_0529_departure_clamp_would_breach_90min_so_keeps_original(self):
+        """05:29: 04:00 would be 89 min before departure — clamp refused."""
+        assert calculate_drop_off_datetime(FUTURE_DATE, time(5, 29), SlotType.EARLY)[1] == time(2, 44)
+
+    # --- EXEMPTIONS ---------------------------------------------------------
+
+    def test_E_post_midnight_flight_keeps_previous_evening_dropoff(self):
+        """00:35 flight -> 21:50 the evening before; the floor must not touch it."""
+        d, t = calculate_drop_off_datetime(FUTURE_DATE, time(0, 35), SlotType.EARLY)
+        assert d == FUTURE_DATE - timedelta(days=1)
+        assert t == time(21, 50)
+
+    def test_E_small_hours_flight_keeps_small_hours_dropoff(self):
+        """03:00 flight -> 00:15 same day; clamping to 04:00 (after the flight)
+        is nonsense, the guard keeps the original time."""
+        d, t = calculate_drop_off_datetime(FUTURE_DATE, time(3, 0), SlotType.EARLY)
+        assert d == FUTURE_DATE
+        assert t == time(0, 15)

@@ -26,6 +26,14 @@ SLOT_LABELS = {
 # Minimum time in minutes for passengers to clear security/immigration after landing
 ARRIVAL_CLEARANCE_BUFFER = 30
 
+# Earliest same-day drop-off offered to customers (owner-confirmed floor,
+# 2026-07-22). A slot computing to a small-hours time on the flight day is
+# clamped UP to this — e.g. 06:20 departure: 165-min slot gives 03:35,
+# customer sees 04:00. Previous-evening drop-offs for post-midnight flights
+# are exempt, and clamping never moves a slot closer than the LATE offset
+# (90 min) to departure. Frontend twin: tag-website/src/utils/dropoffSlots.js.
+DROP_OFF_FLOOR = time(4, 0)
+
 
 def calculate_drop_off_datetime(
     flight_date: date,
@@ -66,6 +74,19 @@ def calculate_drop_off_datetime(
 
     # Subtract the offset
     drop_off_datetime = flight_datetime - timedelta(minutes=offset_minutes)
+
+    # 04:00 floor: clamp same-day small-hours drop-offs up to DROP_OFF_FLOOR.
+    # Previous-evening drop-offs (post-midnight flights) keep their date and
+    # time; the clamp is skipped when it would leave less than the LATE
+    # offset before departure (flights before 05:30 — none exist at BOH).
+    floor_datetime = datetime.combine(drop_off_datetime.date(), DROP_OFF_FLOOR)
+    latest_acceptable = flight_datetime - timedelta(minutes=SLOT_OFFSETS[SlotType.LATE])
+    if (
+        drop_off_datetime.date() == flight_date
+        and drop_off_datetime < floor_datetime
+        and floor_datetime <= latest_acceptable
+    ):
+        drop_off_datetime = floor_datetime
 
     return drop_off_datetime.date(), drop_off_datetime.time()
 
