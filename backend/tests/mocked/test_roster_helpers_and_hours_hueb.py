@@ -1186,7 +1186,8 @@ class TestEmployeeRosterFeedsHUEB:
         # v4: assignment happens via conditional UPDATE (race guard), with
         # provenance stamped alongside staff_id.
         claim_update.filter.return_value.update.assert_called_once_with(
-            {"staff_id": 7, "assigned_source": "claim"}, synchronize_session=False
+            {"staff_id": 7, "assigned_source": "claim", "needs_cover_at": None},
+            synchronize_session=False,
         )
         db.commit.assert_called_once()
         db.refresh.assert_called_once_with(shift)
