@@ -1634,11 +1634,16 @@ class RosterWindowTemplate(Base):
     end_time = Column(Time, nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    # Roster v4 (2026-07-22): window sets are date-versioned. For an
+    # operational day the engine uses the generation with the latest
+    # effective_from <= day; NULL is the original generation. Aug 1-9 keeps
+    # its shape while Aug 10+ runs the new 3-window layout.
+    effective_from = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     __table_args__ = (
-        UniqueConstraint("profile", "label", name="uq_roster_window_template_profile_label"),
+        UniqueConstraint("profile", "label", "effective_from", name="uq_roster_window_template_profile_label"),
     )
 
 

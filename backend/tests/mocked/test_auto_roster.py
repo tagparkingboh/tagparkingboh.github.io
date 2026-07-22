@@ -2512,6 +2512,7 @@ class TestAutoRosterCoverageEdges:
         assert rebuild_auto_for_dates(db, set(), mk_settings()) == {
             "deleted": 0,
             "created": 0,
+            "created_fleet": 0,
             "skipped_covered": 0,
             "skipped_suppressed": 0,
             "bookings_in_scope": 0,
@@ -2876,9 +2877,12 @@ class TestTemplateRosterWindows:
         assert [(s.start_time, s.end_time) for s in shifts] == [(time(3, 0), time(9, 0))]
         shifts, _ = run(time(8, 30))   # t (== window_end - 30)
         assert [(s.start_time, s.end_time) for s in shifts] == [(time(3, 0), time(9, 0))]
-        shifts, result = run(time(8, 31))  # t+eps -> coverage end 09:01 > 09:00, gap to day window
-        assert shifts == []
-        assert result["orphans"] >= 1
+        # v4 raw-anchor fallback: coverage end 09:01 overruns the window, but
+        # the anchor (08:31) is inside it, so the booking keeps the early
+        # window instead of orphaning (2026-07-22 orphan-reduction change).
+        shifts, result = run(time(8, 31))  # t+eps
+        assert [(s.start_time, s.end_time) for s in shifts] == [(time(3, 0), time(9, 0))]
+        assert result["orphans"] == 0
 
     def test_B_pickup_eos_boundary_window_end_minus_45(self):
         """Pickup coverage = arrival + 45, so it fits the late window
@@ -2901,9 +2905,11 @@ class TestTemplateRosterWindows:
         assert [(s.start_time, s.end_time) for s in shifts] == [(time(15, 45), time(20, 45))]
         shifts, _ = run(time(20, 0))   # t (== window_end - 45)
         assert [(s.start_time, s.end_time) for s in shifts] == [(time(15, 45), time(20, 45))]
+        # v4 raw-anchor fallback: 20:01 anchor is inside the late window even
+        # though coverage (20:46) overruns it — booking keeps the window.
         shifts, result = run(time(20, 1))  # t+eps
-        assert shifts == []
-        assert result["orphans"] >= 1
+        assert [(s.start_time, s.end_time) for s in shifts] == [(time(15, 45), time(20, 45))]
+        assert result["orphans"] == 0
 
     def test_B_overnight_arrival_0159_belongs_to_prior_day_window_and_orphans(self, monkeypatch):
         """A 6/22 01:59 arrival is attributed (by the <02:00 cutoff) to 6/21's
@@ -2921,8 +2927,14 @@ class TestTemplateRosterWindows:
         # 6/21 is the day whose overnight window reaches into 6/22 02:00.
         result = rebuild_auto_for_dates(db, {date(2026, 6, 21)}, mk_settings())
         from db_models import RosterShift
-        assert [s for s in db._added if isinstance(s, RosterShift)] == []
-        assert result["orphans"] >= 1
+        # v4 raw-anchor fallback: the 01:59 anchor sits inside 6/21's overnight
+        # window (21:00-02:00), so the booking is covered there; the +45
+        # coverage tail past 02:00 no longer orphans it.
+        created = [s for s in db._added if isinstance(s, RosterShift)]
+        assert [(s.date, s.start_time, s.end_time) for s in created] == [
+            (date(2026, 6, 21), time(21, 0), time(2, 0))
+        ]
+        assert result["orphans"] == 0
 
     def test_B_overnight_arrival_0200_belongs_to_same_day_window_and_orphans(self, monkeypatch):
         """A 6/22 02:00 arrival is attributed (by the >=02:00 cutoff) to 6/22

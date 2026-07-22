@@ -753,7 +753,7 @@ def _rebuild_cluster_auto_for_dates(
 
 def _summary() -> dict:
     return {
-        "deleted": 0, "created": 0, "skipped_covered": 0,
+        "deleted": 0, "created": 0, "created_fleet": 0, "skipped_covered": 0,
         "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
         "rescued": 0, "orphans": 0,
     }
@@ -787,7 +787,9 @@ def _default_window_template_specs() -> list[dict]:
     return specs
 
 
-def _load_window_templates(db: Session) -> dict[str, list[RosterWindowTemplate]]:
+def _load_window_templates(db: Session) -> list[RosterWindowTemplate]:
+    """All active template rows, every generation — day selection happens in
+    _windows_for_day so one rebuild can straddle a generation boundary."""
     rows = (
         db.query(RosterWindowTemplate)
         .filter(RosterWindowTemplate.is_active == True)
@@ -804,22 +806,37 @@ def _load_window_templates(db: Session) -> dict[str, list[RosterWindowTemplate]]
             # Unit-test fakes may not implement flush fully; the rows are still
             # usable as in-memory config for this call.
             pass
-
-    grouped: dict[str, list[RosterWindowTemplate]] = {"weekday": [], "weekend": []}
-    for row in rows:
-        profile = getattr(row, "profile", None)
-        if profile in grouped:
-            grouped[profile].append(row)
-    for profile in grouped:
-        grouped[profile].sort(key=lambda row: (
-            getattr(row, "sort_order", 0),
-            getattr(row, "start_time", time_type(0, 0)),
-        ))
-    return grouped
+    return rows
 
 
 def _window_profile_for_day(day: date_type) -> str:
     return "weekend" if day.weekday() >= 5 else "weekday"
+
+
+def _windows_for_day(rows: list[RosterWindowTemplate], day: date_type) -> list[RosterWindowTemplate]:
+    """Window set for an operational day: the generation with the latest
+    effective_from <= day (NULL = original generation), filtered to the
+    day's profile."""
+    generations = {
+        getattr(row, "effective_from", None)
+        for row in rows
+        if getattr(row, "effective_from", None) is None
+        or getattr(row, "effective_from", None) <= day
+    }
+    if not generations:
+        return []
+    active_generation = max(generations, key=lambda eff: eff or date_type.min)
+    profile = _window_profile_for_day(day)
+    windows = [
+        row for row in rows
+        if getattr(row, "effective_from", None) == active_generation
+        and getattr(row, "profile", None) == profile
+    ]
+    windows.sort(key=lambda row: (
+        getattr(row, "sort_order", 0),
+        getattr(row, "start_time", time_type(0, 0)),
+    ))
+    return windows
 
 
 def _window_bounds(day: date_type, window: RosterWindowTemplate) -> tuple[datetime, datetime]:
@@ -860,7 +877,7 @@ def _template_event_coverage(
 
 
 def _template_for_event(
-    templates: dict[str, list[RosterWindowTemplate]],
+    templates: list[RosterWindowTemplate],
     event_type: str,
     start_dt: datetime,
     end_dt: datetime,
@@ -870,7 +887,7 @@ def _template_for_event(
     coverage_start, coverage_end = _template_event_coverage(event_type, start_dt, end_dt, settings)
     matches: list[tuple[int, date_type, RosterWindowTemplate]] = []
     for day_index, day in enumerate(candidate_days):
-        for window in templates.get(_window_profile_for_day(day), []):
+        for window in _windows_for_day(templates, day):
             if _window_contains_event(day, window, coverage_start, coverage_end):
                 matches.append((day_index, day, window))
     if matches:
@@ -880,8 +897,22 @@ def _template_for_event(
             getattr(item[2], "start_time", time_type(0, 0)),
         ))
         return matches[0][1], matches[0][2]
-    if not any(templates.get(_window_profile_for_day(day), []) for day in candidate_days):
+    # Boundary fallback (v4, contiguous windows): buffered coverage that
+    # straddles a window boundary fits no window whole — assign by the RAW
+    # event anchor instead (win_start <= anchor < win_end) so the booking
+    # still gets a shift; the buffer head/tail is absorbed by adjacent
+    # coverage or the phase-3 trim/extend.
+    for day_index, day in enumerate(candidate_days):
+        for window in _windows_for_day(templates, day):
+            win_start, win_end = _window_bounds(day, window)
+            if win_start <= start_dt < win_end:
+                return day, window
+    if not any(_windows_for_day(templates, day) for day in candidate_days):
         raise ValueError("No active roster window templates configured")
+    logger.warning(
+        "template orphan: %s event at %s fits no window on %s/%s",
+        event_type, start_dt.isoformat(), candidate_days[0], candidate_days[1],
+    )
     return None
 
 
@@ -1006,29 +1037,29 @@ def _rebuild_window_auto_for_dates(
             )
             group["booking_ids"].add(booking.id)
 
+    # v4 (2026-07-22): every window is generated as a PAIR — a jockey shift
+    # (carries the booking links; counts as coverage) and an identical fleet
+    # twin (extra capacity for fleet drivers; no links — fleet shifts never
+    # cover jockey work). Coverage and suppression are checked per driver
+    # type so an admin deleting one twin doesn't suppress the other, and a
+    # surviving assigned twin isn't duplicated.
+    jockey_suppressed_pool = [s for s in suppressed_shifts if _shift_can_cover_jockey_work(s)]
+    fleet_suppressed_pool = [
+        s for s in suppressed_shifts
+        if getattr(s, "intended_driver_type", None) == "fleet"
+    ]
+
+    def _contained_by(shift, group_window):
+        return (
+            _shift_window(shift)[0] <= group_window[0]
+            and group_window[1] <= _shift_window(shift)[1]
+        )
+
     for group in sorted(groups.values(), key=lambda item: (item["op_date"], item["start"])):
         group_window = (group["start"], group["end"])
         booking_ids = sorted(group["booking_ids"])
-        if _cluster_suppression_blockers(
-            set(booking_ids),
-            group["start"],
-            group["end"],
-            suppressed_shifts,
-        ):
-            summary["skipped_suppressed"] += 1
-            continue
-
-        if any(
-            _shift_can_cover_jockey_work(shift)
-            and _shift_window(shift)[0] <= group_window[0]
-            and group_window[1] <= _shift_window(shift)[1]
-            for shift in frozen_shifts
-        ):
-            summary["skipped_covered"] += 1
-            continue
-
         end_date = group["end"].date() if group["end"].date() != group["op_date"] else None
-        new_shift = RosterShift(
+        shift_kwargs = dict(
             staff_id=None,
             date=group["op_date"],
             end_date=end_date,
@@ -1037,13 +1068,43 @@ def _rebuild_window_auto_for_dates(
             shift_type=_window_shift_type(group["start"], group["end"]),
             status=ShiftStatus.SCHEDULED,
             created_source="auto",
-            intended_driver_type="jockey",
         )
-        db.add(new_shift)
-        db.flush()
-        for booking_id in booking_ids:
-            db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
-        summary["created"] += 1
+
+        # Jockey shift (coverage + booking links)
+        jockey_suppressed = _cluster_suppression_blockers(
+            set(booking_ids), group["start"], group["end"], jockey_suppressed_pool,
+        )
+        jockey_covered = any(
+            _shift_can_cover_jockey_work(shift) and _contained_by(shift, group_window)
+            for shift in frozen_shifts
+        )
+        if jockey_suppressed:
+            summary["skipped_suppressed"] += 1
+        elif jockey_covered:
+            summary["skipped_covered"] += 1
+        else:
+            new_shift = RosterShift(intended_driver_type="jockey", **shift_kwargs)
+            db.add(new_shift)
+            db.flush()
+            for booking_id in booking_ids:
+                db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
+            summary["created"] += 1
+
+        # Fleet twin (identical window, no links) — v4-generation windows
+        # only: legacy-window days (pre Aug 10) never grow twins.
+        if getattr(group["window"], "effective_from", None) is None:
+            continue
+        fleet_suppressed = _cluster_suppression_blockers(
+            set(booking_ids), group["start"], group["end"], fleet_suppressed_pool,
+        )
+        fleet_covered = any(
+            getattr(shift, "intended_driver_type", None) == "fleet"
+            and _contained_by(shift, group_window)
+            for shift in frozen_shifts
+        )
+        if not fleet_suppressed and not fleet_covered:
+            db.add(RosterShift(intended_driver_type="fleet", **shift_kwargs))
+            summary["created_fleet"] = summary.get("created_fleet", 0) + 1
 
     db.commit()
     return summary
