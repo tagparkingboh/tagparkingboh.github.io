@@ -129,10 +129,19 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]
 
 
 def _shift_window(shift: RosterShift) -> tuple[datetime, datetime]:
-    """Naive [start, end] datetimes for an existing shift (handles overnight)."""
-    end_date = shift.end_date or shift.date
-    if not shift.end_date and shift.end_time <= shift.start_time:
+    """Naive [start, end] datetimes for an existing shift.
+
+    The TIMES are canonical: end <= start means the shift crosses midnight,
+    otherwise it is same-day — regardless of what end_date says. Stored
+    end_date drifted both ways in practice (admin edits changing end_time
+    without clearing it), and a spurious next-day end_date turned a 2.5h
+    evening shift into a 26h phantom that swallowed the following day's
+    windows in the coverage check (Aug 10 missing-jockeys incident,
+    2026-07-22) and added +24h in payroll hours."""
+    if shift.end_time <= shift.start_time:
         end_date = shift.date + timedelta(days=1)
+    else:
+        end_date = shift.date
     return (
         datetime.combine(shift.date, shift.start_time),
         datetime.combine(end_date, shift.end_time),

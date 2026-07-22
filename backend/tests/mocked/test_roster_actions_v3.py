@@ -1780,7 +1780,12 @@ class TestPatchStampingHUEB:
             json={"end_date": None},
         )
         assert r.status_code == 200, r.text
-        assert s.end_date is None, "end_date null must actually be applied"
+        # v4 end_date normalization (2026-07-22): times are canonical. With
+        # end_time (02:00) <= start_time (22:00) the shift STILL crosses
+        # midnight, so the explicit null is re-derived to date+1 — a shift
+        # can't be made same-day while its times cross midnight. The stamp
+        # still applies (the admin expressed a window-shape intent).
+        assert s.end_date == date(2026, 5, 11)
         assert s.admin_shaped_at is not None, (
             "clearing overnight cross-day is a window-shape change — must stamp"
         )

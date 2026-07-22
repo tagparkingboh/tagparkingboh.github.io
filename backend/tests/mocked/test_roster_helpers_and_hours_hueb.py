@@ -807,7 +807,10 @@ class TestRosterDetailAndCreateHUEB:
 
         assert response.status_code == 201
         assert added[0].staff_id is None
-        assert added[0].end_date == date(2026, 7, 6)
+        # v4 end_date normalization: times are canonical — 20:00->02:00
+        # crosses midnight, so end_date is derived as start_date + 1 (the old
+        # "defaults to start date" behaviour WAS the missing-end_date bug).
+        assert added[0].end_date == date(2026, 7, 7)
         assert added[0].intended_driver_type == "fleet"
 
     def test_B_create_shift_accepts_legacy_single_booking_id(self, client, monkeypatch):

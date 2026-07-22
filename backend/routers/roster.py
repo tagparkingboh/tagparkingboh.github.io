@@ -1756,6 +1756,7 @@ async def create_shift(
         intended_driver_type=intended,
         assigned_source="admin" if shift_data.staff_id else None,
     )
+    _normalize_shift_end_date(new_shift)
 
     db.add(new_shift)
     db.flush()  # Get the shift ID before adding links
@@ -1878,6 +1879,7 @@ async def update_shift(
         shift.notes = updates.notes
     if window_changed:
         shift.admin_shaped_at = datetime.now(timezone.utc)
+        _normalize_shift_end_date(shift)
     # If staff is now assigned, intended_driver_type follows the assigned
     # user's driver_type (source of truth). Otherwise honour the request.
     if updates.staff_id_provided and updates.staff_id:
@@ -3127,6 +3129,18 @@ async def claim_shift(
         "message": f"Shift claimed successfully",
         "shift": shift_to_response(shift, db)
     }
+
+
+def _normalize_shift_end_date(shift: RosterShift) -> None:
+    """Keep end_date consistent with the times (times are canonical):
+    midnight-crossing times get end_date = date + 1; same-day times get
+    NULL. Prevents the spurious-end_date corruption behind the Aug 10
+    missing-jockeys incident (admin edits changed end_time without
+    clearing a stale overnight end_date)."""
+    if shift.end_time <= shift.start_time:
+        shift.end_date = shift.date + timedelta(days=1)
+    else:
+        shift.end_date = None
 
 
 def _release_notice_hours() -> float:
