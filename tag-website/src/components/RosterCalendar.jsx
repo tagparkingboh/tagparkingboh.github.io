@@ -168,6 +168,13 @@ const ukToISO = (ukDate) => {
 // operational reality in this business.
 export const ARRIVAL_OVERNIGHT_CUTOFF = '02:00'
 
+// Roster v4 phase 4: shifts a driver has RELEASED and no one has re-covered.
+// Backend stamps needs_cover_at on employee release and clears it on any
+// (re)assignment or admin decision — the badge is only ever "driver walked
+// away, action needed", never noise from the admin's own edits.
+export const countNeedsCoverShifts = (dayShifts = []) =>
+  dayShifts.filter((s) => Boolean(s?.needs_cover_at) && !s?.staff_id).length
+
 // Group confirmed and refunded bookings by operational day. Drop-offs key on
 // `dropoff_date` directly. Pickups key on the operational arrival-day per
 // claimPickupDate below. Each day's list is sorted by real datetime so
@@ -3650,6 +3657,16 @@ const getHoursUntilShift = (shift) => {
                             return secondaryCount > 0 ? (
                               <div className="day-badge badge-carpark" title="Secondary car park bookings active this day (09:00–21:00 rule)">
                                 P2
+                              </div>
+                            ) : null
+                          })()}
+                          {/* Needs-cover alert: a driver released a shift on
+                              this day and it's still uncovered (admin only) */}
+                          {isAdmin && (() => {
+                            const needsCover = countNeedsCoverShifts(dayShifts)
+                            return needsCover > 0 ? (
+                              <div className="day-badge badge-needs-cover" title={`${needsCover} released shift${needsCover > 1 ? 's' : ''} need${needsCover > 1 ? '' : 's'} cover`}>
+                                ⚠️ Cover {needsCover}
                               </div>
                             ) : null
                           })()}

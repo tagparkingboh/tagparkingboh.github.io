@@ -390,6 +390,15 @@
   border: 1px solid rgba(245, 166, 35, 0.3);
 }
 
+/* Roster v4: driver-released shift awaiting cover — deliberately the
+   loudest badge in the cell. */
+.badge-needs-cover {
+  background: rgba(231, 76, 60, 0.25);
+  color: #e74c3c;
+  border: 1px solid rgba(231, 76, 60, 0.5);
+  font-weight: 700;
+}
+
 .day-badge.badge-shift-exception {
   background: #f5a623;
   color: #1a1a2e;

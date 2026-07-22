@@ -672,6 +672,9 @@ class RosterShiftResponse(BaseModel):
     # edit/duplicate/split/merge, so the Calendar can distinguish it from a
     # fresh engine-created shift.
     admin_shaped_at: Optional[datetime] = None
+    # Roster v4 phase 4: set when a driver released the shift and it awaits
+    # cover — drives the ops calendar "needs cover" badge.
+    needs_cover_at: Optional[datetime] = None
     locked: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None

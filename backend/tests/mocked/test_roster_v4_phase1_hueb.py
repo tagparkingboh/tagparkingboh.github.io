@@ -304,3 +304,47 @@ class TestTemplateRebuildOwnershipHUEB:
         assert locked.id in remaining
         assert untouched.id not in remaining
         assert summary["deleted"] == 1
+
+
+# =============================================================================
+# Phase 4: needs-cover lifecycle (release stamps, any assignment clears)
+# =============================================================================
+
+class TestNeedsCoverHUEB:
+
+    def test_H_release_stamps_needs_cover(self, client, db_session, emails):
+        shift = _add_shift(db_session, staff_id=DRIVER_ID, assigned_source="claim", days_ahead=10)
+
+        assert client.post(f"/api/employee/release-shift/{shift.id}").status_code == 200
+
+        db_session.refresh(shift)
+        assert shift.needs_cover_at is not None
+
+    def test_H_claim_clears_needs_cover(self, client, db_session, emails):
+        _add_users(db_session, (DRIVER_ID, "Test", "Driver"))
+        shift = _add_shift(db_session)
+        shift.needs_cover_at = datetime.utcnow()
+        db_session.commit()
+
+        assert client.post(f"/api/employee/claim-shift/{shift.id}").status_code == 200
+
+        db_session.refresh(shift)
+        assert shift.needs_cover_at is None
+
+    def test_H_admin_unassign_does_not_stamp(self, client, db_session):
+        _add_users(db_session, (DRIVER_ID, "Test", "Driver"))
+        shift = _add_shift(db_session, staff_id=DRIVER_ID, assigned_source="admin")
+
+        assert client.patch(f"/api/roster/{shift.id}/unassign").status_code == 200
+
+        db_session.refresh(shift)
+        assert shift.needs_cover_at is None
+
+    def test_H_serializer_exposes_needs_cover(self, client, db_session, emails):
+        _add_users(db_session, (DRIVER_ID, "Test", "Driver"))
+        shift = _add_shift(db_session, staff_id=DRIVER_ID, assigned_source="claim", days_ahead=10)
+        client.post(f"/api/employee/release-shift/{shift.id}")
+
+        body = client.get(f"/api/roster/{shift.id}").json()
+
+        assert body["needs_cover_at"] is not None

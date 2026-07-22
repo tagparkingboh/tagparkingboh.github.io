@@ -564,6 +564,11 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
             if isinstance(getattr(shift, "admin_shaped_at", None), datetime)
             else None
         ),
+        needs_cover_at=(
+            shift.needs_cover_at
+            if isinstance(getattr(shift, "needs_cover_at", None), datetime)
+            else None
+        ),
         created_at=shift.created_at,
         updated_at=shift.updated_at,
         suppressed_at=(
@@ -1856,6 +1861,7 @@ async def update_shift(
     if updates.staff_id_provided:
         shift.staff_id = updates.staff_id  # Can be None to unassign
         shift.assigned_source = "admin" if updates.staff_id else None
+        shift.needs_cover_at = None  # any admin decision resolves the alert
     if updates.date is not None:
         shift.date = updates.date
     if updates.end_date_provided:
@@ -2649,6 +2655,7 @@ async def unassign_shift(
 
     shift.staff_id = None
     shift.assigned_source = None
+    shift.needs_cover_at = None  # admin's own action — nothing to alert
     db.commit()
     db.refresh(shift)
     return shift_to_response(shift, db)
@@ -3088,7 +3095,7 @@ async def claim_shift(
         db.query(RosterShift)
         .filter(RosterShift.id == shift_id, RosterShift.staff_id.is_(None))
         .update(
-            {"staff_id": current_user.id, "assigned_source": "claim"},
+            {"staff_id": current_user.id, "assigned_source": "claim", "needs_cover_at": None},
             synchronize_session=False,
         )
     )
@@ -3200,6 +3207,7 @@ async def release_shift(
     staff_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
     shift.staff_id = None
     shift.assigned_source = None
+    shift.needs_cover_at = datetime.utcnow()  # ops calendar "needs cover" badge
     _audit_roster_event(db, AuditLogEvent.ROSTER_SHIFT_RELEASED, f"roster-shift-{shift_id}", {
         "shift_id": shift_id,
         "date": str(shift.date),

@@ -1767,6 +1767,11 @@ class RosterShift(Base):
     # legacy pre-v4 assignment. Visibility/audit only — release rules are
     # uniform (72h notice) regardless of source.
     assigned_source = Column(String(20), nullable=True)
+    # Roster v4 phase 4: stamped when a driver RELEASES the shift, cleared on
+    # any (re)assignment — drives the ops calendar "needs cover" badge so a
+    # release is never invisible. Admin unassignments don't stamp it (the
+    # admin performed the action; nothing to alert them to).
+    needs_cover_at = Column(DateTime(timezone=True), nullable=True)
     # UUID-ish identifier of the planner run that created this shift — enables undo
     # via `DELETE FROM roster_shifts WHERE planner_run_id = ? AND status = 'scheduled'`.
     planner_run_id = Column(String(64), nullable=True, index=True)
