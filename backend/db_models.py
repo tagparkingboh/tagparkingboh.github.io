@@ -536,6 +536,10 @@ class AuditLogEvent(enum.Enum):
     BOOKING_REFUNDED = "booking_refunded"
     BOOKING_UPDATED = "booking_updated"
     ROSTER_SHIFT_DELETED = "roster_shift_deleted"
+    # Roster v4 phase 1 (2026-07-22) — every hand-change is recorded
+    ROSTER_SHIFT_CLAIMED = "roster_shift_claimed"
+    ROSTER_SHIFT_RELEASED = "roster_shift_released"
+    STAFF_UNAVAILABILITY_ADDED = "staff_unavailability_added"
     # Roster Planner Phase 3 — additive commit + undo
     PLANNER_RUN_COMMITTED = "planner_run_committed"  # Admin committed N proposals from a run
     PLANNER_RUN_UNDONE = "planner_run_undone"  # Admin undid (deleted) committed shifts from a run
@@ -1753,6 +1757,11 @@ class RosterShift(Base):
     # 'manual' for shifts created by admins via the UI (existing behaviour).
     # 'planner' for shifts created by the auto-planner commit flow (Phase 3+).
     created_source = Column(String(50), nullable=False, server_default="manual")
+    # Assignment provenance (roster v4, 2026-07-22): 'claim' when the driver
+    # self-claimed, 'admin' when an admin placed them. NULL = unassigned or
+    # legacy pre-v4 assignment. Visibility/audit only — release rules are
+    # uniform (72h notice) regardless of source.
+    assigned_source = Column(String(20), nullable=True)
     # UUID-ish identifier of the planner run that created this shift — enables undo
     # via `DELETE FROM roster_shifts WHERE planner_run_id = ? AND status = 'scheduled'`.
     planner_run_id = Column(String(64), nullable=True, index=True)

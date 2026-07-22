@@ -904,12 +904,19 @@ def _rebuild_window_auto_for_dates(
 
     templates = _load_window_templates(db)
 
+    # Unified ownership rule (2026-07-22, after the Aug 1/2/5/6 assignment
+    # wipe): the template engine now protects exactly what the cluster engine
+    # protects — assigned (staff_id) or admin-shaped rows are never deleted,
+    # in addition to locked ones. Assigned shifts are reconciled in place by
+    # later phases; this guard stops the destruction.
     existing = (
         db.query(RosterShift)
         .filter(
             RosterShift.created_source == "auto",
             RosterShift.locked.is_(False),
             RosterShift.status == ShiftStatus.SCHEDULED,
+            RosterShift.staff_id.is_(None),
+            RosterShift.admin_shaped_at.is_(None),
             RosterShift.date.in_(target_set),
         )
         .all()
@@ -939,6 +946,9 @@ def _rebuild_window_auto_for_dates(
     bookings = [booking for booking in bookings if _booking_in_scope(booking)]
     summary["bookings_in_scope"] = len(bookings)
 
+    # Frozen pool mirrors the ownership rule: locked, assigned, or
+    # admin-shaped shifts all count as existing coverage so the rebuild
+    # doesn't create duplicates on top of protected rows.
     frozen_shifts = (
         db.query(RosterShift)
         .filter(
@@ -946,7 +956,11 @@ def _rebuild_window_auto_for_dates(
                 ShiftStatus.SCHEDULED,
                 ShiftStatus.CONFIRMED,
             ]),
-            RosterShift.locked.is_(True),
+            or_(
+                RosterShift.locked.is_(True),
+                RosterShift.staff_id.isnot(None),
+                RosterShift.admin_shaped_at.isnot(None),
+            ),
             or_(
                 RosterShift.date.in_(expanded),
                 RosterShift.end_date.in_(expanded),

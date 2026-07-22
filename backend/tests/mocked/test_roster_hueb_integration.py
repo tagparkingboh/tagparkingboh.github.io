@@ -14,7 +14,7 @@ Hits the real FastAPI routes via TestClient. Auth + DB are overridden
 via app.dependency_overrides on routers.roster.get_current_user /
 require_admin (these are router-local, not main.py's versions).
 """
-from datetime import date as date_type, datetime, time, timedelta
+from datetime import date, date as date_type, datetime, time, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -1678,16 +1678,22 @@ class TestEmployeeUnavailability:
 
     def test_H_post_full_day(self, monkeypatch):
         monkeypatch.setattr("routers.roster.check_shift_conflict_for_unavailability", lambda *a, **k: None)
+        monkeypatch.setattr("routers.roster._notify_founder_roster_event", lambda *a, **k: None)
         _override_db(self._wire())
-        resp = self._post(start_date="01/06/2026", end_date="03/06/2026", notes="Holiday")
+        # v4: self-added unavailability needs 72h notice — use future dates.
+        start = date.today() + timedelta(days=10)
+        end = start + timedelta(days=2)
+        resp = self._post(start_date=start.strftime("%d/%m/%Y"), end_date=end.strftime("%d/%m/%Y"), notes="Holiday")
         assert resp.status_code == 200, resp.text
         assert resp.json()["success"] is True
 
     def test_H_post_partial_day_with_times(self, monkeypatch):
         monkeypatch.setattr("routers.roster.check_shift_conflict_for_unavailability", lambda *a, **k: None)
         monkeypatch.setattr("routers.roster.parse_time_for_unavailability", lambda s: time(int(s.split(":")[0]), int(s.split(":")[1])) if s else None)
+        monkeypatch.setattr("routers.roster._notify_founder_roster_event", lambda *a, **k: None)
         _override_db(self._wire())
-        resp = self._post(start_date="01/06/2026", end_date="01/06/2026", start_time="09:00", end_time="13:00")
+        start = date.today() + timedelta(days=10)
+        resp = self._post(start_date=start.strftime("%d/%m/%Y"), end_date=start.strftime("%d/%m/%Y"), start_time="09:00", end_time="13:00")
         assert resp.status_code == 200
 
     # ---- POST unhappy ----

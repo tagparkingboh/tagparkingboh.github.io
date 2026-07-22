@@ -1166,20 +1166,28 @@ class TestEmployeeRosterFeedsHUEB:
         employee = _employee(7, "Claim", "User")
         shift = _shift(staff_id=None, shift_date=date(2099, 1, 1), start=time(9), end=time(11))
         db = MagicMock()
+        claim_update = MagicMock()
+        claim_update.filter.return_value.update.return_value = 1  # rowcount: won the race
         db.query.side_effect = [
             _query(first_result=shift),
             _query(first_result=None),
+            claim_update,
         ]
         _override_db(db)
         app.dependency_overrides[get_current_user] = lambda: employee
         monkeypatch.setattr("routers.roster.check_shift_overlap", lambda *a, **k: None)
         monkeypatch.setattr("routers.roster.shift_to_response", lambda s, db: _shift_response_payload(s))
+        monkeypatch.setattr("routers.roster._notify_founder_roster_event", lambda *a, **k: None)
 
         response = client.post("/api/employee/claim-shift/100")
 
         assert response.status_code == 200
         assert response.json()["success"] is True
-        assert shift.staff_id == 7
+        # v4: assignment happens via conditional UPDATE (race guard), with
+        # provenance stamped alongside staff_id.
+        claim_update.filter.return_value.update.assert_called_once_with(
+            {"staff_id": 7, "assigned_source": "claim"}, synchronize_session=False
+        )
         db.commit.assert_called_once()
         db.refresh.assert_called_once_with(shift)
 
@@ -1412,7 +1420,7 @@ class TestEmployeeRosterFeedsHUEB:
         assert shift.staff_id is None
         db.commit.assert_called_once()
 
-    def test_B_release_shift_rejects_less_than_48_hours_notice(self, client):
+    def test_B_release_shift_rejects_less_than_72_hours_notice(self, client):
         employee = _employee(7, "Own", "Shift")
         shift = _shift(staff_id=7, shift_date=date.today() + timedelta(days=1), start=time(23), end=time(23, 30))
         db = MagicMock()
@@ -1423,14 +1431,15 @@ class TestEmployeeRosterFeedsHUEB:
         response = client.post("/api/employee/release-shift/107")
 
         assert response.status_code == 400
-        assert "less than 48 hours notice" in response.json()["detail"]
+        assert "less than 72 hours notice" in response.json()["detail"]
 
 
 class TestEmployeeUnavailabilityHelpersHUEB:
     def test_H_parse_time_for_unavailability_accepts_hhmm(self):
         assert parse_time_for_unavailability("09:30") == time(9, 30)
 
-    def test_H_add_employee_unavailability_creates_partial_day_record(self, client):
+    def test_H_add_employee_unavailability_creates_partial_day_record(self, client, monkeypatch):
+        monkeypatch.setattr("routers.roster._notify_founder_roster_event", lambda *a, **k: None)
         employee = _employee(7, "Own", "Unavailable")
         added = []
         db = MagicMock()
@@ -1444,11 +1453,12 @@ class TestEmployeeUnavailabilityHelpersHUEB:
         _override_db(db)
         app.dependency_overrides[get_current_user] = lambda: employee
 
+        future = (date.today() + timedelta(days=10)).strftime("%d/%m/%Y")
         response = client.post(
             "/api/employee/unavailability",
             params={
-                "start_date": "06/07/2026",
-                "end_date": "06/07/2026",
+                "start_date": future,
+                "end_date": future,
                 "start_time": "09:30",
                 "end_time": "12:30",
                 "notes": "Appointment",

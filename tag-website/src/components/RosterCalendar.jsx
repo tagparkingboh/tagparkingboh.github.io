@@ -1319,7 +1319,11 @@ function RosterCalendar({
   }
 
   // Calculate hours until shift (for release warning)
-  const getHoursUntilShift = (shift) => {
+  // Minimum notice for a driver releasing a shift (roster v4, 2026-07-22).
+// Mirrors backend ROSTER_RELEASE_NOTICE_HOURS (default 72).
+const RELEASE_NOTICE_HOURS = 72
+
+const getHoursUntilShift = (shift) => {
     const now = new Date()
     const shiftStart = new Date(`${shift.date}T${shift.start_time}`)
     return Math.floor((shiftStart - now) / (1000 * 60 * 60))
@@ -4479,7 +4483,7 @@ function RosterCalendar({
                               className="shift-release-btn"
                               onClick={() => openReleaseModal(shift)}
                             >
-                              {getHoursUntilShift(shift) < 48 ? 'Cannot Release' : 'Release Shift'}
+                              {getHoursUntilShift(shift) < RELEASE_NOTICE_HOURS ? 'Cannot Release' : 'Release Shift'}
                             </button>
                           </div>
                         )}
@@ -5676,16 +5680,16 @@ function RosterCalendar({
                 {formatTime(shiftToRelease.start_time)} - {formatTime(shiftToRelease.end_time)}
               </div>
 
-              {getHoursUntilShift(shiftToRelease) < 48 && (
+              {getHoursUntilShift(shiftToRelease) < RELEASE_NOTICE_HOURS && (
                 <div className="release-warning">
-                  <strong>Less than 48 hours notice</strong>
-                  <p>This shift starts in less than 48 hours. Please contact an administrator to release it.</p>
+                  <strong>Less than 72 hours notice</strong>
+                  <p>This shift starts in less than 72 hours. Please contact an administrator to release it.</p>
                 </div>
               )}
             </div>
 
             <p className="release-confirm-text">
-              {getHoursUntilShift(shiftToRelease) >= 48
+              {getHoursUntilShift(shiftToRelease) >= RELEASE_NOTICE_HOURS
                 ? 'Are you sure you want to release this shift? It will become available for other employees.'
                 : 'You cannot release this shift yourself. Please contact an administrator.'
               }
@@ -5701,7 +5705,7 @@ function RosterCalendar({
               >
                 Cancel
               </button>
-              {getHoursUntilShift(shiftToRelease) >= 48 && (
+              {getHoursUntilShift(shiftToRelease) >= RELEASE_NOTICE_HOURS && (
                 <button
                   className="modal-btn modal-btn-danger"
                   onClick={handleReleaseShift}

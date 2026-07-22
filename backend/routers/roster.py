@@ -57,6 +57,10 @@ from shift_pool_sync import (
 )
 from roster_effective_date import get_roster_effective_date
 import json
+import logging
+import os
+
+logger = logging.getLogger(__name__)
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 router = APIRouter(prefix="/api", tags=["roster"])
@@ -1745,6 +1749,7 @@ async def create_shift(
         status=ShiftStatus(shift_data.status.value),
         notes=shift_data.notes,
         intended_driver_type=intended,
+        assigned_source="admin" if shift_data.staff_id else None,
     )
 
     db.add(new_shift)
@@ -1850,6 +1855,7 @@ async def update_shift(
     # Apply updates
     if updates.staff_id_provided:
         shift.staff_id = updates.staff_id  # Can be None to unassign
+        shift.assigned_source = "admin" if updates.staff_id else None
     if updates.date is not None:
         shift.date = updates.date
     if updates.end_date_provided:
@@ -2642,6 +2648,7 @@ async def unassign_shift(
         return shift_to_response(shift, db)
 
     shift.staff_id = None
+    shift.assigned_source = None
     db.commit()
     db.refresh(shift)
     return shift_to_response(shift, db)
@@ -3075,16 +3082,76 @@ async def claim_shift(
             detail=f"You have {holiday_type} booked on this date"
         )
 
-    # Assign the shift to the employee
-    shift.staff_id = current_user.id
+    # Assign the shift via a conditional UPDATE so two drivers racing for the
+    # same shift can't both win — only the first sees rowcount 1.
+    claimed_rows = (
+        db.query(RosterShift)
+        .filter(RosterShift.id == shift_id, RosterShift.staff_id.is_(None))
+        .update(
+            {"staff_id": current_user.id, "assigned_source": "claim"},
+            synchronize_session=False,
+        )
+    )
+    if not claimed_rows:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Shift is already assigned to another employee")
+
+    _audit_roster_event(db, AuditLogEvent.ROSTER_SHIFT_CLAIMED, f"roster-shift-{shift_id}", {
+        "shift_id": shift_id,
+        "date": str(shift.date),
+        "start_time": format_time(shift.start_time),
+        "end_time": format_time(shift.end_time),
+        "staff_id": current_user.id,
+        "staff_email": current_user.email,
+    })
     db.commit()
     db.refresh(shift)
+
+    staff_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
+    _notify_founder_roster_event(
+        f"Shift claimed: {shift.date.strftime('%d/%m/%Y')} {format_time(shift.start_time)}-{format_time(shift.end_time)}",
+        f"<p><strong>{staff_name}</strong> claimed the shift on "
+        f"<strong>{shift.date.strftime('%A %d %B %Y')}</strong>, "
+        f"{format_time(shift.start_time)}&ndash;{format_time(shift.end_time)}.</p>",
+    )
 
     return {
         "success": True,
         "message": f"Shift claimed successfully",
         "shift": shift_to_response(shift, db)
     }
+
+
+def _release_notice_hours() -> float:
+    """Minimum notice for a driver releasing a shift or adding unavailability.
+
+    Uniform for claimed and admin-assigned shifts (owner decision 2026-07-22).
+    Env-overridable so the number is a dial, not a deploy."""
+    raw = os.environ.get("ROSTER_RELEASE_NOTICE_HOURS", "72")
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 72.0
+
+
+def _notify_founder_roster_event(subject: str, html_body: str) -> None:
+    """Fire-and-forget staffing-change email to FOUNDER_EMAIL.
+
+    Never fails the request; the staging guard inside send_email keeps
+    staging silent."""
+    try:
+        from email_service import FOUNDER_EMAIL, send_email
+        send_email(FOUNDER_EMAIL, subject, html_body)
+    except Exception:
+        logger.warning("roster staffing-change email failed", exc_info=True)
+
+
+def _audit_roster_event(db: Session, event: AuditLogEvent, session_id: str, data: dict) -> None:
+    """Best-effort audit row for staffing changes — must never fail the op."""
+    try:
+        db.add(AuditLog(event=event, session_id=session_id, event_data=json.dumps(data, default=str)))
+    except Exception:
+        logger.warning("roster audit write failed", exc_info=True)
 
 
 # Holiday type config for error messages (matches frontend)
@@ -3103,9 +3170,10 @@ async def release_shift(
     db: Session = Depends(get_db)
 ):
     """
-    Release a shift that the employee has claimed.
-    Employees can release shifts with at least 48 hours notice.
-    Admin can release any shift (handled by separate admin endpoint).
+    Release a shift that the employee has claimed or been assigned.
+    Uniform notice window (default 72h, ROSTER_RELEASE_NOTICE_HOURS) for both
+    claimed and admin-assigned shifts (owner decision 2026-07-22). Every
+    release emails FOUNDER_EMAIL and writes an audit row.
     """
     # Get the shift
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
@@ -3116,20 +3184,40 @@ async def release_shift(
     if shift.staff_id != current_user.id:
         raise HTTPException(status_code=403, detail="This shift is not assigned to you")
 
-    # Check 48 hour notice requirement
+    # Notice requirement
+    notice_hours = _release_notice_hours()
     now = datetime.utcnow()
     shift_datetime = datetime.combine(shift.date, shift.start_time)
     hours_until_shift = (shift_datetime - now).total_seconds() / 3600
 
-    if hours_until_shift < 48:
+    if hours_until_shift < notice_hours:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot release shift with less than 48 hours notice. Please contact an administrator."
+            detail=f"Cannot release shift with less than {notice_hours:.0f} hours notice. Please contact an administrator."
         )
 
-    # Release the shift (set staff_id to None)
+    # Release the shift
+    staff_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
     shift.staff_id = None
+    shift.assigned_source = None
+    _audit_roster_event(db, AuditLogEvent.ROSTER_SHIFT_RELEASED, f"roster-shift-{shift_id}", {
+        "shift_id": shift_id,
+        "date": str(shift.date),
+        "start_time": format_time(shift.start_time),
+        "end_time": format_time(shift.end_time),
+        "released_by_staff_id": current_user.id,
+        "released_by_email": current_user.email,
+        "hours_notice": round(hours_until_shift, 1),
+    })
     db.commit()
+
+    _notify_founder_roster_event(
+        f"Shift released — needs cover: {shift.date.strftime('%d/%m/%Y')} {format_time(shift.start_time)}-{format_time(shift.end_time)}",
+        f"<p><strong>{staff_name}</strong> released their shift on "
+        f"<strong>{shift.date.strftime('%A %d %B %Y')}</strong>, "
+        f"{format_time(shift.start_time)}&ndash;{format_time(shift.end_time)} "
+        f"({hours_until_shift:.0f}h notice). The shift is back in the pool and needs cover.</p>",
+    )
 
     return {
         "success": True,
@@ -3300,6 +3388,18 @@ async def add_employee_unavailability(
             detail=f"You have a shift on {shift_date} ({shift_time}). Please release the shift first before marking yourself unavailable."
         )
 
+    # Notice requirement (owner decision 2026-07-22): self-added
+    # unavailability needs the same notice as a shift release. Shorter-notice
+    # absence goes through an administrator, who can still add it any time.
+    notice_hours = _release_notice_hours()
+    unavailability_start = datetime.combine(parsed_start_date, parsed_start_time or time(0, 0))
+    hours_until_start = (unavailability_start - datetime.utcnow()).total_seconds() / 3600
+    if hours_until_start < notice_hours:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unavailability needs at least {notice_hours:.0f} hours notice. Please contact an administrator."
+        )
+
     # Create the unavailability record
     unavailability = EmployeeHoliday(
         staff_id=current_user.id,
@@ -3313,8 +3413,33 @@ async def add_employee_unavailability(
     )
 
     db.add(unavailability)
+    _audit_roster_event(db, AuditLogEvent.STAFF_UNAVAILABILITY_ADDED, f"staff-{current_user.id}", {
+        "staff_id": current_user.id,
+        "staff_email": current_user.email,
+        "start_date": str(parsed_start_date),
+        "end_date": str(parsed_end_date),
+        "start_time": start_time,
+        "end_time": end_time,
+        "notes": notes,
+        "hours_notice": round(hours_until_start, 1),
+    })
     db.commit()
     db.refresh(unavailability)
+
+    staff_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
+    date_span = (
+        parsed_start_date.strftime('%d/%m/%Y')
+        if parsed_start_date == parsed_end_date
+        else f"{parsed_start_date.strftime('%d/%m/%Y')} to {parsed_end_date.strftime('%d/%m/%Y')}"
+    )
+    _notify_founder_roster_event(
+        f"Unavailability added: {staff_name} — {date_span}",
+        f"<p><strong>{staff_name}</strong> marked themselves unavailable "
+        f"<strong>{date_span}</strong>"
+        + (f", {start_time}&ndash;{end_time}" if start_time and end_time else " (full day)")
+        + (f".<br>Notes: {notes}" if notes else ".")
+        + f"</p><p>{hours_until_start:.0f}h notice given.</p>",
+    )
 
     return {
         "success": True,
