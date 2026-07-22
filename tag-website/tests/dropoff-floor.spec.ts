@@ -144,4 +144,100 @@ test.describe('04:00 drop-off floor', () => {
     expect(await slotTimes(page)).toEqual(['11:45', '12:30', '13:00']);
     expect(await slotLabels(page)).toEqual(['2¾ hours before', '2 hours before', '1½ hours before']);
   });
+
+  test('full booking with the clamped 04:00 slot completes and issues a reference', async ({ page }) => {
+    test.setTimeout(180000);
+    await fillTripToSlots(page, '06:20');
+
+    // Select the clamped 04:00 slot
+    await page.locator('label.dropoff-slot', { hasText: '04:00' }).click();
+    await page.waitForTimeout(300);
+
+    // Return flight (+4 days), arrival time
+    const pickupDate = new Date();
+    pickupDate.setDate(pickupDate.getDate() + 14);
+    const returnDatePicker = page.locator('.return-date-picker input, input[placeholder="Select return date"]');
+    await returnDatePicker.click();
+    await selectDateInPicker(page, pickupDate);
+    await page.waitForTimeout(500);
+    const arrivalTimeInput = page.locator('#manualArrivalFlightTime');
+    if (await arrivalTimeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await arrivalTimeInput.fill('18:30');
+      await page.keyboard.press('Tab');
+    }
+    await page.waitForTimeout(500);
+
+    // Continue → confirm times (modal shows the CLAMPED drop-off, not 03:35)
+    await page.locator('button.next-btn, button:has-text("Continue")').first().click();
+    const timeConfirmModal = page.locator('.time-confirm-modal');
+    if (await timeConfirmModal.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await expect(timeConfirmModal).toContainText('04:00');
+      await expect(timeConfirmModal).not.toContainText('03:35');
+      await page.locator('.time-confirm-btn-primary, button:has-text("Yes, times are correct")').click();
+    }
+    await page.waitForTimeout(500);
+
+    // Step 2: package
+    const step2Continue = page.locator('button.next-btn, button:has-text("Continue")').first();
+    if (await step2Continue.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await step2Continue.click();
+      await page.waitForTimeout(1000);
+    }
+
+    // Step 3: customer / address / vehicle
+    await page.locator('#firstName').fill('Mark');
+    await page.locator('#lastName').fill('Testing');
+    await page.locator('#email').fill('qa.orca.contact@gmail.com');
+    const phoneInput = page.locator('.phone-input input[type="tel"]');
+    await phoneInput.click();
+    await phoneInput.fill('+447415693489');
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(500);
+
+    await page.locator('#billingPostcode').fill('BH10 5BW');
+    await page.locator('button:has-text("Find Address")').click();
+    await page.waitForTimeout(2000);
+    const manualEntryBtn = page.locator('button.manual-entry-link');
+    if (await manualEntryBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await manualEntryBtn.click();
+      await page.waitForTimeout(500);
+    }
+    await page.locator('#billingAddress1').fill('40 Western Ave');
+    await page.locator('#billingCity').fill('Bournemouth');
+    await page.locator('#registration').fill('AA19MOT');
+    await page.locator('button.validate-btn:has-text("Lookup")').click();
+    await page.waitForTimeout(3000);
+
+    await page.locator('button:has-text("Continue to Payment")').click();
+    await page.waitForTimeout(3000);
+    const heardAboutSelect = page.locator('.heard-about-us-section select');
+    if (await heardAboutSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await heardAboutSelect.selectOption('google');
+      await page.locator('button.heard-about-us-submit').click();
+      await page.waitForTimeout(1000);
+    }
+
+    // Step 4: pay with the Stripe test card
+    const termsCheckbox = page.locator('input[name="terms"]');
+    if (!(await termsCheckbox.isChecked())) {
+      await termsCheckbox.check();
+      await page.waitForTimeout(1000);
+    }
+    await page.locator('.stripe-form').waitFor({ state: 'visible', timeout: 15000 });
+    await page.waitForTimeout(2000);
+    const stripeFrame = page.frameLocator('iframe[title*="Secure"]').first();
+    await stripeFrame.locator('input[name="number"]').fill('4242424242424242');
+    await stripeFrame.locator('input[name="expiry"]').fill('1065');
+    await stripeFrame.locator('input[name="cvc"]').fill('321');
+    await page.locator('button.stripe-pay-btn').click();
+
+    // Confirmation: booking reference issued
+    const refLocator = page.locator('text=/TAG-[A-Z]{3}[0-9]{5}/').first();
+    await refLocator.waitFor({ state: 'visible', timeout: 45000 });
+    const refText = (await refLocator.textContent()) || '';
+    const bookingRef = refText.match(/TAG-[A-Z]{3}[0-9]{5}/)?.[0];
+    expect(bookingRef).toBeTruthy();
+    console.log(`FLOOR-E2E BOOKING REF: ${bookingRef}`);
+    await page.waitForTimeout(1500);
+  });
 });

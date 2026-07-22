@@ -13442,29 +13442,21 @@ async def create_payment(
             time_parts = request.drop_off_time.split(":")
             dropoff_time = time(int(time_parts[0]), int(time_parts[1]))
         elif request.dropoff_manual_entry and request.dropoff_flight_time and request.drop_off_slot:
-            # Manual entry: calculate from customer-provided flight time minus slot minutes
-            time_parts = request.dropoff_flight_time.split(":")
-            dep_hour = int(time_parts[0])
-            dep_min = int(time_parts[1])
-            slot_minutes = int(request.drop_off_slot)
-            total_minutes = dep_hour * 60 + dep_min - slot_minutes
-            # Handle overnight (negative minutes)
-            if total_minutes < 0:
-                total_minutes += 24 * 60
-            dropoff_time = time(total_minutes // 60, total_minutes % 60)
+            # Manual entry: customer-provided flight time minus slot minutes,
+            # via the shared helper so the stored booking carries the CLAMPED
+            # (04:00-floor) time the customer saw and confirmed — caught by
+            # the floor e2e (TAG-ZME30299 stored 03:35 while showing 04:00).
+            departure_time = _parse_payment_hhmm(request.dropoff_flight_time)
+            if departure_time:
+                dropoff_time = _entry_time_before_departure(departure_time, request.drop_off_slot)
         elif request.departure_id and request.drop_off_slot:
-            # Calculate from flight departure time minus slot minutes
+            # Calculate from flight departure time minus slot minutes —
+            # same shared helper, same floor.
             departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
             if departure:
-                # Slot is minutes before departure (150 = 2½h, 120 = 2h, 90 = 1½h)
-                slot_minutes = int(request.drop_off_slot)
-                dep_hour = departure.departure_time.hour
-                dep_min = departure.departure_time.minute
-                total_minutes = dep_hour * 60 + dep_min - slot_minutes
-                # Handle overnight (negative minutes)
-                if total_minutes < 0:
-                    total_minutes += 24 * 60
-                dropoff_time = time(total_minutes // 60, total_minutes % 60)
+                dropoff_time = _entry_time_before_departure(
+                    departure.departure_time, request.drop_off_slot
+                )
 
         # Parse pickup/landing time and calculate pickup time (30 min after landing).
         # pickup_time is a pure calculation off arrival — there's no separate
