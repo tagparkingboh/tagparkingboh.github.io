@@ -62,6 +62,7 @@ from roster_planner import (
     round_to_shift_type,
 )
 from roster_effective_date import get_roster_effective_date
+from shift_pool_sync import sync_shift_pool_from_parent
 
 logger = logging.getLogger(__name__)
 
@@ -1137,6 +1138,7 @@ def _rebuild_window_auto_for_dates(
         )
 
         # Jockey shift (coverage + booking links)
+        jockey_shift = None
         jockey_suppressed = _cluster_suppression_blockers(
             set(booking_ids), group["start"], group["end"], jockey_suppressed_pool,
         )
@@ -1148,6 +1150,7 @@ def _rebuild_window_auto_for_dates(
         if jockey_suppressed:
             summary["skipped_suppressed"] += 1
         elif jockey_reconcilable is not None:
+            jockey_shift = jockey_reconcilable
             if _reconcile(jockey_reconcilable, group, group["start"], group["end"]):
                 summary["reconciled"] += 1
             # Booking links follow demand onto the sticky shift.
@@ -1170,6 +1173,7 @@ def _rebuild_window_auto_for_dates(
             for booking_id in booking_ids:
                 db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
             summary["created"] += 1
+            jockey_shift = new_shift
 
         # Fleet twin (identical window, no links) — v4-generation windows
         # only: legacy-window days (pre Aug 10) never grow twins.
@@ -1184,14 +1188,31 @@ def _rebuild_window_auto_for_dates(
             and _contained_by(shift, group_window)
             for shift in frozen_shifts
         )
+        fleet_twin = None
         if fleet_suppressed:
             pass
         elif fleet_reconcilable is not None:
+            fleet_twin = fleet_reconcilable
             if _reconcile(fleet_reconcilable, group, group["start"], group["end"]):
                 summary["reconciled"] += 1
         elif not fleet_covered:
-            db.add(RosterShift(intended_driver_type="fleet", **shift_kwargs))
+            fleet_twin = RosterShift(intended_driver_type="fleet", **shift_kwargs)
+            db.add(fleet_twin)
             summary["created_fleet"] = summary.get("created_fleet", 0) + 1
+
+        # Carbon-copy rule (owner, 2026-07-22): the fleet twin mirrors the
+        # jockey shift's bookings in full — it is a POOL CHILD of the jockey,
+        # so every future link change (admin edits, auto-link, reconcile)
+        # propagates through the existing pool-sync machinery. Locked or
+        # independent twins keep their own bookings, per pool semantics.
+        if jockey_shift is not None and fleet_twin is not None:
+            if getattr(fleet_twin, "parent_shift_id", None) != jockey_shift.id:
+                fleet_twin.parent_shift_id = jockey_shift.id
+            db.flush()  # parent linkage must be visible to the pool walk
+            try:
+                sync_shift_pool_from_parent(db, jockey_shift.id)
+            except Exception:
+                logger.warning("fleet twin pool sync failed for shift %s", jockey_shift.id, exc_info=True)
 
     db.commit()
     return summary

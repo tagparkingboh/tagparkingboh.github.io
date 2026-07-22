@@ -129,10 +129,13 @@ class TestFleetTwinsHUEB:
         for s in (jockey, fleet):
             assert (s.start_time, s.end_time) == (time(3, 30), time(10, 30))
             assert s.date == V4_DAY
-        # links on the jockey shift only
-        links = seeded.query(ShiftBookingLink).all()
-        assert {l.shift_id for l in links} == {jockey.id}
-        assert {l.booking_id for l in links} == {booking.id}
+        # Carbon-copy rule: the fleet twin is a pool child of the jockey and
+        # mirrors its bookings in full.
+        assert fleet.parent_shift_id == jockey.id
+        jockey_links = {l.booking_id for l in seeded.query(ShiftBookingLink).filter_by(shift_id=jockey.id)}
+        fleet_links = {l.booking_id for l in seeded.query(ShiftBookingLink).filter_by(shift_id=fleet.id)}
+        assert jockey_links == {booking.id}
+        assert fleet_links == jockey_links
 
     def test_H_late_window_overnight_end_date(self, seeded):
         _booking(seeded, dropoff=V4_DAY - timedelta(days=5), dropoff_time_=time(9, 0),

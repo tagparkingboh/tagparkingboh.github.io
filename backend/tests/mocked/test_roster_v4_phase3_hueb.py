@@ -185,7 +185,10 @@ class TestReconcileInPlaceHUEB:
         seeded.refresh(fleet)
         assert jockey.end_time == time(9, 30)
         assert fleet.end_time == time(9, 30)              # twins stay identical
-        assert seeded.query(ShiftBookingLink).filter_by(shift_id=fleet.id).count() == 0
+        # Carbon-copy: the reconciled twin mirrors the jockey's new booking.
+        jockey_links = {l.booking_id for l in seeded.query(ShiftBookingLink).filter_by(shift_id=jockey.id)}
+        fleet_links = {l.booking_id for l in seeded.query(ShiftBookingLink).filter_by(shift_id=fleet.id)}
+        assert fleet_links == jockey_links and jockey_links
 
 
 class TestBatchAwareTrimHUEB:
