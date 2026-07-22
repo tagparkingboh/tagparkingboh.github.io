@@ -154,3 +154,51 @@ class TestFloorInvariantSweep:
             flight_time = time(total_minutes // 60, total_minutes % 60)
             _, t = calculate_drop_off_datetime(FUTURE_DATE, flight_time, SlotType.LATE)
             assert t >= DROP_OFF_FLOOR
+
+
+# =============================================================================
+# Payment-path reconstruction (_entry_time_before_departure in main.py) —
+# fires when a CreatePaymentRequest arrives without an explicit drop_off_time;
+# must reproduce the CLAMPED time the customer saw or quote-matching breaks.
+# =============================================================================
+
+class TestPaymentEntryTimeReconstructionHUEB:
+
+    def _entry(self, departure_hhmm, slot):
+        from main import _entry_time_before_departure, _parse_payment_hhmm
+        return _entry_time_before_departure(_parse_payment_hhmm(departure_hhmm), slot)
+
+    def test_H_0620_early_slot_reconstructs_clamped_0400(self):
+        assert self._entry("06:20", "165") == time(4, 0)
+
+    def test_H_0600_slots_match_displayed_cards(self):
+        """The screenshot case: 06:00 flight must reconstruct 04:00 for both
+        clamped slots and 04:30 for the late slot."""
+        assert self._entry("06:00", "165") == time(4, 0)
+        assert self._entry("06:00", "120") == time(4, 0)
+        assert self._entry("06:00", "90") == time(4, 30)
+
+    def test_B_boundary_0644_0645_0646(self):
+        assert self._entry("06:44", "165") == time(4, 0)
+        assert self._entry("06:45", "165") == time(4, 0)
+        assert self._entry("06:46", "165") == time(4, 1)
+
+    def test_B_guard_boundary_0530_0529(self):
+        assert self._entry("05:30", "165") == time(4, 0)
+        assert self._entry("05:29", "165") == time(2, 44)
+
+    def test_E_post_midnight_wrap_exempt(self):
+        assert self._entry("00:35", "165") == time(21, 50)
+
+    def test_P_reconstruction_always_matches_slot_engine(self):
+        """Property: for every departure minute and slot, the payment-path
+        reconstruction equals time_slots.calculate_drop_off_datetime — the
+        two implementations of the floor may never drift apart."""
+        slot_types = {"165": SlotType.EARLY, "120": SlotType.STANDARD, "90": SlotType.LATE}
+        for total_minutes in range(0, 24 * 60, 7):  # 7-min stride covers all residues
+            flight_time = time(total_minutes // 60, total_minutes % 60)
+            for slot_str, slot_type in slot_types.items():
+                _, engine_time = calculate_drop_off_datetime(FUTURE_DATE, flight_time, slot_type)
+                assert self._entry(flight_time.strftime("%H:%M"), slot_str) == engine_time, (
+                    f"drift at {flight_time} slot {slot_str}"
+                )

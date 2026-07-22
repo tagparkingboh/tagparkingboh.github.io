@@ -1317,45 +1317,11 @@ function Bookings({ isModal = false, onClose }) {
       })
     }
 
-    const slots = []
-
-    // Early slot: 2¾ hours before (165 minutes)
-    const earlySlotMinutes = departureMinutes - 165
-    const earlySlotTime = formatMinutesToTime(earlySlotMinutes)
-    const earlySlotBlocked = formData.dropoffDate && isTimeBlocked(earlySlotTime)
-    if (!earlySlotBlocked) {
-      slots.push({
-        id: '165',
-        label: '2¾ hours before',
-        time: earlySlotTime
-      })
-    }
-
-    // Standard slot: 2 hours before (120 minutes)
-    const standardSlotMinutes = departureMinutes - 120
-    const standardSlotTime = formatMinutesToTime(standardSlotMinutes)
-    const standardSlotBlocked = formData.dropoffDate && isTimeBlocked(standardSlotTime)
-    if (!standardSlotBlocked) {
-      slots.push({
-        id: '120',
-        label: '2 hours before',
-        time: standardSlotTime
-      })
-    }
-
-    // Late slot: 1½ hours before (90 minutes)
-    const lateSlotMinutes = departureMinutes - 90
-    const lateSlotTime = formatMinutesToTime(lateSlotMinutes)
-    const lateSlotBlocked = formData.dropoffDate && isTimeBlocked(lateSlotTime)
-    if (!lateSlotBlocked) {
-      slots.push({
-        id: '90',
-        label: '1½ hours before',
-        time: lateSlotTime
-      })
-    }
-
-    return slots
+    // Shared builder applies the 04:00 floor (clamped slots show as a
+    // selectable "Earliest drop-off · 04:00" card, duplicates merged);
+    // admin time-slot blocks then filter the clamped display times.
+    return buildDropoffSlots(departureMinutes)
+      .filter((slot) => !(formData.dropoffDate && isTimeBlocked(slot.time)))
   }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, blockedDates])
 
   // RAW landing time for the batched slot check — same priority chain as
@@ -2534,13 +2500,12 @@ function Bookings({ isModal = false, onClose }) {
                   <span className="time-confirm-label">Drop-off time:</span>
                   <span className="time-confirm-value">
                     {manualDepartureData.flightTime && manualDepartureData.dropoffSlot ? (() => {
+                      // Same builder as the slot cards, so the confirm modal
+                      // shows the clamped (04:00-floor) time the customer chose.
                       const [h, m] = manualDepartureData.flightTime.split(':').map(Number);
-                      const slotOffset = parseInt(manualDepartureData.dropoffSlot, 10); // 165, 120, or 90
-                      const dropoffMins = h * 60 + m - slotOffset;
-                      const adjustedMins = dropoffMins < 0 ? dropoffMins + 1440 : dropoffMins; // Handle overnight
-                      const dh = Math.floor(adjustedMins / 60) % 24;
-                      const dm = adjustedMins % 60;
-                      return `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
+                      const slot = buildDropoffSlots(h * 60 + m)
+                        .find((s) => s.id === manualDepartureData.dropoffSlot);
+                      return slot?.time || '--:--';
                     })() : '--:--'}
                   </span>
                 </div>
@@ -3143,13 +3108,14 @@ function Bookings({ isModal = false, onClose }) {
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
-                      // Calculate first potential dropoff time for error message (earliest = 165 min before)
+                      // First potential drop-off for the error message — via the
+                      // shared builder so the 04:00 floor applies here too.
                       let firstPotentialTime = null
                       if (manualDepartureData.flightTime && isValidTimeFormat(manualDepartureData.flightTime)) {
                         const [h, m] = manualDepartureData.flightTime.split(':').map(Number)
-                        const earlyMins = (h * 60 + m) - 165
-                        if (earlyMins >= 0) {
-                          firstPotentialTime = `${String(Math.floor(earlyMins / 60)).padStart(2, '0')}:${String(earlyMins % 60).padStart(2, '0')}`
+                        const earliest = buildDropoffSlots(h * 60 + m)[0]
+                        if (earliest && (h * 60 + m) - 165 >= 0) {
+                          firstPotentialTime = earliest.time
                         }
                       }
                       const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, firstPotentialTime)

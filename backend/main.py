@@ -164,7 +164,7 @@ from airport_quote_service import (
     mark_airport_quote_converted,
     record_airport_quote_conversion_from_response,
 )
-from time_slots import get_drop_off_summary, get_pickup_summary
+from time_slots import DROP_OFF_FLOOR, get_drop_off_summary, get_pickup_summary
 from config import get_settings, is_stripe_configured
 import httpx
 import os
@@ -12695,10 +12695,20 @@ def _parse_payment_hhmm(value: Optional[str]) -> Optional[time]:
 
 def _entry_time_before_departure(departure_time: time, slot_minutes: str) -> time:
     """Drop-off (entry) time = departure time − slot, wrapping within the
-    day exactly like the frontend's formatMinutesToTime does for the quote."""
-    total_minutes = departure_time.hour * 60 + departure_time.minute - int(slot_minutes)
+    day exactly like the frontend's buildDropoffSlots does for the quote.
+
+    Mirrors the 04:00 floor (time_slots.DROP_OFF_FLOOR): a same-day
+    small-hours result clamps up to 04:00 — matching the clamped slot the
+    customer actually saw — unless that would leave under 90 minutes before
+    departure. Previous-evening wraps are exempt."""
+    departure_minutes = departure_time.hour * 60 + departure_time.minute
+    total_minutes = departure_minutes - int(slot_minutes)
     if total_minutes < 0:
-        total_minutes += 24 * 60
+        total_minutes += 24 * 60  # previous evening — floor does not apply
+        return time(total_minutes // 60, total_minutes % 60)
+    floor_minutes = DROP_OFF_FLOOR.hour * 60 + DROP_OFF_FLOOR.minute
+    if total_minutes < floor_minutes and floor_minutes <= departure_minutes - 90:
+        total_minutes = floor_minutes
     return time(total_minutes // 60, total_minutes % 60)
 
 
@@ -12915,16 +12925,15 @@ async def create_payment(
             # Get the dropoff time to check against time slots
             dropoff_time_str = request.drop_off_time
             if not dropoff_time_str and request.dropoff_flight_time and request.drop_off_slot:
-                # Calculate from flight time and slot
-                try:
-                    h, m = map(int, request.dropoff_flight_time.split(":"))
-                    slot_mins = int(request.drop_off_slot)
-                    total_mins = h * 60 + m - slot_mins
-                    if total_mins < 0:
-                        total_mins += 24 * 60
-                    dropoff_time_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
-                except (ValueError, TypeError):
-                    pass
+                # Derive from flight time and slot — via the shared helper so
+                # the 04:00 floor applies here exactly as it did on display.
+                departure = _parse_payment_hhmm(request.dropoff_flight_time)
+                if departure:
+                    try:
+                        derived = _entry_time_before_departure(departure, request.drop_off_slot)
+                        dropoff_time_str = derived.strftime("%H:%M")
+                    except (ValueError, TypeError):
+                        pass
 
             if check_time_blocked(blocked_dropoff, dropoff_time_str, "dropoff"):
                 raise HTTPException(
