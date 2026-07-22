@@ -187,7 +187,10 @@ class TestFleetTwinsHUEB:
 
         summary = _rebuild_window_auto_for_dates(seeded, [V4_DAY], _settings())
 
-        assert summary["created"] == 0 and summary["skipped_covered"] == 1
+        # Phase 3: a sticky (assigned, unlocked) jockey shift is RECONCILED —
+        # the booking links onto it instead of counting as passive coverage.
+        assert summary["created"] == 0 and summary["skipped_covered"] == 0
+        assert summary["links_added"] == 1
         assert summary["created_fleet"] == 1
 
     def test_U_suppressed_fleet_twin_blocks_only_fleet(self, seeded):

@@ -753,7 +753,8 @@ def _rebuild_cluster_auto_for_dates(
 
 def _summary() -> dict:
     return {
-        "deleted": 0, "created": 0, "created_fleet": 0, "skipped_covered": 0,
+        "deleted": 0, "created": 0, "created_fleet": 0, "reconciled": 0,
+        "links_added": 0, "skipped_covered": 0,
         "skipped_suppressed": 0, "bookings_in_scope": 0, "events": 0,
         "rescued": 0, "orphans": 0,
     }
@@ -1033,9 +1034,26 @@ def _rebuild_window_auto_for_dates(
                     "start": window_start,
                     "end": window_end,
                     "booking_ids": set(),
+                    "cov_start": None,
+                    "cov_end": None,
                 },
             )
             group["booking_ids"].add(booking.id)
+            # Demand envelope for reconcile-in-place: buffered event coverage
+            # clamped inside the window bounds (a shift never exceeds its
+            # window). Raw-anchor fallback events clamp their overhang away.
+            cov_start, cov_end = _template_event_coverage(
+                event_type, start_dt, end_dt, settings, include_start_buffer=True,
+            )
+            cov_start = max(cov_start, window_start)
+            cov_end = min(cov_end, window_end)
+            if cov_start < cov_end:
+                group["cov_start"] = (
+                    cov_start if group["cov_start"] is None else min(group["cov_start"], cov_start)
+                )
+                group["cov_end"] = (
+                    cov_end if group["cov_end"] is None else max(group["cov_end"], cov_end)
+                )
 
     # v4 (2026-07-22): every window is generated as a PAIR — a jockey shift
     # (carries the booking links; counts as coverage) and an identical fleet
@@ -1054,6 +1072,45 @@ def _rebuild_window_auto_for_dates(
             _shift_window(shift)[0] <= group_window[0]
             and group_window[1] <= _shift_window(shift)[1]
         )
+
+    # Reconcile-in-place pool (v4 "sticky, not frozen"): assigned or
+    # admin-shaped unlocked auto shifts are never deleted (phase 1) — when
+    # demand grows around them they are RESHAPED within their window bounds
+    # instead of duplicated. Locked shifts stay fully frozen (never reshaped).
+    reconcilable_shifts = [
+        s for s in frozen_shifts
+        if getattr(s, "created_source", None) == "auto"
+        and getattr(s, "locked", False) is not True
+        and s.status == ShiftStatus.SCHEDULED
+    ]
+
+    def _find_reconcilable(driver_type: str, window_start, window_end):
+        for s in reconcilable_shifts:
+            if driver_type == "jockey" and not _shift_can_cover_jockey_work(s):
+                continue
+            if driver_type == "fleet" and getattr(s, "intended_driver_type", None) != "fleet":
+                continue
+            s_start, s_end = _shift_window(s)
+            if window_start <= s_start and s_end <= window_end:
+                return s
+        return None
+
+    def _reconcile(shift, group, window_start, window_end) -> bool:
+        """Extend a protected shift to the group's demand envelope, clamped
+        inside its window. Returns True when the shape changed."""
+        if group["cov_start"] is None:
+            return False
+        s_start, s_end = _shift_window(shift)
+        target_start = max(window_start, min(s_start, group["cov_start"]))
+        target_end = min(window_end, max(s_end, group["cov_end"]))
+        if (target_start, target_end) == (s_start, s_end) or target_end <= target_start:
+            return False
+        shift.date = target_start.date()
+        shift.end_date = target_end.date() if target_end.date() != target_start.date() else None
+        shift.start_time = target_start.time()
+        shift.end_time = target_end.time()
+        shift.shift_type = _window_shift_type(target_start, target_end)
+        return True
 
     for group in sorted(groups.values(), key=lambda item: (item["op_date"], item["start"])):
         group_window = (group["start"], group["end"])
@@ -1074,12 +1131,27 @@ def _rebuild_window_auto_for_dates(
         jockey_suppressed = _cluster_suppression_blockers(
             set(booking_ids), group["start"], group["end"], jockey_suppressed_pool,
         )
+        jockey_reconcilable = _find_reconcilable("jockey", group["start"], group["end"])
         jockey_covered = any(
             _shift_can_cover_jockey_work(shift) and _contained_by(shift, group_window)
             for shift in frozen_shifts
         )
         if jockey_suppressed:
             summary["skipped_suppressed"] += 1
+        elif jockey_reconcilable is not None:
+            if _reconcile(jockey_reconcilable, group, group["start"], group["end"]):
+                summary["reconciled"] += 1
+            # Booking links follow demand onto the sticky shift.
+            existing_links = {
+                link.booking_id
+                for link in db.query(ShiftBookingLink)
+                .filter(ShiftBookingLink.shift_id == jockey_reconcilable.id)
+                .all()
+            }
+            for booking_id in booking_ids:
+                if booking_id not in existing_links:
+                    db.add(ShiftBookingLink(shift_id=jockey_reconcilable.id, booking_id=booking_id))
+                    summary["links_added"] += 1
         elif jockey_covered:
             summary["skipped_covered"] += 1
         else:
@@ -1097,12 +1169,18 @@ def _rebuild_window_auto_for_dates(
         fleet_suppressed = _cluster_suppression_blockers(
             set(booking_ids), group["start"], group["end"], fleet_suppressed_pool,
         )
+        fleet_reconcilable = _find_reconcilable("fleet", group["start"], group["end"])
         fleet_covered = any(
             getattr(shift, "intended_driver_type", None) == "fleet"
             and _contained_by(shift, group_window)
             for shift in frozen_shifts
         )
-        if not fleet_suppressed and not fleet_covered:
+        if fleet_suppressed:
+            pass
+        elif fleet_reconcilable is not None:
+            if _reconcile(fleet_reconcilable, group, group["start"], group["end"]):
+                summary["reconciled"] += 1
+        elif not fleet_covered:
             db.add(RosterShift(intended_driver_type="fleet", **shift_kwargs))
             summary["created_fleet"] = summary.get("created_fleet", 0) + 1
 
@@ -1176,47 +1254,106 @@ def trim_window_auto_shifts_for_date(
     if not shifts:
         return result
 
-    for shift in shifts:
-        if not _is_auto_shift_eligible_for_rebuild(shift):
-            result["skipped"] += 1
-            continue
-        shift_start, shift_end = _shift_window(shift)
-        event_starts: list[datetime] = []
-        event_ends: list[datetime] = []
-        for booking in getattr(shift, "bookings", []) or []:
-            if not _booking_in_scope(booking):
-                continue
-            for event_type, start_dt, end_dt in _events_for_booking(booking):
-                coverage_start, coverage_end = _template_event_coverage(
-                    event_type, start_dt, end_dt, settings,
-                    include_start_buffer=True,
-                )
-                if shift_start <= coverage_start and coverage_end <= shift_end:
-                    event_starts.append(coverage_start)
-                    event_ends.append(coverage_end)
-        if not event_starts:
-            result["skipped"] += 1
-            continue
+    # v4 (2026-07-22): trim is BATCH-AWARE — instead of flat per-event
+    # coverage, each shift's linked events run through the cluster engine's
+    # sizing (tight-pair extensions, pickup-led start buffer, asymmetric
+    # drop/pickup pressure — "the rules we worked on"), then clamp inward.
+    # Fleet twins carry no bookings, so they sync in LOCKSTEP with the jockey
+    # shift of the same window afterwards.
+    templates = _load_window_templates(db)
+    windows = _windows_for_day(templates, target_date)
 
-        desired_start = min(event_starts)
-        desired_end = max(event_ends)
-        new_start = max(shift_start, desired_start)
-        new_end = min(shift_end, desired_end)
-        if new_end <= new_start:
-            result["skipped"] += 1
-            continue
-        if new_start == shift_start and new_end == shift_end:
-            result["skipped"] += 1
-            continue
+    def _window_key_for(span_start: datetime, span_end: datetime):
+        for window in windows:
+            win_start, win_end = _window_bounds(target_date, window)
+            if win_start <= span_start and span_end <= win_end:
+                return (window.label, window.start_time, window.end_time)
+        return None
 
+    def _apply_span(shift, new_start: datetime, new_end: datetime) -> None:
         shift.date = new_start.date()
         shift.end_date = new_end.date() if new_end.date() != new_start.date() else None
         shift.start_time = new_start.time()
         shift.end_time = new_end.time()
         shift.shift_type = _window_shift_type(new_start, new_end)
-        result["trimmed"] += 1
 
-    if result["trimmed"]:
+    result["twins_synced"] = 0
+    jockey_final_spans: dict[tuple, tuple[datetime, datetime]] = {}
+    changed = False
+
+    fleet_shifts = []
+    for shift in shifts:
+        if not _is_auto_shift_eligible_for_rebuild(shift):
+            result["skipped"] += 1
+            continue
+        if getattr(shift, "intended_driver_type", None) == "fleet":
+            fleet_shifts.append(shift)
+            continue
+
+        shift_start, shift_end = _shift_window(shift)
+        window_key = _window_key_for(shift_start, shift_end)
+        events = []
+        for booking in getattr(shift, "bookings", []) or []:
+            if not _booking_in_scope(booking):
+                continue
+            for event_type, start_dt, end_dt in _events_for_booking(booking):
+                if shift_start <= start_dt <= shift_end:
+                    events.append(Event(
+                        booking_id=booking.id,
+                        booking_reference=getattr(booking, "reference", "") or "",
+                        event_type=event_type,
+                        event_time=start_dt.replace(tzinfo=UK_TZ),
+                        end_anchor_time=end_dt.replace(tzinfo=UK_TZ),
+                    ))
+        if not events:
+            result["skipped"] += 1
+            continue
+
+        clusters = group_events_by_gap(
+            events,
+            gap_max_minutes=settings.gap_max_minutes,
+            mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
+        )
+        cluster_starts: list[datetime] = []
+        cluster_ends: list[datetime] = []
+        for cluster in clusters:
+            c_start, c_end = compute_cluster_shift_window(
+                cluster,
+                start_buffer_minutes=settings.start_buffer_minutes,
+                end_buffer_minutes=settings.end_buffer_minutes,
+                min_shift_minutes=settings.min_shift_minutes,
+            )
+            cluster_starts.append(c_start.replace(tzinfo=None))
+            cluster_ends.append(c_end.replace(tzinfo=None))
+
+        new_start = max(shift_start, min(cluster_starts))
+        new_end = min(shift_end, max(cluster_ends))
+        if new_end <= new_start or (new_start == shift_start and new_end == shift_end):
+            result["skipped"] += 1
+            if window_key:
+                jockey_final_spans[window_key] = (shift_start, shift_end)
+            continue
+
+        _apply_span(shift, new_start, new_end)
+        result["trimmed"] += 1
+        changed = True
+        if window_key:
+            jockey_final_spans[window_key] = (new_start, new_end)
+
+    # Lockstep: each fleet twin mirrors the final span of its window's
+    # jockey shift (twins are identical by spec).
+    for shift in fleet_shifts:
+        shift_start, shift_end = _shift_window(shift)
+        window_key = _window_key_for(shift_start, shift_end)
+        target = jockey_final_spans.get(window_key) if window_key else None
+        if not target or target == (shift_start, shift_end):
+            result["skipped"] += 1
+            continue
+        _apply_span(shift, *target)
+        result["twins_synced"] += 1
+        changed = True
+
+    if changed:
         db.commit()
     return result
 

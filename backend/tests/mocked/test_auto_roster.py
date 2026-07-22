@@ -2513,6 +2513,8 @@ class TestAutoRosterCoverageEdges:
             "deleted": 0,
             "created": 0,
             "created_fleet": 0,
+            "reconciled": 0,
+            "links_added": 0,
             "skipped_covered": 0,
             "skipped_suppressed": 0,
             "bookings_in_scope": 0,
@@ -3080,7 +3082,7 @@ class TestTemplateRosterWindows:
             mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
         )
 
-        assert result == {"trimmed": 1, "skipped": 0}
+        assert result == {"trimmed": 1, "skipped": 0, "twins_synced": 0}
         assert shift.start_time == time(4, 30)
         assert shift.end_time == time(7, 30)
         db.commit.assert_called_once()
@@ -3114,7 +3116,7 @@ class TestTemplateRosterWindows:
             mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
         )
 
-        assert result == {"trimmed": 1, "skipped": 0}
+        assert result == {"trimmed": 1, "skipped": 0, "twins_synced": 0}
         assert shift.start_time == time(4, 30)
         assert shift.end_time == time(5, 30)
         db.commit.assert_called_once()
@@ -3308,7 +3310,7 @@ class TestTemplateRosterWindows:
         )
 
         # desired span 02:30-09:30 (wider) clamps back to 03:00-09:00 -> no change.
-        assert result == {"trimmed": 0, "skipped": 1}
+        assert result == {"trimmed": 0, "skipped": 1, "twins_synced": 0}
         assert (shift.start_time, shift.end_time) == (time(3, 0), time(9, 0))
         db.commit.assert_not_called()
 
