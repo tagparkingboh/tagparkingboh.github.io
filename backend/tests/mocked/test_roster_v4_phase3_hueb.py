@@ -318,3 +318,41 @@ class TestTrimV4GateHUEB:
         seeded.refresh(shift)
         assert result["trimmed"] == 1
         assert (shift.start_time, shift.end_time) != (time(3, 30), time(10, 30))
+
+
+class TestReconcileV4GateHUEB:
+
+    def test_B_legacy_window_shift_never_reshaped_by_reconcile(self, seeded):
+        """2026-07-23 incident: hand-edited Aug 1-9 shifts were stretched by
+        reconcile. On legacy-generation windows the engine must leave
+        admin-shaped/assigned shifts untouched and create nothing on top —
+        new demand surfaces via the Review badge instead."""
+        legacy_day = V4_FROM - timedelta(days=3)
+        for profile in ("weekday", "weekend"):
+            seeded.add(RosterWindowTemplate(
+                profile=profile, label="early", start_time=time(3, 0), end_time=time(9, 0),
+                sort_order=0, is_active=True, effective_from=None,
+            ))
+        seeded.commit()
+        shaped = _shift(seeded, start=time(4, 35), end=time(6, 30), date_=legacy_day,
+                        staff_id=7, admin_shaped_at=datetime.now(timezone.utc))
+        _booking(seeded, dropoff=legacy_day, dropoff_time_=time(8, 0))
+
+        summary = _rebuild_window_auto_for_dates(seeded, [legacy_day], _settings())
+
+        seeded.refresh(shaped)
+        assert (shaped.start_time, shaped.end_time) == (time(4, 35), time(6, 30))
+        assert summary["reconciled"] == 0
+        assert summary["created"] == 0            # protected shift counts as cover
+        assert summary["skipped_covered"] == 1
+        assert seeded.query(RosterShift).filter_by(date=legacy_day).count() == 1
+
+    def test_B_v4_window_reconcile_still_works(self, seeded):
+        assigned = _shift(seeded, start=time(5, 0), end=time(7, 0), staff_id=16)
+        _booking(seeded, dropoff_time_=time(9, 0))
+
+        summary = _rebuild_window_auto_for_dates(seeded, [V4_DAY], _settings())
+
+        seeded.refresh(assigned)
+        assert summary["reconciled"] == 1
+        assert assigned.end_time == time(9, 30)

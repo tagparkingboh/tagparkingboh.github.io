@@ -1142,17 +1142,37 @@ def _rebuild_window_auto_for_dates(
         jockey_suppressed = _cluster_suppression_blockers(
             set(booking_ids), group["start"], group["end"], jockey_suppressed_pool,
         )
-        jockey_reconcilable = _find_reconcilable("jockey", group["start"], group["end"])
+        # Reconcile (reshape-in-place) is a v4-windows behaviour, like the
+        # trim: legacy-generation days (Aug 1-9) are hand-groomed — the
+        # engine must never move an admin's times there (2026-07-23 incident:
+        # reconcile stretched edited Aug shifts). On legacy windows a
+        # protected shift counts as coverage instead; new demand shows up in
+        # the Review badge for the admin to place by hand.
+        is_v4_window = getattr(group["window"], "effective_from", None) is not None
+        jockey_reconcilable = (
+            _find_reconcilable("jockey", group["start"], group["end"]) if is_v4_window else None
+        )
+        jockey_legacy_protected = (
+            not is_v4_window
+            and _find_reconcilable("jockey", group["start"], group["end"]) is not None
+        )
         jockey_covered = any(
             _shift_can_cover_jockey_work(shift) and _contained_by(shift, group_window)
             for shift in frozen_shifts
         )
         if jockey_suppressed:
             summary["skipped_suppressed"] += 1
+        elif jockey_legacy_protected:
+            summary["skipped_covered"] += 1
         elif jockey_reconcilable is not None:
             jockey_shift = jockey_reconcilable
             if _reconcile(jockey_reconcilable, group, group["start"], group["end"]):
                 summary["reconciled"] += 1
+                s_start, s_end = _shift_window(jockey_reconcilable)
+                logger.info(
+                    "reconciled shift %s to %s-%s for bookings %s",
+                    jockey_reconcilable.id, s_start.isoformat(), s_end.isoformat(), booking_ids,
+                )
             # Booking links follow demand onto the sticky shift.
             existing_links = {
                 link.booking_id
@@ -1182,7 +1202,9 @@ def _rebuild_window_auto_for_dates(
         fleet_suppressed = _cluster_suppression_blockers(
             set(booking_ids), group["start"], group["end"], fleet_suppressed_pool,
         )
-        fleet_reconcilable = _find_reconcilable("fleet", group["start"], group["end"])
+        fleet_reconcilable = (
+            _find_reconcilable("fleet", group["start"], group["end"]) if is_v4_window else None
+        )
         fleet_covered = any(
             getattr(shift, "intended_driver_type", None) == "fleet"
             and _contained_by(shift, group_window)
