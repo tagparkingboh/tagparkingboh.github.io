@@ -108,7 +108,8 @@ class TestWorkerEndpointConcurrency:
             "fetch_bournemouth_flight_board",
             side_effect=RuntimeError("boom"),
         ):
-            assert client.post("/internal/flight-board/scrape").status_code == 500
+            # Clean-502 change (2026-07-17): failure is a tidy 502.
+            assert client.post("/internal/flight-board/scrape").status_code == 502
 
         board = {"arrivals": [_row()], "departures": [], "source_url": "u"}
         with patch.object(

@@ -491,7 +491,10 @@ class TestDeleteDepartureIntegration:
 
     def test_delete_departure_updates_month_groups(self):
         """Test that month groups are updated after deletion."""
-        test_date = FUTURE_DATE + timedelta(days=130)
+        # Anchored to the 5th: the test needs test_date and test_date+2 in
+        # the SAME month, which a raw today+220d breaks near month-ends
+        # (first failed 2026-07-22 when it landed on 27 Feb).
+        test_date = (FUTURE_DATE + timedelta(days=130)).replace(day=5)
         departures = [
             create_mock_db_departure(id=1, date_val=test_date),
             create_mock_db_departure(id=2, date_val=test_date + timedelta(days=2)),  # Keep in same month

@@ -430,7 +430,7 @@ class TestWorkerFlightBoardEndpoint:
         assert len(payload["departures"]) == 3
         assert payload["sourceUrl"].endswith("/arrivals-departures/")
 
-    def test_U_scrape_failure_propagates_as_500(self):
+    def test_U_scrape_failure_propagates_as_502(self):
         import airport_quote_worker
 
         with patch.object(
@@ -441,4 +441,6 @@ class TestWorkerFlightBoardEndpoint:
             resp = TestClient(airport_quote_worker.app, raise_server_exceptions=False).post(
                 "/internal/flight-board/scrape"
             )
-        assert resp.status_code == 500
+        # Clean-502 change (2026-07-17): failed scrapes answer 502, not a
+        # raw traceback 500.
+        assert resp.status_code == 502

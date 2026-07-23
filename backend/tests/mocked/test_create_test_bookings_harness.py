@@ -12,11 +12,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import create_test_bookings
 
 
-def test_referral_cases_are_last_three_and_selected_separately():
+def test_referral_cases_are_exactly_three_and_selected_separately():
     referral_cases = create_test_bookings.get_referral_only_test_cases()
 
-    assert len(create_test_bookings.TEST_CASES) == 25
-    assert referral_cases == create_test_bookings.TEST_CASES[22:25]
+    # Invariants, not positions: TEST_CASES keeps growing (25 -> 38 as e2e
+    # batches were appended), so pinning the total or "last three" placement
+    # broke on every addition. What matters: exactly three referral cases
+    # exist, the selector returns precisely them, and nothing else claims
+    # promo_type 'referral'.
+    all_referral = [c for c in create_test_bookings.TEST_CASES if c.get("promo_type") == "referral"]
+    assert len(all_referral) == 3
+    assert referral_cases == all_referral
     assert [case["promo_type"] for case in referral_cases] == ["referral", "referral", "referral"]
     assert [case["promo_code"] for case in referral_cases] == [
         create_test_bookings.TEST_REFERRAL_CODE,
