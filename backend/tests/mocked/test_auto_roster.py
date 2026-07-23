@@ -119,6 +119,16 @@ def mk_window_template(profile, label, start_time, end_time, sort_order=0):
     )
 
 
+def dated_window_templates(effective_from=date(2026, 7, 1)):
+    """Same shapes as default_window_templates but stamped with a dated
+    generation — required since the 2026-07-22 owner decision gated the
+    T-1 trim to dated (v4) window generations only."""
+    rows = default_window_templates()
+    for row in rows:
+        row.effective_from = effective_from
+    return rows
+
+
 def default_window_templates():
     windows = [
         ("early", time(3, 0), time(9, 0)),
@@ -3074,7 +3084,7 @@ class TestTemplateRosterWindows:
             shift_type=ShiftType.MORNING,
             bookings=[early, late],
         )
-        db = make_db(untouched_auto_shifts=[shift])
+        db = make_db(untouched_auto_shifts=[shift], window_templates=dated_window_templates())
 
         result = trim_window_auto_shifts_for_date(
             db,
@@ -3108,7 +3118,7 @@ class TestTemplateRosterWindows:
             shift_type=ShiftType.MORNING,
             bookings=[booking],
         )
-        db = make_db(untouched_auto_shifts=[shift])
+        db = make_db(untouched_auto_shifts=[shift], window_templates=dated_window_templates())
 
         result = trim_window_auto_shifts_for_date(
             db,
@@ -3142,7 +3152,7 @@ class TestTemplateRosterWindows:
             shift_type=ShiftType.MORNING,
             bookings=[booking],
         )
-        db = make_db(untouched_auto_shifts=[shift])
+        db = make_db(untouched_auto_shifts=[shift], window_templates=dated_window_templates())
 
         result = trim_window_auto_shifts_for_date(
             db,
@@ -3275,7 +3285,7 @@ class TestTemplateRosterWindows:
         assert (june_shift.start_time, june_shift.end_time) == (time(3, 0), time(9, 0))
 
         july_shift = make_trim_shift(date(2026, 7, 1))
-        db_july = make_db(untouched_auto_shifts=[july_shift])
+        db_july = make_db(untouched_auto_shifts=[july_shift], window_templates=dated_window_templates())
         res_july = trim_window_auto_shifts_for_date(
             db_july, date(2026, 7, 1),
             mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
@@ -3302,7 +3312,7 @@ class TestTemplateRosterWindows:
             start_time=time(3, 0), end_time=time(9, 0), shift_type=ShiftType.MORNING,
             bookings=[edge_early, edge_late],
         )
-        db = make_db(untouched_auto_shifts=[shift])
+        db = make_db(untouched_auto_shifts=[shift], window_templates=dated_window_templates())
 
         result = trim_window_auto_shifts_for_date(
             db, date(2026, 7, 2),

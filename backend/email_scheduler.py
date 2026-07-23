@@ -55,7 +55,9 @@ AUTO_ROSTER_SWEEP_HOUR_ENV = "AUTO_ROSTER_SWEEP_HOUR"
 AUTO_ROSTER_SWEEP_MINUTE_ENV = "AUTO_ROSTER_SWEEP_MINUTE"
 AUTO_ROSTER_SWEEP_DEFAULT_HOUR = 3
 AUTO_ROSTER_SWEEP_DEFAULT_MINUTE = 10
-TEMPLATE_ROSTER_TRIM_HOUR = 20
+# 18:00 Europe/London (owner decision 2026-07-22): online bookings close
+# at 17:00 the day before, so tomorrow's demand is final an hour later.
+TEMPLATE_ROSTER_TRIM_HOUR = 18
 TEMPLATE_ROSTER_TRIM_MINUTE = 0
 HOMEPAGE_AIRPORT_QUOTE_REFRESH_HOURS = (6, 18)
 HOMEPAGE_AIRPORT_QUOTE_REFRESH_MINUTE = 15
@@ -970,7 +972,7 @@ def process_all_pending_emails():
 def process_template_roster_window_trim(target_date=None):
     """Daily T-1 cutoff trim for standard roster windows.
 
-    Runs at 20:00 Europe/London for tomorrow's operational day. The auto-roster
+    Runs at 18:00 Europe/London for tomorrow's operational day (bookings close 17:00 T-1). The auto-roster
     helper gates itself to the template-roster effective date and only reshapes
     untouched auto shifts.
     """

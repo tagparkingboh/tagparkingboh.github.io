@@ -1186,7 +1186,7 @@ class TestSchedulerControl:
         assert "auto_roster_sweep" not in job_ids
         assert "template_roster_window_trim" in job_ids
 
-    def test_H_start_adds_template_trim_job_at_20_00_london(self, monkeypatch):
+    def test_H_start_adds_template_trim_job_at_18_00_london(self, monkeypatch):
         fake_sched = MagicMock()
         fake_sched.running = False
         monkeypatch.setattr(email_scheduler, "scheduler", fake_sched)
@@ -1199,7 +1199,8 @@ class TestSchedulerControl:
         )
         trigger = trim_call.kwargs["trigger"]
         assert trim_call.args[0] is email_scheduler.process_template_roster_window_trim
-        assert str(trigger.fields[5]) == "20"
+        # 18:00 (owner decision 2026-07-22): bookings close 17:00 T-1.
+        assert str(trigger.fields[5]) == "18"
         assert str(trigger.fields[6]) == "0"
 
     def test_E_start_when_already_running_is_noop(self, monkeypatch):

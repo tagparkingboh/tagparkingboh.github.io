@@ -3,7 +3,7 @@ Roster v4 Phase 3 (2026-07-22) — reconcile-in-place + batch-aware trim.
 
 Spec: assigned shifts are sticky, not frozen — new bookings link into them
 and reshape the window in place (within template window bounds) instead of
-duplicating or destroying. Locked = fully frozen. The 20:00 T-1 trim sizes
+duplicating or destroying. Locked = fully frozen. The T-1 trim (18:00) sizes
 shifts with the cluster engine's rules (tight pairs, pickup-led buffers) and
 fleet twins sync in lockstep with their window's jockey shift.
 
@@ -281,3 +281,40 @@ class TestBatchAwareTrimHUEB:
         seeded.refresh(shift)
         assert result["trimmed"] == 0
         assert (shift.start_time, shift.end_time) == (time(5, 55), time(6, 20))
+
+
+class TestTrimV4GateHUEB:
+
+    def test_B_legacy_generation_day_never_trimmed(self, seeded):
+        """Owner decision 2026-07-22: the trim only acts on v4-generation
+        days. A hand-groomed legacy day (pre Aug 10) keeps its times even
+        when its shifts and bookings would otherwise qualify."""
+        legacy_day = V4_FROM - timedelta(days=3)  # Aug 7 — legacy windows
+        for profile in ("weekday", "weekend"):
+            seeded.add(RosterWindowTemplate(
+                profile=profile, label="early", start_time=time(3, 0), end_time=time(9, 0),
+                sort_order=0, is_active=True, effective_from=None,
+            ))
+        seeded.commit()
+        bookings = [_booking(seeded, dropoff=legacy_day, dropoff_time_=time(5, 0))]
+        shift = _shift(seeded, start=time(3, 0), end=time(9, 0), date_=legacy_day,
+                       staff_id=16, bookings=bookings)
+
+        result = trim_window_auto_shifts_for_date(seeded, legacy_day, _settings())
+
+        seeded.refresh(shift)
+        assert result["trimmed"] == 0
+        assert result.get("twins_synced", 0) == 0
+        assert (shift.start_time, shift.end_time) == (time(3, 0), time(9, 0))
+
+    def test_B_first_v4_day_still_trims(self, seeded):
+        """Boundary: the effective date itself (Aug 10) is a v4 day — trims."""
+        bookings = [_booking(seeded, dropoff=V4_FROM, dropoff_time_=time(6, 0))]
+        shift = _shift(seeded, start=time(3, 30), end=time(10, 30), date_=V4_FROM,
+                       bookings=bookings)
+
+        result = trim_window_auto_shifts_for_date(seeded, V4_FROM, _settings())
+
+        seeded.refresh(shift)
+        assert result["trimmed"] == 1
+        assert (shift.start_time, shift.end_time) != (time(3, 30), time(10, 30))

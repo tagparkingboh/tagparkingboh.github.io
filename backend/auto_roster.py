@@ -1260,16 +1260,22 @@ def trim_window_auto_shifts_for_date(
     target_date: date_type,
     settings: PlannerSettings,
 ) -> dict:
-    """Shrink untouched template-window shifts to actual event span + buffers.
+    """Shrink template-window shifts to their batch-sized event span.
 
-    Intended for the T-1 20:00 booking cutoff job. The function is deliberately
-    narrow: only July+ untouched auto shifts are eligible, and the new window is
-    clamped inside the existing shift so this job never expands or reshapes
-    claimed/admin-owned rows.
+    Intended for the T-1 18:00 job (online bookings close 17:00 the day before). Gated to days governed by
+    a DATED window generation (v4, Aug 10 onward — owner decision 2026-07-22):
+    the trim exists to shrink deliberately-oversized fixed windows, and
+    legacy/hand-groomed days (e.g. Aug 1-9) have no such windows to shrink,
+    so their hand-set times are never touched.
     """
     result = {"trimmed": 0, "skipped": 0}
     if target_date < get_roster_effective_date():
         return result
+    generation_windows = _windows_for_day(_load_window_templates(db), target_date)
+    if not generation_windows or all(
+        getattr(w, "effective_from", None) is None for w in generation_windows
+    ):
+        return result  # legacy-generation day — nothing to trim by design
 
     shifts = (
         db.query(RosterShift)
