@@ -536,6 +536,10 @@ class AuditLogEvent(enum.Enum):
     BOOKING_REFUNDED = "booking_refunded"
     BOOKING_UPDATED = "booking_updated"
     ROSTER_SHIFT_DELETED = "roster_shift_deleted"
+    # 2026-07-23 stale-tab incident: shift edits carried no audit trail, so
+    # "what changed my shift" took an evening of forensics. Every PUT that
+    # actually changes something records old→new per field.
+    ROSTER_SHIFT_UPDATED = "roster_shift_updated"
     # Roster v4 phase 1 (2026-07-22) — every hand-change is recorded
     ROSTER_SHIFT_CLAIMED = "roster_shift_claimed"
     ROSTER_SHIFT_RELEASED = "roster_shift_released"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '../AuthContext'
 import { DEFAULT_ONLINE_CAPACITY, getOnlineCapacityForDate } from '../utils/capacity'
 import { formatDestination } from '../utils/formatDestination'
@@ -271,6 +271,68 @@ const formatTime = (timeStr) => {
   // Handle both "HH:MM" and "HH:MM:SS" formats
   return timeStr.substring(0, 5)
 }
+
+// --- Stale-tab edit protection (2026-07-23) --------------------------------
+// Admins run this page on phones; mobile browsers freeze background tabs and
+// restore them hours later without reloading, so the calendar rows behind an
+// edit dialog can be arbitrarily old. Saving used to send EVERY field from
+// that snapshot, silently reverting anything changed since (engine re-cuts,
+// edits from another device) and falsely stamping admin_shaped_at. Three
+// co-operating guards close this:
+//   1. shiftToEditForm + a fresh GET in openEditShiftModal — the dialog
+//      populates from a just-fetched shift, never the calendar row.
+//   2. buildShiftUpdateDiff — saves send only the fields the admin touched;
+//      the backend's partial-update contract leaves omitted fields alone.
+//   3. shouldRefetchOnWake — the calendar refetches when the tab becomes
+//      visible again, throttled so app-switching doesn't hammer the API.
+
+export const shiftToEditForm = (shift) => {
+  const dateUK = formatDateUK(shift.date)
+  const endDateUK = shift.end_date ? formatDateUK(shift.end_date) : ''
+  return {
+    staff_id: shift.staff_id || '',
+    booking_ids: shift.bookings ? shift.bookings.map((b) => b.id) : [],
+    date: dateUK,
+    end_date: endDateUK !== dateUK ? endDateUK : '',  // Only show if different from start date
+    start_time: formatTime(shift.start_time),
+    end_time: formatTime(shift.end_time),
+    shift_type: shift.shift_type,
+    notes: shift.notes || '',
+    intended_driver_type: shift.intended_driver_type || 'jockey',
+  }
+}
+
+const normalizeFormValue = (v) => (v === undefined || v === null ? '' : String(v))
+const bookingIdsKey = (ids) => (ids || []).map(Number).sort((a, b) => a - b).join(',')
+
+// Returns only the fields whose form value differs from the snapshot taken
+// when the dialog opened ({} when nothing changed). staff_id and end_date are
+// sent as explicit nulls when cleared — the backend distinguishes "absent"
+// (leave alone) from "null" (unassign / clear overnight) via provided-markers.
+export const buildShiftUpdateDiff = (initialForm, form, { bookingLinksReadOnly = false } = {}) => {
+  const changed = (field) => normalizeFormValue(form[field]) !== normalizeFormValue(initialForm[field])
+  const diff = {}
+  if (changed('date')) diff.date = ukToISO(form.date)
+  if (changed('end_date')) diff.end_date = form.end_date ? ukToISO(form.end_date) : null
+  if (changed('start_time')) diff.start_time = form.start_time
+  if (changed('end_time')) diff.end_time = form.end_time
+  if (changed('shift_type')) diff.shift_type = form.shift_type
+  // '' (not null) so clearing notes actually clears — the backend ignores null
+  if (changed('notes')) diff.notes = form.notes || ''
+  if (changed('intended_driver_type')) diff.intended_driver_type = form.intended_driver_type || 'jockey'
+  if (!bookingLinksReadOnly && bookingIdsKey(form.booking_ids) !== bookingIdsKey(initialForm.booking_ids)) {
+    diff.booking_ids = (form.booking_ids || []).map((id) => parseInt(id))
+  }
+  if (changed('staff_id')) diff.staff_id = form.staff_id ? parseInt(form.staff_id) : null
+  return diff
+}
+
+export const WAKE_REFETCH_MIN_INTERVAL_MS = 30_000
+
+export const shouldRefetchOnWake = (visibilityState, lastFetchedAtMs, nowMs) => (
+  visibilityState === 'visible'
+  && nowMs - lastFetchedAtMs >= WAKE_REFETCH_MIN_INTERVAL_MS
+)
 
 // Sort key (minutes-from-operational-day-start) for a shift entry in a
 // day's shift list. Normal daytime + standard overnight shifts (start_time
@@ -1421,6 +1483,21 @@ const getHoursUntilShift = (shift) => {
     fetchData()
   }, [fetchData, refreshTrigger])
 
+  // Phones freeze background tabs and restore them without reloading — a
+  // woken tab can be hours stale, and anything done from it (edits,
+  // assignments) acts on old data. Refetch when the tab becomes visible
+  // again, throttled so quick app-switching doesn't hammer the API.
+  const lastWakeRefetchRef = useRef(Date.now())
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (!shouldRefetchOnWake(document.visibilityState, lastWakeRefetchRef.current, Date.now())) return
+      lastWakeRefetchRef.current = Date.now()
+      fetchData()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [fetchData])
+
   useEffect(() => {
     fetchStaff()
   }, [fetchStaff])
@@ -1896,31 +1973,47 @@ const getHoursUntilShift = (shift) => {
     setShowShiftModal(true)
   }
 
-  const openEditShiftModal = (shift) => {
-    setEditingShift(shift)
-    const dateUK = formatDateUK(shift.date)
-    const endDateUK = shift.end_date ? formatDateUK(shift.end_date) : ''
-    // Get booking IDs from the bookings array
-    const bookingIds = shift.bookings ? shift.bookings.map(b => b.id) : []
-    setShiftForm({
-      staff_id: shift.staff_id || '',
-      booking_ids: bookingIds,
-      date: dateUK,
-      end_date: endDateUK !== dateUK ? endDateUK : '',  // Only show if different from start date
-      start_time: formatTime(shift.start_time),
-      end_time: formatTime(shift.end_time),
-      shift_type: shift.shift_type,
-      notes: shift.notes || '',
-      intended_driver_type: shift.intended_driver_type || 'jockey',
-    })
+  // Snapshot of the form as the edit dialog opened — the baseline
+  // buildShiftUpdateDiff compares against on save.
+  const initialShiftFormRef = useRef(null)
+
+  const openEditShiftModal = async (shift) => {
+    setError('')
+    // Populate from a just-fetched copy, never the calendar row — on a phone
+    // the tab may have been suspended for hours and `shift` can be stale.
+    // On a failed fetch (flaky mobile signal) don't open a stale form.
+    let fresh
+    try {
+      const response = await authFetch(`${API_URL}/api/roster/${shift.id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+      if (response.status === 404) {
+        setError('This shift no longer exists — refreshing the calendar')
+        fetchShifts()
+        return
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      fresh = await response.json()
+    } catch {
+      setError('Could not load the latest shift details — check your connection and try again')
+      return
+    }
+    setEditingShift(fresh)
+    const form = shiftToEditForm(fresh)
+    setShiftForm(form)
+    initialShiftFormRef.current = { ...form, booking_ids: [...form.booking_ids] }
     // Fetch bookings for both dates if overnight shift
-    fetchBookingsForDate(dateUK, endDateUK !== dateUK ? endDateUK : null)
+    fetchBookingsForDate(form.date, form.end_date || null)
     setShowShiftModal(true)
   }
 
   const closeShiftModal = () => {
     setShowShiftModal(false)
     setEditingShift(null)
+    initialShiftFormRef.current = null
     setShiftForm({
       staff_id: '',
       booking_ids: [],
@@ -1958,31 +2051,25 @@ const getHoursUntilShift = (shift) => {
     setError('')
 
     try {
-      // Convert UK date format to ISO for backend
-      const isoDate = ukToISO(shiftForm.date)
-      const isoEndDate = shiftForm.end_date ? ukToISO(shiftForm.end_date) : null
       const bookingLinksReadOnly = editingShift && isSyncedChildShift(editingShift)
 
-      const basePayload = {
-        date: isoDate,
-        end_date: isoEndDate,  // For overnight shifts
-        start_time: shiftForm.start_time,
-        end_time: shiftForm.end_time,
-        shift_type: shiftForm.shift_type,
-        notes: shiftForm.notes || null,
-        // Backend overrides this with the assigned user's driver_type when
-        // staff_id is set; for unassigned shifts it's the source of truth.
-        intended_driver_type: shiftForm.intended_driver_type || 'jockey',
-      }
-      if (!bookingLinksReadOnly) {
-        basePayload.booking_ids = shiftForm.booking_ids.map(id => parseInt(id))
-      }
-
       if (editingShift) {
-        // Editing existing shift - single update
-        const payload = {
-          ...basePayload,
-          staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
+        // Editing existing shift — diff-only: send just the fields touched
+        // in this dialog. Untouched fields must never go on the wire; they
+        // would overwrite concurrent changes (engine re-cuts, edits from
+        // another device) with the dialog's snapshot and falsely stamp
+        // admin_shaped_at.
+        const payload = buildShiftUpdateDiff(
+          initialShiftFormRef.current || {},
+          shiftForm,
+          { bookingLinksReadOnly },
+        )
+
+        if (Object.keys(payload).length === 0) {
+          setSuccessMessage('No changes to save')
+          setTimeout(() => setSuccessMessage(''), 3000)
+          closeShiftModal()
+          return
         }
 
         const response = await authFetch(`${API_URL}/api/roster/${editingShift.id}`, {
@@ -2007,7 +2094,21 @@ const getHoursUntilShift = (shift) => {
           setError(errorData.detail || 'Failed to save shift')
         }
       } else {
-        // Creating new shift(s)
+        // Creating new shift(s) — a create has no baseline to diff against,
+        // so the full form goes on the wire.
+        const basePayload = {
+          date: ukToISO(shiftForm.date),
+          end_date: shiftForm.end_date ? ukToISO(shiftForm.end_date) : null,  // For overnight shifts
+          start_time: shiftForm.start_time,
+          end_time: shiftForm.end_time,
+          shift_type: shiftForm.shift_type,
+          notes: shiftForm.notes || null,
+          // Backend overrides this with the assigned user's driver_type when
+          // staff_id is set; for unassigned shifts it's the source of truth.
+          intended_driver_type: shiftForm.intended_driver_type || 'jockey',
+          booking_ids: shiftForm.booking_ids.map(id => parseInt(id)),
+        }
+
         // Collect all staff IDs to create shifts for
         const staffIdsToCreate = []
         if (shiftForm.staff_id) {

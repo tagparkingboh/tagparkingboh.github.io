@@ -1772,10 +1772,33 @@ async def create_shift(
     return shift_to_response(new_shift, db)
 
 
+def _shift_audit_snapshot(db: Session, shift: RosterShift) -> dict:
+    """Field values the update audit diffs — taken before and after the
+    PUT's mutations so the audit row records old→new per changed field."""
+    return {
+        "date": str(shift.date) if shift.date else None,
+        "end_date": str(shift.end_date) if shift.end_date else None,
+        "start_time": format_time(shift.start_time) if shift.start_time else None,
+        "end_time": format_time(shift.end_time) if shift.end_time else None,
+        "shift_type": shift.shift_type.value if shift.shift_type else None,
+        "status": shift.status.value if shift.status else None,
+        "staff_id": shift.staff_id,
+        "notes": shift.notes,
+        "intended_driver_type": shift.intended_driver_type,
+        "booking_ids": sorted(
+            link.booking_id
+            for link in db.query(ShiftBookingLink)
+            .filter(ShiftBookingLink.shift_id == shift.id)
+            .all()
+        ),
+    }
+
+
 @router.put("/roster/{shift_id}", response_model=RosterShiftResponse)
 async def update_shift(
     shift_id: int,
     updates: RosterShiftUpdate,
+    request: Request,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -1858,6 +1881,8 @@ async def update_shift(
         or (updates.end_date_provided and updates.end_date != shift.end_date)
     )
 
+    audit_before = _shift_audit_snapshot(db, shift)
+
     # Apply updates
     if updates.staff_id_provided:
         shift.staff_id = updates.staff_id  # Can be None to unassign
@@ -1929,6 +1954,38 @@ async def update_shift(
         except ValueError as exc:
             db.rollback()
             raise HTTPException(status_code=409, detail=str(exc))
+
+    # 2026-07-23 stale-tab incident: edits carried no audit trail, so "what
+    # changed my shift" was unanswerable. Record old→new for every field
+    # this PUT actually changed; no-op PUTs write nothing.
+    audit_after = _shift_audit_snapshot(db, shift)
+    audit_changes = {
+        field: {"from": audit_before[field], "to": audit_after[field]}
+        for field in audit_before
+        if audit_before[field] != audit_after[field]
+    }
+    if audit_changes:
+        first_booking = (
+            db.query(Booking)
+            .filter(Booking.id.in_(audit_after["booking_ids"]))
+            .first()
+            if audit_after["booking_ids"] else None
+        )
+        db.add(AuditLog(
+            event=AuditLogEvent.ROSTER_SHIFT_UPDATED,
+            session_id=f"roster-shift-{shift.id}",
+            booking_reference=getattr(first_booking, "reference", None),
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+            event_data=json.dumps({
+                "shift_id": shift.id,
+                "created_source": shift.created_source,
+                "window_changed": window_changed,
+                "changes": audit_changes,
+                "updated_by_user_id": current_user.id,
+                "updated_by_email": current_user.email,
+            }, default=str),
+        ))
 
     db.commit()
     db.refresh(shift)

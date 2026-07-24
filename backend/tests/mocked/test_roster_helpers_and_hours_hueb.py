@@ -851,9 +851,11 @@ class TestRosterUpdateAndActionsHUEB:
         db = MagicMock()
         db.query.side_effect = [
             _query(first_result=shift),
+            _query(),  # audit_before snapshot: existing booking links
             _query(first_result=SimpleNamespace(id=3, driver_type="fleet")),
             _query(first_result=SimpleNamespace(id=701)),
             _query(),
+            _query(),  # audit_after snapshot: booking links post-rewrite
         ]
         db.add.side_effect = added.append
         _override_db(db)
@@ -953,6 +955,7 @@ class TestRosterUpdateAndActionsHUEB:
         db = MagicMock()
         db.query.side_effect = [
             _query(first_result=shift),
+            _query(),  # audit_before snapshot: existing booking links
             _query(),
             _query(first_result=None),
         ]
